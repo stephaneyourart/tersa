@@ -4,9 +4,11 @@ import { getSubscribedUser } from '@/lib/auth';
 import { database } from '@/lib/database';
 import { parseError } from '@/lib/error/parse';
 import { visionModels } from '@/lib/models/vision';
-import { isLocalProject, getLocalProject } from '@/lib/local-project';
+import { isLocalProject, getLocalProject, isLocalMode } from '@/lib/local-project';
 import { projects } from '@/schema';
 import { eq } from 'drizzle-orm';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import OpenAI from 'openai';
 
 export const describeAction = async (
@@ -44,7 +46,19 @@ export const describeAction = async (
 
     let parsedUrl = url;
 
-    if (process.env.NODE_ENV !== 'production') {
+    // En mode local avec URL relative, lire le fichier directement
+    if (isLocalMode && url.startsWith('/api/storage/')) {
+      const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+      // /api/storage/images/filename.jpg -> storage/images/filename.jpg
+      const relativePath = url.replace('/api/storage/', '');
+      const filePath = join(storagePath, relativePath);
+      
+      const buffer = await readFile(filePath);
+      const ext = filePath.split('.').pop()?.toLowerCase();
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+      
+      parsedUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+    } else if (process.env.NODE_ENV !== 'production') {
       const response = await fetch(url);
       const blob = await response.blob();
 
