@@ -4,6 +4,7 @@ import { getSubscribedUser } from '@/lib/auth';
 import { database } from '@/lib/database';
 import { parseError } from '@/lib/error/parse';
 import { visionModels } from '@/lib/models/vision';
+import { isLocalProject, getLocalProject } from '@/lib/local-project';
 import { projects } from '@/schema';
 import { eq } from 'drizzle-orm';
 import OpenAI from 'openai';
@@ -24,9 +25,12 @@ export const describeAction = async (
 
     const openai = new OpenAI();
 
-    const project = await database.query.projects.findFirst({
-      where: eq(projects.id, projectId),
-    });
+    // En mode local, utiliser le projet local simulé
+    const project = isLocalProject(projectId)
+      ? getLocalProject()
+      : await database.query.projects.findFirst({
+          where: eq(projects.id, projectId),
+        });
 
     if (!project) {
       throw new Error('Project not found');

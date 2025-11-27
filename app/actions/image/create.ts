@@ -7,6 +7,7 @@ import { imageModels } from '@/lib/models/image';
 import { visionModels } from '@/lib/models/vision';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
+import { isLocalProject, getLocalProject } from '@/lib/local-project';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import {
@@ -178,9 +179,12 @@ export const generateImageAction = async ({
       ? `data:${image.mediaType};base64,${Buffer.from(image.uint8Array).toString('base64')}`
       : stored.url;
 
-    const project = await database.query.projects.findFirst({
-      where: eq(projects.id, projectId),
-    });
+    // En mode local, utiliser le projet local simulé
+    const project = isLocalProject(projectId)
+      ? getLocalProject()
+      : await database.query.projects.findFirst({
+          where: eq(projects.id, projectId),
+        });
 
     if (!project) {
       throw new Error('Project not found');
@@ -239,21 +243,24 @@ export const generateImageAction = async ({
       description,
     };
 
-    const updatedNodes = content.nodes.map((existingNode) => {
-      if (existingNode.id === nodeId) {
-        return {
-          ...existingNode,
-          data: newData,
-        };
-      }
+    // En mode local, on ne met pas à jour la BDD - le frontend gère l'état
+    if (!isLocalProject(projectId)) {
+      const updatedNodes = content.nodes.map((existingNode) => {
+        if (existingNode.id === nodeId) {
+          return {
+            ...existingNode,
+            data: newData,
+          };
+        }
 
-      return existingNode;
-    });
+        return existingNode;
+      });
 
-    await database
-      .update(projects)
-      .set({ content: { ...content, nodes: updatedNodes } })
-      .where(eq(projects.id, projectId));
+      await database
+        .update(projects)
+        .set({ content: { ...content, nodes: updatedNodes } })
+        .where(eq(projects.id, projectId));
+    }
 
     return {
       nodeData: newData,

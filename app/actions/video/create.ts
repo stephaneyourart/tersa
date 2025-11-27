@@ -6,6 +6,7 @@ import { parseError } from '@/lib/error/parse';
 import { videoModels } from '@/lib/models/video';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
+import { isLocalProject, getLocalProject } from '@/lib/local-project';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import { eq } from 'drizzle-orm';
@@ -79,28 +80,8 @@ export const generateVideoAction = async ({
       'video/mp4'
     );
 
-    const project = await database.query.projects.findFirst({
-      where: eq(projects.id, projectId),
-    });
-
-    if (!project) {
-      throw new Error('Project not found');
-    }
-
-    const content = project.content as {
-      nodes: Node[];
-      edges: Edge[];
-      viewport: Viewport;
-    };
-
-    const existingNode = content.nodes.find((n) => n.id === nodeId);
-
-    if (!existingNode) {
-      throw new Error('Node not found');
-    }
-
+    // En mode local, créer les données directement sans accès BDD
     const newData = {
-      ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
         url: stored.url,
@@ -108,21 +89,43 @@ export const generateVideoAction = async ({
       },
     };
 
-    const updatedNodes = content.nodes.map((existingNode) => {
-      if (existingNode.id === nodeId) {
-        return {
-          ...existingNode,
-          data: newData,
-        };
+    // En mode local, on ne met pas à jour la BDD
+    if (!isLocalProject(projectId)) {
+      const project = await database.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+
+      if (!project) {
+        throw new Error('Project not found');
       }
 
-      return existingNode;
-    });
+      const content = project.content as {
+        nodes: Node[];
+        edges: Edge[];
+        viewport: Viewport;
+      };
 
-    await database
-      .update(projects)
-      .set({ content: { ...content, nodes: updatedNodes } })
-      .where(eq(projects.id, projectId));
+      const existingNode = content.nodes.find((n) => n.id === nodeId);
+
+      if (existingNode) {
+        Object.assign(newData, existingNode.data);
+      }
+
+      const updatedNodes = content.nodes.map((existingNode) => {
+        if (existingNode.id === nodeId) {
+          return {
+            ...existingNode,
+            data: newData,
+          };
+        }
+        return existingNode;
+      });
+
+      await database
+        .update(projects)
+        .set({ content: { ...content, nodes: updatedNodes } })
+        .where(eq(projects.id, projectId));
+    }
 
     return {
       nodeData: newData,

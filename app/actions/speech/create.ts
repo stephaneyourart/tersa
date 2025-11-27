@@ -6,6 +6,7 @@ import { parseError } from '@/lib/error/parse';
 import { speechModels } from '@/lib/models/speech';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
+import { isLocalProject } from '@/lib/local-project';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import { experimental_generateSpeech as generateSpeech } from 'ai';
@@ -67,28 +68,8 @@ export const generateSpeechAction = async ({
       audio.mediaType
     );
 
-    const project = await database.query.projects.findFirst({
-      where: eq(projects.id, projectId),
-    });
-
-    if (!project) {
-      throw new Error('Project not found');
-    }
-
-    const content = project.content as {
-      nodes: Node[];
-      edges: Edge[];
-      viewport: Viewport;
-    };
-
-    const existingNode = content.nodes.find((n) => n.id === nodeId);
-
-    if (!existingNode) {
-      throw new Error('Node not found');
-    }
-
+    // En mode local, créer les données directement sans accès BDD
     const newData = {
-      ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
         url: stored.url,
@@ -96,21 +77,43 @@ export const generateSpeechAction = async ({
       },
     };
 
-    const updatedNodes = content.nodes.map((existingNode) => {
-      if (existingNode.id === nodeId) {
-        return {
-          ...existingNode,
-          data: newData,
-        };
+    // En mode local, on ne met pas à jour la BDD
+    if (!isLocalProject(projectId)) {
+      const project = await database.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+
+      if (!project) {
+        throw new Error('Project not found');
       }
 
-      return existingNode;
-    });
+      const content = project.content as {
+        nodes: Node[];
+        edges: Edge[];
+        viewport: Viewport;
+      };
 
-    await database
-      .update(projects)
-      .set({ content: { ...content, nodes: updatedNodes } })
-      .where(eq(projects.id, projectId));
+      const existingNode = content.nodes.find((n) => n.id === nodeId);
+
+      if (existingNode) {
+        Object.assign(newData, existingNode.data);
+      }
+
+      const updatedNodes = content.nodes.map((existingNode) => {
+        if (existingNode.id === nodeId) {
+          return {
+            ...existingNode,
+            data: newData,
+          };
+        }
+        return existingNode;
+      });
+
+      await database
+        .update(projects)
+        .set({ content: { ...content, nodes: updatedNodes } })
+        .where(eq(projects.id, projectId));
+    }
 
     return {
       nodeData: newData,
