@@ -6,6 +6,9 @@ import { parseError } from '@/lib/error/parse';
 import { profile } from '@/schema';
 import { eq } from 'drizzle-orm';
 
+// Mode local
+const isLocalMode = process.env.LOCAL_MODE === 'true';
+
 export const updateProfileAction = async (
   userId: string,
   data: Partial<typeof profile.$inferInsert>
@@ -18,6 +21,12 @@ export const updateProfileAction = async (
     }
 > => {
   try {
+    // Mode local : simuler la mise à jour
+    if (isLocalMode) {
+      console.log('[LOCAL MODE] Profil mis à jour:', userId, data);
+      return { success: true };
+    }
+
     const user = await currentUser();
 
     if (!user) {

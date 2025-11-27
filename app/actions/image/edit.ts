@@ -5,7 +5,7 @@ import { database } from '@/lib/database';
 import { parseError } from '@/lib/error/parse';
 import { imageModels } from '@/lib/models/image';
 import { trackCreditUsage } from '@/lib/stripe';
-import { createClient } from '@/lib/supabase/server';
+import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import {
@@ -98,8 +98,7 @@ export const editImageAction = async ({
     }
 > => {
   try {
-    const client = await createClient();
-    const user = await getSubscribedUser();
+    await getSubscribedUser();
 
     const model = imageModels[modelId];
 
@@ -168,19 +167,9 @@ export const editImageAction = async ({
     const bytes = Buffer.from(image.base64, 'base64');
     const contentType = 'image/png';
 
-    const blob = await client.storage
-      .from('files')
-      .upload(`${user.id}/${nanoid()}`, bytes, {
-        contentType,
-      });
-
-    if (blob.error) {
-      throw new Error(blob.error.message);
-    }
-
-    const { data: downloadUrl } = client.storage
-      .from('files')
-      .getPublicUrl(blob.data.path);
+    // Utiliser le wrapper de stockage unifié (local ou Supabase)
+    const name = generateUniqueFilename('png');
+    const stored = await uploadBuffer(bytes, name, contentType);
 
     const project = await database.query.projects.findFirst({
       where: eq(projects.id, projectId),
@@ -206,7 +195,7 @@ export const editImageAction = async ({
       ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
-        url: downloadUrl.publicUrl,
+        url: stored.url,
         type: contentType,
       },
       description: instructions ?? defaultPrompt,

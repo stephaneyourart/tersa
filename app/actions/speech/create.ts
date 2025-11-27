@@ -5,12 +5,11 @@ import { database } from '@/lib/database';
 import { parseError } from '@/lib/error/parse';
 import { speechModels } from '@/lib/models/speech';
 import { trackCreditUsage } from '@/lib/stripe';
-import { createClient } from '@/lib/supabase/server';
+import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import { experimental_generateSpeech as generateSpeech } from 'ai';
 import { eq } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 
 type GenerateSpeechActionProps = {
   text: string;
@@ -37,8 +36,7 @@ export const generateSpeechAction = async ({
     }
 > => {
   try {
-    const client = await createClient();
-    const user = await getSubscribedUser();
+    await getSubscribedUser();
 
     const model = speechModels[modelId];
 
@@ -61,19 +59,13 @@ export const generateSpeechAction = async ({
       cost: provider.getCost(text.length),
     });
 
-    const blob = await client.storage
-      .from('files')
-      .upload(`${user.id}/${nanoid()}.mp3`, new Blob([audio.uint8Array]), {
-        contentType: audio.mediaType,
-      });
-
-    if (blob.error) {
-      throw new Error(blob.error.message);
-    }
-
-    const { data: downloadUrl } = client.storage
-      .from('files')
-      .getPublicUrl(blob.data.path);
+    // Utiliser le wrapper de stockage unifié (local ou Supabase)
+    const name = generateUniqueFilename('mp3');
+    const stored = await uploadBuffer(
+      Buffer.from(audio.uint8Array),
+      name,
+      audio.mediaType
+    );
 
     const project = await database.query.projects.findFirst({
       where: eq(projects.id, projectId),
@@ -99,7 +91,7 @@ export const generateSpeechAction = async ({
       ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
-        url: downloadUrl.publicUrl,
+        url: stored.url,
         type: audio.mediaType,
       },
     };

@@ -5,11 +5,10 @@ import { database } from '@/lib/database';
 import { parseError } from '@/lib/error/parse';
 import { videoModels } from '@/lib/models/video';
 import { trackCreditUsage } from '@/lib/stripe';
-import { createClient } from '@/lib/supabase/server';
+import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import { eq } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 
 type GenerateVideoActionProps = {
   modelId: string;
@@ -37,8 +36,7 @@ export const generateVideoAction = async ({
     }
 > => {
   try {
-    const client = await createClient();
-    const user = await getSubscribedUser();
+    await getSubscribedUser();
     const model = videoModels[modelId];
 
     if (!model) {
@@ -73,19 +71,13 @@ export const generateVideoAction = async ({
       cost: provider.getCost({ duration: 5 }),
     });
 
-    const blob = await client.storage
-      .from('files')
-      .upload(`${user.id}/${nanoid()}.mp4`, arrayBuffer, {
-        contentType: 'video/mp4',
-      });
-
-    if (blob.error) {
-      throw new Error(blob.error.message);
-    }
-
-    const { data: supabaseDownloadUrl } = client.storage
-      .from('files')
-      .getPublicUrl(blob.data.path);
+    // Utiliser le wrapper de stockage unifié (local ou Supabase)
+    const name = generateUniqueFilename('mp4');
+    const stored = await uploadBuffer(
+      Buffer.from(arrayBuffer),
+      name,
+      'video/mp4'
+    );
 
     const project = await database.query.projects.findFirst({
       where: eq(projects.id, projectId),
@@ -111,7 +103,7 @@ export const generateVideoAction = async ({
       ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
-        url: supabaseDownloadUrl.publicUrl,
+        url: stored.url,
         type: 'video/mp4',
       },
     };

@@ -6,7 +6,7 @@ import { parseError } from '@/lib/error/parse';
 import { imageModels } from '@/lib/models/image';
 import { visionModels } from '@/lib/models/vision';
 import { trackCreditUsage } from '@/lib/stripe';
-import { createClient } from '@/lib/supabase/server';
+import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import {
@@ -14,8 +14,10 @@ import {
   experimental_generateImage as generateImage,
 } from 'ai';
 import { eq } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 import OpenAI from 'openai';
+
+// Mode local
+const isLocalMode = process.env.LOCAL_MODE === 'true';
 
 type GenerateImageActionProps = {
   prompt: string;
@@ -97,8 +99,7 @@ export const generateImageAction = async ({
     }
 > => {
   try {
-    const client = await createClient();
-    const user = await getSubscribedUser();
+    await getSubscribedUser();
     const model = imageModels[modelId];
 
     if (!model) {
@@ -164,30 +165,18 @@ export const generateImageAction = async ({
       extension = 'jpg';
     }
 
-    const name = `${nanoid()}.${extension}`;
+    const name = generateUniqueFilename(extension || 'png');
 
-    const file: File = new File([image.uint8Array], name, {
-      type: image.mediaType,
-    });
+    // Utiliser le wrapper de stockage unifié (local ou Supabase)
+    const stored = await uploadBuffer(
+      Buffer.from(image.uint8Array),
+      name,
+      image.mediaType
+    );
 
-    const blob = await client.storage
-      .from('files')
-      .upload(`${user.id}/${name}`, file, {
-        contentType: file.type,
-      });
-
-    if (blob.error) {
-      throw new Error(blob.error.message);
-    }
-
-    const { data: downloadUrl } = client.storage
-      .from('files')
-      .getPublicUrl(blob.data.path);
-
-    const url =
-      process.env.NODE_ENV === 'production'
-        ? downloadUrl.publicUrl
-        : `data:${image.mediaType};base64,${Buffer.from(image.uint8Array).toString('base64')}`;
+    const url = isLocalMode
+      ? `data:${image.mediaType};base64,${Buffer.from(image.uint8Array).toString('base64')}`
+      : stored.url;
 
     const project = await database.query.projects.findFirst({
       where: eq(projects.id, projectId),
@@ -244,7 +233,7 @@ export const generateImageAction = async ({
       ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
-        url: downloadUrl.publicUrl,
+        url: stored.url,
         type: image.mediaType,
       },
       description,

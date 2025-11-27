@@ -5,7 +5,42 @@ import { database } from './database';
 import { env } from './env';
 import { createClient } from './supabase/server';
 
+// ============================================
+// MODE LOCAL - Configuration
+// ============================================
+const isLocalMode = process.env.LOCAL_MODE === 'true';
+const LOCAL_USER_ID = process.env.LOCAL_USER_ID || 'local-user-001';
+
+// Utilisateur local simulé
+const localUser = {
+  id: LOCAL_USER_ID,
+  email: 'local@tersafork.local',
+  app_metadata: {},
+  user_metadata: { name: 'Utilisateur Local' },
+  aud: 'local',
+  created_at: new Date().toISOString(),
+};
+
+// Profil local simulé
+const localProfile = {
+  id: LOCAL_USER_ID,
+  customerId: 'local-customer',
+  subscriptionId: 'local-subscription', // Simule un abonnement actif
+  productId: 'local-pro-product',
+  onboardedAt: new Date(),
+};
+
+// ============================================
+// Fonctions d'authentification
+// ============================================
+
 export const currentUser = async () => {
+  // Mode local : retourner l'utilisateur local
+  if (isLocalMode) {
+    return localUser as any;
+  }
+
+  // Mode normal : Supabase
   const client = await createClient();
   const {
     data: { user },
@@ -15,6 +50,12 @@ export const currentUser = async () => {
 };
 
 export const currentUserProfile = async () => {
+  // Mode local : retourner le profil local
+  if (isLocalMode) {
+    return localProfile as any;
+  }
+
+  // Mode normal : Supabase + Database
   const user = await currentUser();
 
   if (!user) {
@@ -44,6 +85,13 @@ export const currentUserProfile = async () => {
 };
 
 export const getSubscribedUser = async () => {
+  // Mode local : retourner l'utilisateur local (pas de vérification de crédits)
+  if (isLocalMode) {
+    console.log('[LOCAL MODE] Accès AI autorisé pour utilisateur local');
+    return localUser as any;
+  }
+
+  // Mode normal : vérifications Supabase + Stripe
   const user = await currentUser();
 
   if (!user) {
