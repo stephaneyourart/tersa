@@ -11,6 +11,8 @@ type FalImageModel =
   | 'fal-ai/flux-dev'
   | 'fal-ai/flux-schnell'
   | 'fal-ai/flux-realism'
+  | 'fal-ai/flux-pro/kontext'
+  | 'fal-ai/flux-pro/kontext/max'
   | 'fal-ai/stable-diffusion-v35-large'
   | 'fal-ai/stable-diffusion-v35-medium'
   | 'fal-ai/aura-flow'
@@ -193,6 +195,12 @@ export const falImage = {
     createFalImageModel('fal-ai/flux-schnell'),
   fluxRealism: (): FalImageModelInstance => 
     createFalImageModel('fal-ai/flux-realism'),
+    
+  // Flux Kontext (Context) via Fal - Édition d'images contextuelle
+  fluxKontext: (): FalImageModelInstance => 
+    createFalImageModel('fal-ai/flux-pro/kontext'),
+  fluxKontextMax: (): FalImageModelInstance => 
+    createFalImageModel('fal-ai/flux-pro/kontext/max'),
 
   // Stable Diffusion 3.5
   sd35Large: (): FalImageModelInstance => 

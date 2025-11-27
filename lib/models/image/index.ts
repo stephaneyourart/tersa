@@ -8,8 +8,9 @@ import { luma } from '@ai-sdk/luma';
 import { openai } from '@ai-sdk/openai';
 import { xai } from '@ai-sdk/xai';
 import type { ImageModel } from 'ai';
-import { AmazonBedrockIcon, GrokIcon } from '../../icons';
+import { AmazonBedrockIcon, FalIcon, GrokIcon } from '../../icons';
 import { blackForestLabs } from './black-forest-labs';
+import { falImage } from './fal';
 
 const million = 1000000;
 
@@ -386,6 +387,213 @@ export const imageModels: Record<string, TersaImageModel> = {
       },
     ],
     sizes: ['1024x1024', '1820x1024', '1024x1820'],
+    supportsEdit: true,
+  },
+
+  // ========================================
+  // MODÈLES FAL.AI
+  // ========================================
+
+  'nano-banana-pro-fal': {
+    label: 'Nano Banana Pro (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.nanoBananaPro() as unknown as ImageModel,
+        // Ultra rapide et économique
+        getCost: () => 0.01,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024', '1536x1024', '1024x1536'],
+  },
+
+  'seedream-fal': {
+    label: 'Seedream (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.seedream() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'flux-schnell-fal': {
+    label: 'FLUX Schnell (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxSchnell() as unknown as ImageModel,
+        // Ultra rapide
+        getCost: () => 0.003,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'flux-dev-fal': {
+    label: 'FLUX Dev (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxDev() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'flux-pro-fal': {
+    label: 'FLUX Pro (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxPro() as unknown as ImageModel,
+        getCost: () => 0.05,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'flux-realism-fal': {
+    label: 'FLUX Realism (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxRealism() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'ideogram-v2-fal': {
+    label: 'Ideogram V2 (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.ideogramV2() as unknown as ImageModel,
+        getCost: () => 0.08,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'ideogram-v2-turbo-fal': {
+    label: 'Ideogram V2 Turbo (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.ideogramV2Turbo() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'recraft-v3-fal': {
+    label: 'Recraft V3 (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.recraftV3() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'sd35-large-fal': {
+    label: 'SD 3.5 Large (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.sd35Large() as unknown as ImageModel,
+        getCost: () => 0.035,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'kolors-fal': {
+    label: 'Kolors (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.kolors() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'flux-kontext-fal': {
+    label: 'FLUX Kontext (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxKontext() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    supportsEdit: true,
+  },
+
+  'flux-kontext-max-fal': {
+    label: 'FLUX Kontext Max (Fal)',
+    chef: providers.fal,
+    icon: FalIcon,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: falImage.fluxKontextMax() as unknown as ImageModel,
+        getCost: () => 0.08,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
     supportsEdit: true,
   },
 };
