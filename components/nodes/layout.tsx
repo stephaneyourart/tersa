@@ -54,10 +54,14 @@ export const NodeLayout = ({
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const [showData, setShowData] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const [isNodeHovered, setIsNodeHovered] = useState(false);
+  const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
 
   // Vérifie si ce type de node supporte le batch
   const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
+  
+  // Le batch control est visible si le node OU le contrôle est hovered
+  const showBatchControl = isNodeHovered || isBatchControlHovered;
 
   // Handler pour le batch run
   const handleBatchRun = async (count: number) => {
@@ -154,8 +158,8 @@ export const NodeLayout = ({
         <ContextMenuTrigger>
           <div 
             className="relative size-full h-auto w-sm"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
+            onMouseEnter={() => setIsNodeHovered(true)}
+            onMouseLeave={() => setIsNodeHovered(false)}
           >
             {type !== 'drop' && (
               <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 items-center justify-between">
@@ -179,9 +183,10 @@ export const NodeLayout = ({
             {supportsBatch && (
               <BatchRunsControl
                 nodeId={id}
-                isVisible={isHovered}
+                isVisible={showBatchControl}
                 onRun={handleBatchRun}
                 maxRuns={10}
+                onHoverChange={setIsBatchControlHovered}
               />
             )}
           </div>
