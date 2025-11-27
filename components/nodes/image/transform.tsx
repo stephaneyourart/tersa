@@ -226,12 +226,18 @@ export const ImageTransform = ({
     const nodeIds: string[] = [id];
     const edges = getEdges().filter(e => e.target === id);
     
+    // Le prompt à afficher dans "Enter instructions"
+    const promptText = textNodes.join('\n');
+    
+    // Mettre à jour le nœud original avec le prompt dans les instructions
+    updateNodeData(id, { instructions: promptText });
+    
     // Dupliquer le nœud N-1 fois HORIZONTALEMENT (comme Flora)
     for (let i = 1; i < count; i++) {
       const newNodeId = `${id}-batch-${i}-${Date.now()}`;
       const offsetX = (currentNode.measured?.width ?? 400) + 50; // Horizontal spacing
       
-      // Créer le nœud dupliqué
+      // Créer le nœud dupliqué avec le prompt dans les instructions
       const newNode = {
         ...currentNode,
         id: newNodeId,
@@ -241,7 +247,10 @@ export const ImageTransform = ({
           y: currentNode.position.y,
         },
         selected: false,
-        data: { ...currentNode.data },
+        data: { 
+          ...currentNode.data,
+          instructions: promptText, // Copier le prompt dans les instructions
+        },
       };
       
       console.log(`[Batch] Creating node ${i}:`, newNode.id, 'at', newNode.position);
