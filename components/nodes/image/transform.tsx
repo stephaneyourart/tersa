@@ -32,7 +32,6 @@ import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
-import { getAspectRatioSize } from '@/lib/models/image/aspect-ratio';
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
@@ -97,15 +96,36 @@ export const ImageTransform = ({
   const modelId = data.model ?? getDefaultModel(imageModels);
   const analytics = useAnalytics();
   const selectedModel = imageModels[modelId];
+  
+  // Extraire le chemin WaveSpeed du modèle (ex: 'google/nano-banana/text-to-image')
+  const modelPath = useMemo(() => {
+    const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
+    return modelObj?.modelId || '';
+  }, [selectedModel]);
 
-  // Calculer la taille : utiliser les dimensions personnalisées si définies, sinon l'aspect ratio
+  // Calculer la taille à partir des settings
   const sizeFromSettings = useMemo(() => {
-    if (advancedSettings.width && advancedSettings.height) {
-      return `${advancedSettings.width}x${advancedSettings.height}`;
+    // Pour les nouveaux settings WaveSpeed, on n'a plus width/height
+    // On utilise l'aspect_ratio pour calculer une taille par défaut
+    if (advancedSettings.aspect_ratio) {
+      // Mapping simple aspect ratio -> dimensions
+      const sizeMap: Record<string, string> = {
+        '1:1': '1024x1024',
+        '16:9': '1344x768',
+        '9:16': '768x1344',
+        '4:3': '1152x896',
+        '3:4': '896x1152',
+        '3:2': '1216x832',
+        '2:3': '832x1216',
+        '21:9': '1536x640',
+        '9:21': '640x1536',
+        '4:5': '896x1120',
+        '5:4': '1120x896',
+      };
+      return sizeMap[advancedSettings.aspect_ratio] || '1024x1024';
     }
-    const { width, height } = getAspectRatioSize(advancedSettings.aspectRatio);
-    return `${width}x${height}`;
-  }, [advancedSettings.aspectRatio, advancedSettings.width, advancedSettings.height]);
+    return '1024x1024';
+  }, [advancedSettings.aspect_ratio]);
 
   const handleGenerate = useCallback(async () => {
     if (loading || !project?.id) {
@@ -286,42 +306,25 @@ export const ImageTransform = ({
     });
 
     // ÉTAPE 2: Préparer les jobs pour l'API batch
-    // Extraire le modèle WaveSpeed path depuis le modelId
-    // Le model est un objet { modelId, isEdit, generate } - on veut modelId
-    const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
-    const modelPath = modelObj?.modelId || modelId;
     const isEdit = imageNodes.length > 0;
     
-    console.log(`[Batch] Model object:`, modelObj);
-    console.log(`[Batch] Extracted model path: ${modelPath}`);
-    
-    // Mapper quality -> resolution WaveSpeed (1k, 2k, 4k)
-    const qualityToResolution: Record<string, string> = {
-      'standard': '2k',
-      'hd': '4k',
-      'ultra': '4k',
-    };
-    const resolution = qualityToResolution[advancedSettings.quality] || '2k';
-    
-    // Logs pour débugger les paramètres
+    console.log(`[Batch] Model path: ${modelPath}`);
     console.log(`[Batch] Advanced settings:`, advancedSettings);
-    console.log(`[Batch] Resolution: ${resolution}, Width: ${advancedSettings.width}, Height: ${advancedSettings.height}`);
     
+    // Les params sont directement ceux de advancedSettings (format WaveSpeed)
     const jobs = nodeIds.map((nodeId) => ({
       nodeId,
       modelPath: modelPath,
       prompt: isEdit ? (data.instructions || textNodes.join('\n')) : textNodes.join('\n'),
       images: isEdit ? imageNodes : undefined,
       params: {
-        aspect_ratio: advancedSettings.aspectRatio,
-        resolution: resolution,
-        // Envoyer width/height seulement s'ils sont définis
-        ...(advancedSettings.width && { width: advancedSettings.width }),
-        ...(advancedSettings.height && { height: advancedSettings.height }),
+        aspect_ratio: advancedSettings.aspect_ratio,
+        resolution: advancedSettings.resolution,
+        output_format: advancedSettings.output_format,
         seed: advancedSettings.seed,
-        guidance_scale: advancedSettings.guidanceScale,
-        num_inference_steps: advancedSettings.numInferenceSteps, // Correction: numInferenceSteps
-        negative_prompt: advancedSettings.negativePrompt,
+        guidance_scale: advancedSettings.guidance_scale,
+        num_inference_steps: advancedSettings.num_inference_steps,
+        negative_prompt: advancedSettings.negative_prompt,
       },
     }));
 
@@ -450,18 +453,18 @@ export const ImageTransform = ({
       },
     ];
 
-    // Bouton paramètres avancés (remplace le sélecteur de taille)
+    // Bouton paramètres avancés - affiche uniquement les params supportés par le modèle
     items.push({
       tooltip: 'Paramètres avancés',
       children: (
         <AdvancedSettingsPanel
           settings={advancedSettings}
-          onChange={(settings) => {
+          onSettingsChange={(settings) => {
             setAdvancedSettings(settings);
             updateNodeData(id, { advancedSettings: settings });
           }}
           modelId={modelId}
-          supportsEdit={selectedModel?.supportsEdit}
+          modelPath={modelPath}
         />
       ),
     });
@@ -543,9 +546,12 @@ export const ImageTransform = ({
   ]);
 
   const aspectRatio = useMemo(() => {
-    const { width, height } = getAspectRatioSize(advancedSettings.aspectRatio);
-    return `${width}/${height}`;
-  }, [advancedSettings.aspectRatio]);
+    // Calculer l'aspect ratio pour l'affichage
+    const ratio = advancedSettings.aspect_ratio || '1:1';
+    const [w, h] = ratio.split(':').map(Number);
+    // Utiliser une taille de base pour le ratio d'affichage
+    return `${w}/${h}`;
+  }, [advancedSettings.aspect_ratio]);
 
   // Combiner data avec advancedSettings pour le NodeLayout
   const nodeData = useMemo(() => ({

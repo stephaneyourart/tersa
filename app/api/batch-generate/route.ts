@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { buildRequestBody } from '@/lib/models/image/wavespeed-params';
 
 const WAVESPEED_API_BASE = 'https://api.wavespeed.ai/api/v3';
 const MAX_PARALLEL_REQUESTS = 100; // Limite maximale configurable
@@ -46,38 +47,18 @@ async function callWaveSpeedDirect(job: BatchJob, apiKey: string): Promise<{ ima
   try {
     const endpoint = `${WAVESPEED_API_BASE}/${job.modelPath}`;
     
-    // Construire le body selon le type d'opération
-    const isEdit = job.images && job.images.length > 0;
-    const body = isEdit
-      ? {
-          prompt: job.prompt,
-          images: job.images,
-          resolution: job.params?.resolution || '2k',
-          output_format: job.params?.output_format || 'png',
-          enable_base64_output: false,
-          enable_sync_mode: false,
-          ...(job.params?.seed && { seed: job.params.seed }),
-          ...(job.params?.guidance_scale && { guidance_scale: job.params.guidance_scale }),
-          ...(job.params?.negative_prompt && { negative_prompt: job.params.negative_prompt }),
-        }
-      : {
-          prompt: job.prompt,
-          output_format: job.params?.output_format || 'png',
-          enable_base64_output: false,
-          enable_sync_mode: false,
-          // Si width/height sont définis, les utiliser en priorité, sinon aspect_ratio + resolution
-          ...(job.params?.width && job.params?.height 
-            ? { width: job.params.width, height: job.params.height }
-            : { 
-                aspect_ratio: job.params?.aspect_ratio || '1:1',
-                resolution: job.params?.resolution || '2k',
-              }
-          ),
-          ...(job.params?.seed && { seed: job.params.seed }),
-          ...(job.params?.guidance_scale && { guidance_scale: job.params.guidance_scale }),
-          ...(job.params?.num_inference_steps && { num_inference_steps: job.params.num_inference_steps }),
-          ...(job.params?.negative_prompt && { negative_prompt: job.params.negative_prompt }),
-        };
+    // Utiliser la configuration du modèle pour construire le body correct
+    const body = buildRequestBody(job.modelPath, {
+      prompt: job.prompt,
+      images: job.images,
+      aspect_ratio: job.params?.aspect_ratio,
+      resolution: job.params?.resolution,
+      output_format: job.params?.output_format,
+      seed: job.params?.seed,
+      guidance_scale: job.params?.guidance_scale,
+      num_inference_steps: job.params?.num_inference_steps,
+      negative_prompt: job.params?.negative_prompt,
+    });
 
     console.log(`[Batch API] Starting job for node ${job.nodeId} - ${job.modelPath}`);
     console.log(`[Batch API] Request body:`, JSON.stringify(body, null, 2));

@@ -19,90 +19,67 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { ASPECT_RATIOS, type AspectRatio, getAspectRatioSize } from '@/lib/models/image/aspect-ratio';
-import { getModelCapabilities } from '@/lib/models/image/capabilities';
+import { getModelConfig, type WaveSpeedModelConfig } from '@/lib/models/image/wavespeed-params';
 import { Settings2Icon } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 
+// Settings simplifié - seulement ce qui est supporté par WaveSpeed
 export type ImageAdvancedSettings = {
-  aspectRatio: AspectRatio;
-  width?: number;
-  height?: number;
+  aspect_ratio?: string;
+  resolution?: string;
+  output_format?: string;
   seed?: number;
-  guidanceScale: number;
-  numInferenceSteps: number;
-  negativePrompt: string;
-  quality: 'standard' | 'hd' | 'ultra';
-  style?: string;
-  strength?: number;
+  guidance_scale?: number;
+  num_inference_steps?: number;
+  negative_prompt?: string;
 };
 
 const DEFAULT_SETTINGS: ImageAdvancedSettings = {
-  aspectRatio: '1:1',
-  width: 1024,
-  height: 1024,
-  guidanceScale: 7.5,
-  numInferenceSteps: 30,
-  negativePrompt: '',
-  quality: 'standard',
-  strength: 0.8,
+  aspect_ratio: '1:1',
+  output_format: 'jpeg',
 };
 
-const ASPECT_RATIO_LABELS: Record<AspectRatio, string> = {
-  '1:1': '1:1 (Carré)',
-  '16:9': '16:9 (Paysage)',
-  '9:16': '9:16 (Portrait)',
-  '4:3': '4:3 (Standard)',
-  '3:4': '3:4 (Portrait)',
-  '3:2': '3:2 (Photo)',
-  '2:3': '2:3 (Portrait)',
-  '21:9': '21:9 (Cinéma)',
-  '9:21': '9:21 (Vertical)',
-};
-
-const QUALITY_OPTIONS = [
-  { value: 'standard', label: 'Standard', description: 'Rapide, bonne qualité' },
-  { value: 'hd', label: 'HD', description: 'Haute définition' },
-  { value: 'ultra', label: 'Ultra', description: 'Qualité maximale, plus lent' },
-];
-
-const STYLE_PRESETS = [
-  { value: '', label: 'Aucun' },
-  { value: 'photorealistic', label: 'Photoréaliste' },
-  { value: 'anime', label: 'Anime' },
-  { value: 'digital-art', label: 'Art Digital' },
-  { value: 'oil-painting', label: 'Peinture à l\'huile' },
-  { value: 'watercolor', label: 'Aquarelle' },
-  { value: 'sketch', label: 'Croquis' },
-  { value: '3d-render', label: 'Rendu 3D' },
-  { value: 'pixel-art', label: 'Pixel Art' },
-  { value: 'comic-book', label: 'Bande Dessinée' },
-  { value: 'cinematic', label: 'Cinématique' },
-];
-
-type AdvancedSettingsProps = {
-  settings: ImageAdvancedSettings;
-  onChange: (settings: ImageAdvancedSettings) => void;
+type AdvancedSettingsPanelProps = {
   modelId?: string;
-  supportsEdit?: boolean;
+  modelPath?: string; // Le chemin WaveSpeed du modèle (ex: 'google/nano-banana/text-to-image')
+  settings: ImageAdvancedSettings;
+  onSettingsChange: (settings: ImageAdvancedSettings) => void;
 };
 
 export function AdvancedSettingsPanel({
-  settings,
-  onChange,
   modelId,
-  supportsEdit,
-}: AdvancedSettingsProps) {
+  modelPath,
+  settings,
+  onSettingsChange,
+}: AdvancedSettingsPanelProps) {
   const [open, setOpen] = useState(false);
   const [localSettings, setLocalSettings] = useState<ImageAdvancedSettings>(settings);
 
+  // Récupérer la configuration du modèle
+  const modelConfig = useMemo(() => {
+    if (modelPath) {
+      return getModelConfig(modelPath);
+    }
+    return null;
+  }, [modelPath]);
+
+  // Mettre à jour les settings locaux quand les props changent
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
+
   const handleSave = () => {
-    onChange(localSettings);
+    onSettingsChange(localSettings);
     setOpen(false);
   };
 
   const handleReset = () => {
-    setLocalSettings(DEFAULT_SETTINGS);
+    const defaults = modelConfig?.defaults || {};
+    setLocalSettings({
+      aspect_ratio: defaults.aspect_ratio || '1:1',
+      resolution: defaults.resolution,
+      output_format: defaults.output_format || 'jpeg',
+    });
   };
 
   const updateSetting = <K extends keyof ImageAdvancedSettings>(
@@ -112,34 +89,14 @@ export function AdvancedSettingsPanel({
     setLocalSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Mettre à jour l'aspect ratio ET les dimensions
-  const updateAspectRatio = (ratio: AspectRatio) => {
-    const { width, height } = getAspectRatioSize(ratio);
-    setLocalSettings((prev) => ({
-      ...prev,
-      aspectRatio: ratio,
-      width,
-      height,
-    }));
+  // Vérifier si un paramètre est supporté
+  const isSupported = (param: string): boolean => {
+    if (!modelConfig) return false;
+    return modelConfig.supportedParams.includes(param as never);
   };
 
-  // Obtenir les capacités du modèle sélectionné
-  const capabilities = useMemo(() => 
-    getModelCapabilities(modelId || ''),
-    [modelId]
-  );
-
-  // Initialiser les dimensions au premier rendu si non définies
-  useEffect(() => {
-    if (!localSettings.width || !localSettings.height) {
-      const { width, height } = getAspectRatioSize(localSettings.aspectRatio);
-      setLocalSettings((prev) => ({
-        ...prev,
-        width: prev.width || width,
-        height: prev.height || height,
-      }));
-    }
-  }, []);
+  // Si pas de config, afficher un message
+  const hasAnyParams = modelConfig && modelConfig.supportedParams.length > 1; // Plus que 'prompt'
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -148,239 +105,172 @@ export function AdvancedSettingsPanel({
           <Settings2Icon className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2Icon className="h-5 w-5" />
-            Paramètres Avancés
+            Paramètres - {modelPath || modelId || 'Modèle'}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-6 py-4">
-          {/* Aspect Ratio */}
-          {capabilities.supportsAspectRatio && (
-            <div className="space-y-2">
-              <Label htmlFor="aspect-ratio">Format d'image</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {ASPECT_RATIOS.map((ratio) => (
-                  <Button
-                    key={ratio}
-                    variant={localSettings.aspectRatio === ratio ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => updateAspectRatio(ratio)}
-                    className="text-xs"
-                  >
-                    {ASPECT_RATIO_LABELS[ratio]}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Dimensions personnalisées */}
-          {capabilities.supportsAspectRatio && (
-            <div className="grid grid-cols-2 gap-4">
+        {!modelConfig ? (
+          <div className="py-8 text-center text-muted-foreground">
+            <p>Configuration non disponible pour ce modèle.</p>
+            <p className="text-sm mt-2">Model path: {modelPath || 'non défini'}</p>
+          </div>
+        ) : !hasAnyParams ? (
+          <div className="py-8 text-center text-muted-foreground">
+            <p>Ce modèle n'a pas de paramètres configurables.</p>
+            <p className="text-sm mt-2">Seul le prompt est requis.</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 py-4">
+            {/* Aspect Ratio */}
+            {isSupported('aspect_ratio') && modelConfig.aspectRatioOptions && (
               <div className="space-y-2">
-                <Label htmlFor="width">Largeur</Label>
-                <Input
-                  id="width"
-                  type="number"
-                  placeholder="Auto"
-                  value={localSettings.width || ''}
-                  onChange={(e) => updateSetting('width', e.target.value ? parseInt(e.target.value) : undefined)}
-                  min={256}
-                  max={4096}
-                  step={64}
-                />
+                <Label>Aspect Ratio</Label>
+                <Select
+                  value={localSettings.aspect_ratio || '1:1'}
+                  onValueChange={(value) => updateSetting('aspect_ratio', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelConfig.aspectRatioOptions.map((ratio) => (
+                      <SelectItem key={ratio} value={ratio}>
+                        {ratio}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            )}
+
+            {/* Resolution */}
+            {isSupported('resolution') && modelConfig.resolutionOptions && (
               <div className="space-y-2">
-                <Label htmlFor="height">Hauteur</Label>
+                <Label>Résolution</Label>
+                <Select
+                  value={localSettings.resolution || modelConfig.defaults?.resolution || '2k'}
+                  onValueChange={(value) => updateSetting('resolution', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelConfig.resolutionOptions.map((res) => (
+                      <SelectItem key={res} value={res}>
+                        {res.toUpperCase()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Output Format */}
+            {isSupported('output_format') && modelConfig.outputFormatOptions && (
+              <div className="space-y-2">
+                <Label>Format de sortie</Label>
+                <Select
+                  value={localSettings.output_format || 'jpeg'}
+                  onValueChange={(value) => updateSetting('output_format', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelConfig.outputFormatOptions.map((format) => (
+                      <SelectItem key={format} value={format}>
+                        {format.toUpperCase()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Seed */}
+            {isSupported('seed') && (
+              <div className="space-y-2">
+                <Label>Seed (optionnel)</Label>
                 <Input
-                  id="height"
-                  type="number"
-                  placeholder="Auto"
-                  value={localSettings.height || ''}
-                  onChange={(e) => updateSetting('height', e.target.value ? parseInt(e.target.value) : undefined)}
-                  min={256}
-                  max={4096}
-                  step={64}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Qualité */}
-          {capabilities.supportsQuality && (
-            <div className="space-y-2">
-              <Label>Qualité</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {QUALITY_OPTIONS.map((option) => (
-                  <Button
-                    key={option.value}
-                    variant={localSettings.quality === option.value ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => updateSetting('quality', option.value as 'standard' | 'hd' | 'ultra')}
-                    className="flex flex-col h-auto py-2"
-                  >
-                    <span className="font-medium">{option.label}</span>
-                    <span className="text-xs opacity-70">{option.description}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Style Preset */}
-          {capabilities.supportsStyle && (
-            <div className="space-y-2">
-              <Label htmlFor="style">Style</Label>
-              <Select
-                value={localSettings.style || ''}
-                onValueChange={(value) => updateSetting('style', value || undefined)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir un style..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {STYLE_PRESETS.map((style) => (
-                    <SelectItem key={style.value} value={style.value || 'none'}>
-                      {style.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Guidance Scale */}
-          {capabilities.supportsGuidanceScale && (
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <Label>Guidance Scale</Label>
-                <span className="text-sm text-muted-foreground">{localSettings.guidanceScale}</span>
-              </div>
-              <Slider
-                value={[localSettings.guidanceScale]}
-                onValueChange={([value]) => updateSetting('guidanceScale', value)}
-                min={capabilities.minGuidanceScale ?? 1}
-                max={capabilities.maxGuidanceScale ?? 20}
-                step={0.5}
-              />
-              <p className="text-xs text-muted-foreground">
-                Plus élevé = plus fidèle au prompt, moins de créativité
-              </p>
-            </div>
-          )}
-
-          {/* Inference Steps */}
-          {capabilities.supportsInferenceSteps && (
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <Label>Étapes d'inférence</Label>
-                <span className="text-sm text-muted-foreground">{localSettings.numInferenceSteps}</span>
-              </div>
-              <Slider
-                value={[localSettings.numInferenceSteps]}
-                onValueChange={([value]) => updateSetting('numInferenceSteps', value)}
-                min={capabilities.minInferenceSteps ?? 10}
-                max={capabilities.maxInferenceSteps ?? 100}
-                step={5}
-              />
-              <p className="text-xs text-muted-foreground">
-                Plus d'étapes = meilleure qualité, plus lent
-              </p>
-            </div>
-          )}
-
-          {/* Strength (pour edit/img2img) */}
-          {supportsEdit && capabilities.supportsStrength && (
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <Label>Force de transformation</Label>
-                <span className="text-sm text-muted-foreground">{(localSettings.strength ?? 0.8) * 100}%</span>
-              </div>
-              <Slider
-                value={[(localSettings.strength ?? 0.8) * 100]}
-                onValueChange={([value]) => updateSetting('strength', value / 100)}
-                min={0}
-                max={100}
-                step={5}
-              />
-              <p className="text-xs text-muted-foreground">
-                Plus élevé = plus de changements par rapport à l'image source
-              </p>
-            </div>
-          )}
-
-          {/* Seed */}
-          {capabilities.supportsSeed && (
-            <div className="space-y-2">
-              <Label htmlFor="seed">Seed (optionnel)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="seed"
                   type="number"
                   placeholder="Aléatoire"
                   value={localSettings.seed ?? ''}
-                  onChange={(e) => updateSetting('seed', e.target.value ? parseInt(e.target.value) : undefined)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateSetting('seed', val ? parseInt(val, 10) : undefined);
+                  }}
                 />
-                <Button
-                  variant="outline"
-                  onClick={() => updateSetting('seed', Math.floor(Math.random() * 2147483647))}
-                >
-                  🎲
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Utilisez le même seed pour reproduire des résultats similaires.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Même seed = même résultat (reproductibilité)
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* Negative Prompt */}
-          {capabilities.supportsNegativePrompt && (
-            <div className="space-y-2">
-              <Label htmlFor="negative-prompt">Prompt Négatif</Label>
-              <Textarea
-                id="negative-prompt"
-                placeholder="Éléments à éviter dans l'image..."
-                value={localSettings.negativePrompt}
-                onChange={(e) => updateSetting('negativePrompt', e.target.value)}
-                rows={3}
-              />
-              <p className="text-xs text-muted-foreground">
-                Décrivez ce que vous ne voulez PAS voir dans l'image
-              </p>
-            </div>
-          )}
+            {/* Guidance Scale */}
+            {isSupported('guidance_scale') && (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <Label>Guidance Scale</Label>
+                  <span className="text-sm text-muted-foreground">
+                    {localSettings.guidance_scale ?? 3.5}
+                  </span>
+                </div>
+                <Slider
+                  value={[localSettings.guidance_scale ?? 3.5]}
+                  onValueChange={([value]) => updateSetting('guidance_scale', value)}
+                  min={1}
+                  max={20}
+                  step={0.5}
+                />
+              </div>
+            )}
 
-          {/* Message si aucune option disponible */}
-          {!capabilities.supportsAspectRatio && 
-           !capabilities.supportsQuality && 
-           !capabilities.supportsStyle && 
-           !capabilities.supportsGuidanceScale && 
-           !capabilities.supportsInferenceSteps && 
-           !capabilities.supportsSeed && 
-           !capabilities.supportsNegativePrompt && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Ce modèle ne supporte pas de paramètres avancés.
-            </p>
-          )}
-        </div>
+            {/* Inference Steps */}
+            {isSupported('num_inference_steps') && (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <Label>Étapes d'inférence</Label>
+                  <span className="text-sm text-muted-foreground">
+                    {localSettings.num_inference_steps ?? 28}
+                  </span>
+                </div>
+                <Slider
+                  value={[localSettings.num_inference_steps ?? 28]}
+                  onValueChange={([value]) => updateSetting('num_inference_steps', value)}
+                  min={1}
+                  max={50}
+                  step={1}
+                />
+              </div>
+            )}
 
-        {/* Actions */}
+            {/* Negative Prompt */}
+            {isSupported('negative_prompt') && (
+              <div className="space-y-2">
+                <Label>Negative Prompt</Label>
+                <Textarea
+                  placeholder="Ce que vous ne voulez pas voir..."
+                  value={localSettings.negative_prompt || ''}
+                  onChange={(e) => updateSetting('negative_prompt', e.target.value)}
+                  rows={3}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
         <div className="flex justify-between pt-4 border-t">
-          <Button variant="ghost" onClick={handleReset}>
+          <Button variant="outline" onClick={handleReset}>
             Réinitialiser
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSave}>
-              Appliquer
-            </Button>
-          </div>
+          <Button onClick={handleSave}>
+            Appliquer
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -388,4 +278,3 @@ export function AdvancedSettingsPanel({
 }
 
 export { DEFAULT_SETTINGS };
-
