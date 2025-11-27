@@ -15,6 +15,42 @@ const nextConfig: NextConfig = {
         protocol: 'http',
         hostname: '127.0.0.1',
       },
+
+      // WaveSpeed CDN (CloudFront)
+      {
+        protocol: 'https',
+        hostname: 'd1q70pf5vjeyhc.cloudfront.net',
+      },
+      
+      // WaveSpeed CDN (CloudFront - wildcard)
+      {
+        protocol: 'https',
+        hostname: '**.cloudfront.net',
+      },
+
+      // Fal.ai CDN
+      {
+        protocol: 'https',
+        hostname: 'fal.media',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.fal.media',
+      },
+      {
+        protocol: 'https',
+        hostname: 'v3.fal.media',
+      },
+
+      // Replicate CDN
+      {
+        protocol: 'https',
+        hostname: 'replicate.delivery',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.replicate.delivery',
+      },
     ],
   },
 
