@@ -8,9 +8,10 @@ import { luma } from '@ai-sdk/luma';
 import { openai } from '@ai-sdk/openai';
 import { xai } from '@ai-sdk/xai';
 import type { ImageModel } from 'ai';
-import { AmazonBedrockIcon, FalIcon, GrokIcon } from '../../icons';
+import { AmazonBedrockIcon, FalIcon, GrokIcon, WaveSpeedIcon } from '../../icons';
 import { blackForestLabs } from './black-forest-labs';
 import { falImage } from './fal';
+import { wavespeedImage } from './wavespeed';
 
 const million = 1000000;
 
@@ -595,5 +596,90 @@ export const imageModels: Record<string, TersaImageModel> = {
     ],
     sizes: ['1024x1024', '1024x768', '768x1024'],
     supportsEdit: true,
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED
+  // ========================================
+
+  'nano-banana-pro-wavespeed': {
+    label: 'Nano Banana Pro (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaPro() as unknown as ImageModel,
+        // Ultra rapide et économique
+        getCost: () => 0.008,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024', '1536x1024', '1024x1536'],
+    priceIndicator: 'low',
+  },
+
+  'seedream-wavespeed': {
+    label: 'Seedream 3.0 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.seedream() as unknown as ImageModel,
+        getCost: () => 0.015,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+  },
+
+  'flux-dev-wavespeed': {
+    label: 'FLUX Dev (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxDev() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'flux-schnell-wavespeed': {
+    label: 'FLUX Schnell (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxSchnell() as unknown as ImageModel,
+        // Ultra rapide
+        getCost: () => 0.003,
+      },
+    ],
+    sizes: ['1024x1024', '1024x768', '768x1024'],
+    priceIndicator: 'low',
+  },
+
+  'sdxl-turbo-wavespeed': {
+    label: 'SDXL Turbo (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.sdxlTurbo() as unknown as ImageModel,
+        getCost: () => 0.005,
+      },
+    ],
+    sizes: ['1024x1024', '512x512'],
+    priceIndicator: 'low',
   },
 };
