@@ -64,19 +64,33 @@ export const ImageTransform = ({
   );
   const project = useProject();
 
+  // État de génération: soit local (single run), soit batch
+  const isGenerating = loading || data.batchGenerating === true;
+  const generationStartTime = data.batchStartTime ?? null;
+
   // Timer pour afficher le temps écoulé pendant la génération
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (loading) {
-      setElapsedTime(0);
-      interval = setInterval(() => {
-        setElapsedTime((prev) => prev + 1);
-      }, 1000);
+    if (isGenerating) {
+      // Si on a un batchStartTime, calculer depuis celui-ci
+      if (generationStartTime) {
+        const updateTime = () => {
+          setElapsedTime(Math.floor((Date.now() - generationStartTime) / 1000));
+        };
+        updateTime();
+        interval = setInterval(updateTime, 1000);
+      } else {
+        // Sinon, compteur local
+        setElapsedTime(0);
+        interval = setInterval(() => {
+          setElapsedTime((prev) => prev + 1);
+        }, 1000);
+      }
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [loading]);
+  }, [isGenerating, generationStartTime]);
   const hasIncomingImageNodes =
     getImagesFromImageNodes(getIncomers({ id }, getNodes(), getEdges()))
       .length > 0;
@@ -176,10 +190,28 @@ export const ImageTransform = ({
 
   // Handler pour le batch : duplique le nœud N-1 fois et lance N générations en parallèle
   const handleBatchRun = useCallback(async (count: number) => {
-    if (loading || !project?.id || count < 1) return;
+    console.log(`[Batch] handleBatchRun called with count: ${count}`);
+    
+    if (loading) {
+      console.log('[Batch] Blocked: already loading');
+      return;
+    }
+    if (!project?.id) {
+      console.log('[Batch] Blocked: no project id');
+      return;
+    }
+    if (count < 1) {
+      console.log('[Batch] Blocked: count < 1');
+      return;
+    }
 
     const currentNode = getNode(id);
-    if (!currentNode) return;
+    if (!currentNode) {
+      console.log('[Batch] Blocked: node not found');
+      return;
+    }
+    
+    console.log('[Batch] Starting batch run for node:', id, 'type:', currentNode.type);
 
     const incomers = getIncomers({ id }, getNodes(), getEdges());
     const textNodes = getTextFromTextNodes(incomers);
@@ -194,72 +226,99 @@ export const ImageTransform = ({
     const nodeIds: string[] = [id];
     const edges = getEdges().filter(e => e.target === id);
     
-    // Dupliquer le nœud N-1 fois
+    // Dupliquer le nœud N-1 fois HORIZONTALEMENT (comme Flora)
     for (let i = 1; i < count; i++) {
       const newNodeId = `${id}-batch-${i}-${Date.now()}`;
-      const offsetY = (currentNode.measured?.height ?? 200) + 50;
+      const offsetX = (currentNode.measured?.width ?? 400) + 50; // Horizontal spacing
       
       // Créer le nœud dupliqué
-      addNodes({
+      const newNode = {
         ...currentNode,
         id: newNodeId,
+        type: currentNode.type,
         position: {
-          x: currentNode.position.x,
-          y: currentNode.position.y + (offsetY * i),
+          x: currentNode.position.x + (offsetX * i), // Horizontal offset
+          y: currentNode.position.y,
         },
         selected: false,
         data: { ...currentNode.data },
-      });
+      };
+      
+      console.log(`[Batch] Creating node ${i}:`, newNode.id, 'at', newNode.position);
+      addNodes(newNode);
 
       // Dupliquer les connexions entrantes
       for (const edge of edges) {
-        addEdges({
+        const newEdge = {
           ...edge,
           id: `${edge.id}-batch-${i}-${Date.now()}`,
           target: newNodeId,
-        });
+        };
+        console.log(`[Batch] Creating edge:`, newEdge.id);
+        addEdges(newEdge);
       }
 
       nodeIds.push(newNodeId);
     }
+    
+    console.log(`[Batch] Total nodes to generate:`, nodeIds);
 
-    toast.info(`Lancement de ${count} génération${count > 1 ? 's' : ''} en parallèle...`, {
+    toast.info(`🚀 Lancement de ${count} génération${count > 1 ? 's' : ''} en PARALLÈLE...`, {
       duration: 3000,
     });
 
-    // Lancer les générations en parallèle
+    // ÉTAPE 1: Mettre TOUS les nœuds en état de chargement AVANT de lancer les appels
     const startTime = Date.now();
-    const generatePromises = nodeIds.map(async (nodeId, index) => {
-      try {
-        const response = imageNodes.length
-          ? await editImageAction({
-              images: imageNodes,
-              instructions: data.instructions,
-              nodeId,
-              projectId: project.id,
-              modelId,
-              size: sizeFromSettings,
-            })
-          : await generateImageAction({
-              prompt: textNodes.join('\n'),
-              modelId,
-              instructions: data.instructions,
-              projectId: project.id,
-              nodeId,
-              size: sizeFromSettings,
-            });
-
-        if ('error' in response) {
-          throw new Error(response.error);
-        }
-
-        // Mettre à jour le nœud avec le résultat
-        updateNodeData(nodeId, response.nodeData);
-        return { success: true, nodeId };
-      } catch (error) {
-        return { success: false, nodeId, error };
-      }
+    nodeIds.forEach((nodeId) => {
+      updateNodeData(nodeId, {
+        batchGenerating: true,
+        batchStartTime: startTime,
+      });
+      console.log(`[Batch] Node ${nodeId} set to loading state`);
     });
+
+    // ÉTAPE 2: Créer TOUTES les promesses SANS await (vraiment parallèle)
+    const generatePromises = nodeIds.map((nodeId) => {
+      console.log(`[Batch] Starting API call for node ${nodeId}`);
+      
+      const apiCall = imageNodes.length
+        ? editImageAction({
+            images: imageNodes,
+            instructions: data.instructions,
+            nodeId,
+            projectId: project.id,
+            modelId,
+            size: sizeFromSettings,
+          })
+        : generateImageAction({
+            prompt: textNodes.join('\n'),
+            modelId,
+            instructions: data.instructions,
+            projectId: project.id,
+            nodeId,
+            size: sizeFromSettings,
+          });
+      
+      return apiCall.then((response) => {
+        console.log(`[Batch] Response for node ${nodeId}`);
+        if ('error' in response) {
+          updateNodeData(nodeId, { batchGenerating: false, batchStartTime: undefined });
+          return { success: false, nodeId, error: response.error };
+        }
+        updateNodeData(nodeId, {
+          ...response.nodeData,
+          batchGenerating: false,
+          batchStartTime: undefined,
+        });
+        return { success: true, nodeId };
+      }).catch((error) => {
+        console.error(`[Batch] Error for node ${nodeId}:`, error);
+        updateNodeData(nodeId, { batchGenerating: false, batchStartTime: undefined });
+        return { success: false, nodeId, error };
+      });
+    });
+    
+    console.log(`[Batch] All ${generatePromises.length} API calls started in parallel!`);
 
     // Attendre toutes les générations
     const results = await Promise.all(generatePromises);
@@ -445,7 +504,7 @@ export const ImageTransform = ({
       modelLabel={selectedModel?.label}
       onBatchRun={handleBatchRun}
     >
-      {loading && (
+      {isGenerating && (
         <Skeleton
           className="flex w-full animate-pulse items-center justify-center rounded-b-xl flex-col gap-2"
           style={{ aspectRatio }}
@@ -459,13 +518,13 @@ export const ImageTransform = ({
               Génération en cours...
             </p>
             <p className="text-xs text-muted-foreground/70">
-              {elapsedTime}s
-              {elapsedTime > 10 && " • Les modèles 4K peuvent prendre ~60-90s"}
+              ~{elapsedTime}s
+              {elapsedTime > 10 && " • Modèles 4K: ~60-90s"}
             </p>
           </div>
         </Skeleton>
       )}
-      {!loading && !data.generated?.url && (
+      {!isGenerating && !data.generated?.url && (
         <div
           className="flex w-full items-center justify-center rounded-b-xl bg-secondary p-4"
           style={{ aspectRatio }}
@@ -476,7 +535,7 @@ export const ImageTransform = ({
           </p>
         </div>
       )}
-      {!loading && data.generated?.url && (
+      {!isGenerating && data.generated?.url && (
         <Image
           src={data.generated.url}
           alt="Generated image"

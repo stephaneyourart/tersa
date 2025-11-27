@@ -20,6 +20,10 @@ export type ImageNodeProps = {
     model?: string;
     description?: string;
     instructions?: string;
+    // Batch processing state
+    batchGenerating?: boolean;
+    batchStartTime?: number;
+    advancedSettings?: unknown;
   };
   id: string;
 };
