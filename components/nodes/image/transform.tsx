@@ -308,7 +308,12 @@ export const ImageTransform = ({
     // ÉTAPE 2: Préparer les jobs pour l'API batch
     const isEdit = imageNodes.length > 0;
     
+    // Extraire les URLs des images (WaveSpeed attend un tableau de strings, pas d'objets)
+    const imageUrls = imageNodes.map(img => img.url);
+    
     console.log(`[Batch] Model path: ${modelPath}`);
+    console.log(`[Batch] Is edit mode: ${isEdit}`);
+    console.log(`[Batch] Image URLs:`, imageUrls);
     console.log(`[Batch] Advanced settings:`, advancedSettings);
     
     // Les params sont directement ceux de advancedSettings (format WaveSpeed)
@@ -316,7 +321,7 @@ export const ImageTransform = ({
       nodeId,
       modelPath: modelPath,
       prompt: isEdit ? (data.instructions || textNodes.join('\n')) : textNodes.join('\n'),
-      images: isEdit ? imageNodes : undefined,
+      images: isEdit ? imageUrls : undefined, // URLs uniquement, pas d'objets
       params: {
         aspect_ratio: advancedSettings.aspect_ratio,
         resolution: advancedSettings.resolution,

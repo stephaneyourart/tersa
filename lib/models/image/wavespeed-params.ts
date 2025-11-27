@@ -121,13 +121,15 @@ export const WAVESPEED_MODEL_CONFIGS: Record<string, WaveSpeedModelConfig> = {
 
   // Nano Banana Pro Edit Ultra
   // https://wavespeed.ai/docs/docs-api/google/google-nano-banana-pro-edit-ultra
+  // Parameters: prompt (required), images (required), aspect_ratio, resolution (4k/8k), output_format
   'google/nano-banana-pro/edit-ultra': {
-    supportedParams: ['prompt', 'images', 'resolution', 'output_format'],
-    resolutionOptions: ['1k', '2k', '4k'],
+    supportedParams: ['prompt', 'images', 'aspect_ratio', 'resolution', 'output_format'],
+    aspectRatioOptions: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+    resolutionOptions: ['4k', '8k'], // Correct: 4k et 8k uniquement
     outputFormatOptions: ['jpeg', 'png'],
     defaults: {
-      resolution: '2k',
-      output_format: 'png',
+      resolution: '4k',
+      output_format: 'jpeg',
     },
   },
 
