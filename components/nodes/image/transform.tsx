@@ -31,8 +31,8 @@ import { toast } from 'sonner';
 import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
-import { ImageSizeSelector } from './image-size-selector';
 import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
+import { getAspectRatioSize } from '@/lib/models/image/wavespeed';
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
@@ -83,13 +83,19 @@ export const ImageTransform = ({
   const modelId = data.model ?? getDefaultModel(imageModels);
   const analytics = useAnalytics();
   const selectedModel = imageModels[modelId];
-  const size = data.size ?? selectedModel?.sizes?.at(0);
+
+  // Calculer la taille à partir de l'aspect ratio des paramètres avancés
+  const sizeFromAspectRatio = useMemo(() => {
+    const { width, height } = getAspectRatioSize(advancedSettings.aspectRatio);
+    return `${width}x${height}`;
+  }, [advancedSettings.aspectRatio]);
 
   const handleGenerate = useCallback(async () => {
     if (loading || !project?.id) {
       return;
     }
 
+    const startTime = Date.now();
     const incomers = getIncomers({ id }, getNodes(), getEdges());
     const textNodes = getTextFromTextNodes(incomers);
     const imageNodes = getImagesFromImageNodes(incomers);
@@ -116,7 +122,7 @@ export const ImageTransform = ({
             nodeId: id,
             projectId: project.id,
             modelId,
-            size,
+            size: sizeFromAspectRatio,
           })
         : await generateImageAction({
             prompt: textNodes.join('\n'),
@@ -124,7 +130,7 @@ export const ImageTransform = ({
             instructions: data.instructions,
             projectId: project.id,
             nodeId: id,
-            size,
+            size: sizeFromAspectRatio,
           });
 
       if ('error' in response) {
@@ -133,7 +139,15 @@ export const ImageTransform = ({
 
       updateNodeData(id, response.nodeData);
 
-      toast.success('Image generated successfully');
+      // Calculer le temps écoulé et le coût estimé
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      const provider = selectedModel?.providers?.[0];
+      const cost = provider?.getCost?.({ size: sizeFromAspectRatio }) ?? 0;
+      
+      toast.success('Image générée !', {
+        description: `⏱️ ${duration}s • 💰 ~$${cost.toFixed(3)}`,
+        duration: 5000,
+      });
 
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
@@ -144,13 +158,14 @@ export const ImageTransform = ({
   }, [
     loading,
     project?.id,
-    size,
+    sizeFromAspectRatio,
     id,
     analytics,
     type,
     data.instructions,
     getEdges,
     modelId,
+    selectedModel,
     getNodes,
     updateNodeData,
   ]);
@@ -186,21 +201,7 @@ export const ImageTransform = ({
       },
     ];
 
-    if (selectedModel?.sizes?.length) {
-      items.push({
-        children: (
-          <ImageSizeSelector
-            value={size ?? ''}
-            options={selectedModel?.sizes ?? []}
-            id={id}
-            className="w-[200px] rounded-full"
-            onChange={(value) => updateNodeData(id, { size: value })}
-          />
-        ),
-      });
-    }
-
-    // Bouton paramètres avancés
+    // Bouton paramètres avancés (remplace le sélecteur de taille)
     items.push({
       tooltip: 'Paramètres avancés',
       children: (

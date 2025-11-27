@@ -63,6 +63,23 @@ export type WaveSpeedAspectRatio =
   | '1:1' | '16:9' | '9:16' | '4:3' | '3:4' 
   | '3:2' | '2:3' | '21:9' | '9:21';
 
+// Conversion aspect ratio -> dimensions
+const ASPECT_RATIO_SIZES: Record<WaveSpeedAspectRatio, { width: number; height: number }> = {
+  '1:1': { width: 1024, height: 1024 },
+  '16:9': { width: 1344, height: 768 },
+  '9:16': { width: 768, height: 1344 },
+  '4:3': { width: 1152, height: 896 },
+  '3:4': { width: 896, height: 1152 },
+  '3:2': { width: 1216, height: 832 },
+  '2:3': { width: 832, height: 1216 },
+  '21:9': { width: 1536, height: 640 },
+  '9:21': { width: 640, height: 1536 },
+};
+
+export function getAspectRatioSize(aspectRatio: WaveSpeedAspectRatio): { width: number; height: number } {
+  return ASPECT_RATIO_SIZES[aspectRatio] || ASPECT_RATIO_SIZES['1:1'];
+}
+
 // Paramètres pour la génération d'images (Text to Image)
 export type WaveSpeedTextToImageParams = {
   prompt: string;
