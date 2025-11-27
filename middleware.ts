@@ -1,7 +1,22 @@
 import { updateSession } from '@/lib/supabase/middleware';
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  // Mode local : bypass l'authentification Supabase
+  const isLocalMode = process.env.LOCAL_MODE === 'true';
+  
+  if (isLocalMode) {
+    // En mode local, permettre l'accès direct sans auth
+    // Rediriger /auth/* vers le canvas local
+    if (request.nextUrl.pathname.startsWith('/auth/')) {
+      return NextResponse.redirect(new URL('/local', request.url));
+    }
+    
+    // Permettre l'accès à toutes les routes
+    return NextResponse.next();
+  }
+
+  // Mode normal avec Supabase
   return await updateSession(request);
 }
 
