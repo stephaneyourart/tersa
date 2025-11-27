@@ -86,10 +86,14 @@ export const generateVideoAction = async ({
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
 
-    await trackCreditUsage({
-      action: 'generate_video',
-      cost: provider.getCost({ duration: 5 }),
-    });
+    // Ne pas tracker les crédits en mode local
+    const isLocalMode = process.env.LOCAL_MODE === 'true';
+    if (!isLocalMode) {
+      await trackCreditUsage({
+        action: 'generate_video',
+        cost: provider.getCost({ duration: 5 }),
+      });
+    }
 
     // Utiliser le wrapper de stockage unifié (local ou Supabase)
     const name = generateUniqueFilename('mp4');

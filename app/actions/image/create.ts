@@ -220,10 +220,13 @@ export const generateImageAction = async ({
       imageBuffer = Buffer.from(arrayBuffer);
       mediaType = result.mediaType;
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({ size }),
-      });
+      // Ne pas tracker les crédits en mode local
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({ size }),
+        });
+      }
     } else if (provider.model.modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         instructions,
@@ -231,13 +234,16 @@ export const generateImageAction = async ({
         size,
       });
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({
-          ...generatedImageResponse.usage,
-          size,
-        }),
-      });
+      // Ne pas tracker les crédits en mode local
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({
+            ...generatedImageResponse.usage,
+            size,
+          }),
+        });
+      }
 
       imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
       mediaType = generatedImageResponse.image.mediaType;
@@ -264,10 +270,13 @@ export const generateImageAction = async ({
         aspectRatio,
       });
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({ size }),
-      });
+      // Ne pas tracker les crédits en mode local
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({ size }),
+        });
+      }
 
       imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
       mediaType = generatedImageResponse.image.mediaType;

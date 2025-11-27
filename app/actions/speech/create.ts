@@ -55,10 +55,14 @@ export const generateSpeechAction = async ({
       voice,
     });
 
-    await trackCreditUsage({
-      action: 'generate_speech',
-      cost: provider.getCost(text.length),
-    });
+    // Ne pas tracker les crédits en mode local
+    const isLocalMode = process.env.LOCAL_MODE === 'true';
+    if (!isLocalMode) {
+      await trackCreditUsage({
+        action: 'generate_speech',
+        cost: provider.getCost(text.length),
+      });
+    }
 
     // Utiliser le wrapper de stockage unifié (local ou Supabase)
     const name = generateUniqueFilename('mp3');

@@ -7,6 +7,9 @@ import { imageModels } from '@/lib/models/image';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { isLocalProject } from '@/lib/local-project';
+
+// Mode local
+const isLocalMode = process.env.LOCAL_MODE === 'true';
 import { wavespeedImage, type WaveSpeedEditParams } from '@/lib/models/image/wavespeed';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
@@ -233,10 +236,12 @@ export const editImageAction = async ({
       imageBuffer = Buffer.from(arrayBuffer);
       mediaType = result.mediaType;
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({ size }),
-      });
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({ size }),
+        });
+      }
     } else if (provider.model.modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         prompt,
@@ -244,13 +249,15 @@ export const editImageAction = async ({
         size,
       });
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({
-          ...generatedImageResponse.usage,
-          size,
-        }),
-      });
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({
+            ...generatedImageResponse.usage,
+            size,
+          }),
+        });
+      }
 
       imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
       mediaType = generatedImageResponse.image.mediaType;
@@ -269,10 +276,12 @@ export const editImageAction = async ({
         },
       });
 
-      await trackCreditUsage({
-        action: 'generate_image',
-        cost: provider.getCost({ size }),
-      });
+      if (!isLocalMode) {
+        await trackCreditUsage({
+          action: 'generate_image',
+          cost: provider.getCost({ size }),
+        });
+      }
 
       imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
       mediaType = generatedImageResponse.image.mediaType;
