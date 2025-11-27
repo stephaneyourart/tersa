@@ -175,69 +175,64 @@ export const generateImageAction = async ({
       image.mediaType
     );
 
-    const url = isLocalMode
+    // URL pour affichage : en mode local on utilise l'URL de stockage local
+    const displayUrl = stored.url;
+    
+    // URL pour OpenAI : doit être base64 en mode local
+    const openaiUrl = isLocalMode
       ? `data:${image.mediaType};base64,${Buffer.from(image.uint8Array).toString('base64')}`
       : stored.url;
 
-    // En mode local, utiliser le projet local simulé
-    const project = isLocalProject(projectId)
-      ? getLocalProject()
-      : await database.query.projects.findFirst({
-          where: eq(projects.id, projectId),
-        });
+    // Description optionnelle - essayer avec OpenAI si disponible
+    let description = `Generated from prompt: ${prompt}`;
+    
+    try {
+      // Vérifier si on a une clé OpenAI
+      if (process.env.OPENAI_API_KEY) {
+        const project = isLocalProject(projectId)
+          ? getLocalProject()
+          : await database.query.projects.findFirst({
+              where: eq(projects.id, projectId),
+            });
 
-    if (!project) {
-      throw new Error('Project not found');
-    }
+        if (project) {
+          const visionModel = visionModels[project.visionModel];
+          
+          if (visionModel) {
+            const openai = new OpenAI();
+            const response = await openai.chat.completions.create({
+              model: visionModel.providers[0].model.modelId,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: 'Describe this image.' },
+                    {
+                      type: 'image_url',
+                      image_url: {
+                        url: openaiUrl,
+                      },
+                    },
+                  ],
+                },
+              ],
+            });
 
-    const visionModel = visionModels[project.visionModel];
-
-    if (!visionModel) {
-      throw new Error('Vision model not found');
-    }
-
-    const openai = new OpenAI();
-    const response = await openai.chat.completions.create({
-      model: visionModel.providers[0].model.modelId,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Describe this image.' },
-            {
-              type: 'image_url',
-              image_url: {
-                url,
-              },
-            },
-          ],
-        },
-      ],
-    });
-
-    const description = response.choices.at(0)?.message.content;
-
-    if (!description) {
-      throw new Error('No description found');
-    }
-
-    const content = project.content as {
-      nodes: Node[];
-      edges: Edge[];
-      viewport: Viewport;
-    };
-
-    const existingNode = content.nodes.find((n) => n.id === nodeId);
-
-    if (!existingNode) {
-      throw new Error('Node not found');
+            const aiDescription = response.choices.at(0)?.message.content;
+            if (aiDescription) {
+              description = aiDescription;
+            }
+          }
+        }
+      }
+    } catch (descError) {
+      console.warn('[LOCAL MODE] Description auto échouée, utilisation du prompt:', descError);
     }
 
     const newData = {
-      ...(existingNode.data ?? {}),
       updatedAt: new Date().toISOString(),
       generated: {
-        url: stored.url,
+        url: displayUrl,
         type: image.mediaType,
       },
       description,
