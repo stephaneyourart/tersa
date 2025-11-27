@@ -31,6 +31,7 @@ import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { ImageSizeSelector } from './image-size-selector';
+import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
@@ -56,6 +57,9 @@ export const ImageTransform = ({
 }: ImageTransformProps) => {
   const { updateNodeData, getNodes, getEdges } = useReactFlow();
   const [loading, setLoading] = useState(false);
+  const [advancedSettings, setAdvancedSettings] = useState<ImageAdvancedSettings>(
+    data.advancedSettings ?? DEFAULT_SETTINGS
+  );
   const project = useProject();
   const hasIncomingImageNodes =
     getImagesFromImageNodes(getIncomers({ id }, getNodes(), getEdges()))
@@ -180,6 +184,22 @@ export const ImageTransform = ({
       });
     }
 
+    // Bouton paramètres avancés
+    items.push({
+      tooltip: 'Paramètres avancés',
+      children: (
+        <AdvancedSettingsPanel
+          settings={advancedSettings}
+          onChange={(settings) => {
+            setAdvancedSettings(settings);
+            updateNodeData(id, { advancedSettings: settings });
+          }}
+          modelId={modelId}
+          supportsEdit={selectedModel?.supportsEdit}
+        />
+      ),
+    });
+
     items.push(
       loading
         ? {
@@ -246,12 +266,14 @@ export const ImageTransform = ({
     id,
     updateNodeData,
     selectedModel?.sizes,
+    selectedModel?.supportsEdit,
     size,
     loading,
     data.generated,
     data.updatedAt,
     handleGenerate,
     project?.id,
+    advancedSettings,
   ]);
 
   const aspectRatio = useMemo(() => {
