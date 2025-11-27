@@ -263,7 +263,7 @@ export const ImageTransform = ({
     
     console.log(`[Batch] Total nodes to generate:`, nodeIds);
 
-    toast.info(`🚀 Lancement de ${count} génération${count > 1 ? 's' : ''} en PARALLÈLE...`, {
+    toast.info(`🚀 Lancement de ${count} génération${count > 1 ? 's' : ''} en PARALLÈLE via API batch...`, {
       duration: 3000,
     });
 
@@ -274,70 +274,101 @@ export const ImageTransform = ({
         batchGenerating: true,
         batchStartTime: startTime,
       });
-      console.log(`[Batch] Node ${nodeId} set to loading state`);
     });
 
-    // ÉTAPE 2: Créer TOUTES les promesses SANS await (vraiment parallèle)
-    const generatePromises = nodeIds.map((nodeId) => {
-      console.log(`[Batch] Starting API call for node ${nodeId}`);
-      
-      const apiCall = imageNodes.length
-        ? editImageAction({
-            images: imageNodes,
-            instructions: data.instructions,
-            nodeId,
-            projectId: project.id,
-            modelId,
-            size: sizeFromSettings,
-          })
-        : generateImageAction({
-            prompt: textNodes.join('\n'),
-            modelId,
-            instructions: data.instructions,
-            projectId: project.id,
-            nodeId,
-            size: sizeFromSettings,
+    // ÉTAPE 2: Préparer les jobs pour l'API batch
+    // Extraire le modèle WaveSpeed path depuis le modelId
+    const modelPath = selectedModel?.providers?.[0]?.model || modelId;
+    const isEdit = imageNodes.length > 0;
+    
+    const jobs = nodeIds.map((nodeId) => ({
+      nodeId,
+      modelPath: modelPath,
+      prompt: isEdit ? (data.instructions || textNodes.join('\n')) : textNodes.join('\n'),
+      images: isEdit ? imageNodes : undefined,
+      params: {
+        aspect_ratio: advancedSettings.aspectRatio,
+        resolution: advancedSettings.quality === 'hd' ? '4k' : advancedSettings.quality === 'standard' ? '2k' : '2k',
+        width: advancedSettings.width,
+        height: advancedSettings.height,
+        seed: advancedSettings.seed,
+        guidance_scale: advancedSettings.guidanceScale,
+        num_inference_steps: advancedSettings.inferenceSteps,
+        negative_prompt: advancedSettings.negativePrompt,
+      },
+    }));
+
+    console.log(`[Batch] Sending ${jobs.length} jobs to /api/batch-generate`);
+    console.log(`[Batch] Model path: ${modelPath}`);
+
+    // ÉTAPE 3: Appeler l'API batch qui fait les appels en PARALLÈLE côté serveur
+    try {
+      const response = await fetch('/api/batch-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobs, projectId: project.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Batch API error: ${response.status}`);
+      }
+
+      const batchResult = await response.json();
+      console.log(`[Batch] API response:`, batchResult);
+
+      // Mettre à jour chaque nœud avec son résultat
+      const results = batchResult.results || [];
+      for (const result of results) {
+        if (result.success && result.imageUrl) {
+          updateNodeData(result.nodeId, {
+            generated: {
+              url: result.imageUrl,
+              type: 'image/png',
+            },
+            batchGenerating: false,
+            batchStartTime: undefined,
+            updatedAt: new Date().toISOString(),
           });
-      
-      return apiCall.then((response) => {
-        console.log(`[Batch] Response for node ${nodeId}`);
-        if ('error' in response) {
-          updateNodeData(nodeId, { batchGenerating: false, batchStartTime: undefined });
-          return { success: false, nodeId, error: response.error };
+        } else {
+          updateNodeData(result.nodeId, {
+            batchGenerating: false,
+            batchStartTime: undefined,
+          });
+          console.error(`[Batch] Failed for node ${result.nodeId}:`, result.error);
         }
+      }
+
+      const successCount = results.filter((r: { success: boolean }) => r.success).length;
+      const failCount = results.filter((r: { success: boolean }) => !r.success).length;
+      const duration = batchResult.totalDuration || Math.round((Date.now() - startTime) / 1000);
+      const provider = selectedModel?.providers?.[0];
+      const costPerImage = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
+      const totalCost = costPerImage * successCount;
+
+      if (failCount > 0) {
+        toast.warning(`${successCount}/${count} images générées en PARALLÈLE`, {
+          description: `⏱️ ${duration}s total • 💰 ~$${totalCost.toFixed(3)} • ${failCount} échec(s)`,
+          duration: Infinity,
+          closeButton: true,
+        });
+      } else {
+        toast.success(`✅ ${successCount} image${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} en PARALLÈLE !`, {
+          description: `⏱️ ${duration}s total • 💰 ~$${totalCost.toFixed(3)}`,
+          duration: Infinity,
+          closeButton: true,
+        });
+      }
+    } catch (error) {
+      console.error('[Batch] Error:', error);
+      // Reset all nodes on error
+      nodeIds.forEach((nodeId) => {
         updateNodeData(nodeId, {
-          ...response.nodeData,
           batchGenerating: false,
           batchStartTime: undefined,
         });
-        return { success: true, nodeId };
-      }).catch((error) => {
-        console.error(`[Batch] Error for node ${nodeId}:`, error);
-        updateNodeData(nodeId, { batchGenerating: false, batchStartTime: undefined });
-        return { success: false, nodeId, error };
       });
-    });
-    
-    console.log(`[Batch] All ${generatePromises.length} API calls started in parallel!`);
-
-    // Attendre toutes les générations
-    const results = await Promise.all(generatePromises);
-    const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
-    const duration = Math.round((Date.now() - startTime) / 1000);
-    const provider = selectedModel?.providers?.[0];
-    const costPerImage = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
-    const totalCost = costPerImage * successCount;
-
-    if (failCount > 0) {
-      toast.warning(`${successCount}/${count} images générées`, {
-        description: `⏱️ ${duration}s • 💰 ~$${totalCost.toFixed(3)} • ${failCount} échec(s)`,
-        duration: Infinity,
-        closeButton: true,
-      });
-    } else {
-      toast.success(`${successCount} image${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} !`, {
-        description: `⏱️ ${duration}s • 💰 ~$${totalCost.toFixed(3)}`,
+      toast.error('Erreur lors du batch', {
+        description: error instanceof Error ? error.message : 'Erreur inconnue',
         duration: Infinity,
         closeButton: true,
       });
@@ -356,6 +387,7 @@ export const ImageTransform = ({
     data.instructions,
     modelId,
     sizeFromSettings,
+    advancedSettings,
     selectedModel,
     updateNodeData,
   ]);
