@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { useNodeOperations } from '@/providers/node-operations';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useState, useRef, useEffect } from 'react';
 import { NodeToolbar } from './toolbar';
 import { BatchRunsControl } from './batch-runs-control';
 
@@ -56,12 +56,38 @@ export const NodeLayout = ({
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Vérifie si ce type de node supporte le batch
   const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
   
   // Le batch control est visible si le node OU le contrôle est hovered
   const showBatchControl = isNodeHovered || isBatchControlHovered;
+
+  // Handlers de hover avec délai
+  const handleNodeMouseEnter = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    setIsNodeHovered(true);
+  };
+
+  const handleNodeMouseLeave = () => {
+    // Délai de 300ms pour laisser le temps d'aller sur le contrôle
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsNodeHovered(false);
+    }, 300);
+  };
+
+  // Cleanup du timeout
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handler pour le batch run
   const handleBatchRun = async (count: number) => {
@@ -158,8 +184,8 @@ export const NodeLayout = ({
         <ContextMenuTrigger>
           <div 
             className="relative size-full h-auto w-sm"
-            onMouseEnter={() => setIsNodeHovered(true)}
-            onMouseLeave={() => setIsNodeHovered(false)}
+            onMouseEnter={handleNodeMouseEnter}
+            onMouseLeave={handleNodeMouseLeave}
           >
             {type !== 'drop' && (
               <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 items-center justify-between">

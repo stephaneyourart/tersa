@@ -76,17 +76,28 @@ export function BatchRunsControl({
   const shouldShow = isVisible || isControlHovered;
 
   return (
-    <div
-      className={cn(
-        'absolute -right-3 top-1/2 -translate-y-1/2 translate-x-full z-50',
-        'flex flex-col items-center gap-2',
-        'transition-all duration-200',
-        shouldShow ? 'opacity-100' : 'opacity-0 pointer-events-none',
-        className
-      )}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <>
+      {/* Zone de hover invisible pour relier le node au contrôle */}
+      <div
+        className={cn(
+          'absolute -right-0 top-0 bottom-0 w-20 z-40',
+          shouldShow ? 'pointer-events-auto' : 'pointer-events-none'
+        )}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      />
+      
+      <div
+        className={cn(
+          'absolute -right-3 top-1/2 -translate-y-1/2 translate-x-full z-50',
+          'flex flex-col items-center gap-2',
+          'transition-all duration-200',
+          shouldShow ? 'opacity-100' : 'opacity-0 pointer-events-none',
+          className
+        )}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
       {/* Contrôle du compteur */}
       <div className="flex flex-col items-center bg-card rounded-full p-1.5 shadow-lg ring-1 ring-border">
         <button
@@ -131,6 +142,7 @@ export function BatchRunsControl({
         <PlayIcon size={18} fill="currentColor" />
       </button>
     </div>
+    </>
   );
 }
 
