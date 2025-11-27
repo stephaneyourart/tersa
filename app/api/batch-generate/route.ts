@@ -62,13 +62,17 @@ async function callWaveSpeedDirect(job: BatchJob, apiKey: string): Promise<{ ima
         }
       : {
           prompt: job.prompt,
-          aspect_ratio: job.params?.aspect_ratio || '1:1',
-          resolution: job.params?.resolution || '2k',
           output_format: job.params?.output_format || 'png',
           enable_base64_output: false,
           enable_sync_mode: false,
-          ...(job.params?.width && { width: job.params.width }),
-          ...(job.params?.height && { height: job.params.height }),
+          // Si width/height sont définis, les utiliser en priorité, sinon aspect_ratio + resolution
+          ...(job.params?.width && job.params?.height 
+            ? { width: job.params.width, height: job.params.height }
+            : { 
+                aspect_ratio: job.params?.aspect_ratio || '1:1',
+                resolution: job.params?.resolution || '2k',
+              }
+          ),
           ...(job.params?.seed && { seed: job.params.seed }),
           ...(job.params?.guidance_scale && { guidance_scale: job.params.guidance_scale }),
           ...(job.params?.num_inference_steps && { num_inference_steps: job.params.num_inference_steps }),
@@ -76,6 +80,7 @@ async function callWaveSpeedDirect(job: BatchJob, apiKey: string): Promise<{ ima
         };
 
     console.log(`[Batch API] Starting job for node ${job.nodeId} - ${job.modelPath}`);
+    console.log(`[Batch API] Request body:`, JSON.stringify(body, null, 2));
 
     // Appel initial
     const response = await fetch(endpoint, {

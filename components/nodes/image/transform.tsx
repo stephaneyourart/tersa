@@ -295,6 +295,18 @@ export const ImageTransform = ({
     console.log(`[Batch] Model object:`, modelObj);
     console.log(`[Batch] Extracted model path: ${modelPath}`);
     
+    // Mapper quality -> resolution WaveSpeed (1k, 2k, 4k)
+    const qualityToResolution: Record<string, string> = {
+      'standard': '2k',
+      'hd': '4k',
+      'ultra': '4k',
+    };
+    const resolution = qualityToResolution[advancedSettings.quality] || '2k';
+    
+    // Logs pour débugger les paramètres
+    console.log(`[Batch] Advanced settings:`, advancedSettings);
+    console.log(`[Batch] Resolution: ${resolution}, Width: ${advancedSettings.width}, Height: ${advancedSettings.height}`);
+    
     const jobs = nodeIds.map((nodeId) => ({
       nodeId,
       modelPath: modelPath,
@@ -302,12 +314,13 @@ export const ImageTransform = ({
       images: isEdit ? imageNodes : undefined,
       params: {
         aspect_ratio: advancedSettings.aspectRatio,
-        resolution: advancedSettings.quality === 'hd' ? '4k' : advancedSettings.quality === 'standard' ? '2k' : '2k',
-        width: advancedSettings.width,
-        height: advancedSettings.height,
+        resolution: resolution,
+        // Envoyer width/height seulement s'ils sont définis
+        ...(advancedSettings.width && { width: advancedSettings.width }),
+        ...(advancedSettings.height && { height: advancedSettings.height }),
         seed: advancedSettings.seed,
         guidance_scale: advancedSettings.guidanceScale,
-        num_inference_steps: advancedSettings.inferenceSteps,
+        num_inference_steps: advancedSettings.numInferenceSteps, // Correction: numInferenceSteps
         negative_prompt: advancedSettings.negativePrompt,
       },
     }));

@@ -39,6 +39,8 @@ export type ImageAdvancedSettings = {
 
 const DEFAULT_SETTINGS: ImageAdvancedSettings = {
   aspectRatio: '1:1',
+  width: 1024,
+  height: 1024,
   guidanceScale: 7.5,
   numInferenceSteps: 30,
   negativePrompt: '',
