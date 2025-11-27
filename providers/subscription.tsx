@@ -7,9 +7,14 @@ export type SubscriptionContextType = {
   plan: 'hobby' | 'pro' | 'enterprise' | undefined;
 };
 
+// En mode local, tous les modèles sont accessibles (plan "pro")
+const isLocalMode = typeof window !== 'undefined' 
+  ? window.location.pathname.startsWith('/local')
+  : false;
+
 export const SubscriptionContext = createContext<SubscriptionContextType>({
-  isSubscribed: false,
-  plan: undefined,
+  isSubscribed: isLocalMode ? true : false,
+  plan: isLocalMode ? 'pro' : undefined,
 });
 
 export const useSubscription = () => {
@@ -19,6 +24,14 @@ export const useSubscription = () => {
     throw new Error(
       'useSubscription must be used within a SubscriptionProvider'
     );
+  }
+
+  // En mode local, forcer le plan "pro" pour accéder à tous les modèles
+  if (isLocalMode) {
+    return {
+      isSubscribed: true,
+      plan: 'pro' as const,
+    };
   }
 
   return context;
@@ -32,8 +45,14 @@ export const SubscriptionProvider = ({
   children: ReactNode;
   isSubscribed: boolean;
   plan: 'hobby' | 'pro' | 'enterprise' | undefined;
-}) => (
-  <SubscriptionContext.Provider value={{ isSubscribed, plan }}>
-    {children}
-  </SubscriptionContext.Provider>
-);
+}) => {
+  // En mode local, forcer le plan "pro"
+  const effectivePlan = isLocalMode ? 'pro' : plan;
+  const effectiveSubscribed = isLocalMode ? true : isSubscribed;
+
+  return (
+    <SubscriptionContext.Provider value={{ isSubscribed: effectiveSubscribed, plan: effectivePlan }}>
+      {children}
+    </SubscriptionContext.Provider>
+  );
+};
