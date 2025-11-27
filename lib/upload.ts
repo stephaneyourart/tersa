@@ -1,11 +1,65 @@
 import { nanoid } from 'nanoid';
 import { createClient } from './supabase/client';
 
+// Vérifier si on est en mode local (côté client)
+const isLocalMode = typeof window !== 'undefined' 
+  ? window.location.pathname.startsWith('/local')
+  : false;
+
+/**
+ * Upload un fichier localement via l'API
+ */
+const uploadFileLocally = async (
+  file: File,
+  bucket: 'avatars' | 'files' | 'screenshots',
+  filename?: string
+) => {
+  const extension = file.name.split('.').pop();
+  const name = filename ?? `${nanoid()}.${extension}`;
+  
+  // Convertir le fichier en base64
+  const buffer = await file.arrayBuffer();
+  const base64 = btoa(
+    new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+  );
+  
+  // Envoyer au serveur via l'API de stockage local
+  const response = await fetch('/api/upload-local', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      filename: name,
+      base64Data: `data:${file.type};base64,${base64}`,
+      bucket,
+    }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Erreur lors de l\'upload');
+  }
+  
+  const result = await response.json();
+  
+  return {
+    url: result.url,
+    type: file.type,
+  };
+};
+
 export const uploadFile = async (
   file: File,
   bucket: 'avatars' | 'files' | 'screenshots',
   filename?: string
 ) => {
+  // En mode local, utiliser l'upload local
+  if (isLocalMode) {
+    return uploadFileLocally(file, bucket, filename);
+  }
+
+  // Mode normal avec Supabase
   const client = createClient();
   const { data } = await client.auth.getUser();
   const extension = file.name.split('.').pop();
