@@ -64,13 +64,14 @@ export const NodeLayout = ({
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
+  const [isToolbarHovered, setIsToolbarHovered] = useState(false);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Vérifie si ce type de node supporte le batch
   const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
   
-  // Le batch control est visible si le node OU le contrôle est hovered
-  const showBatchControl = isNodeHovered || isBatchControlHovered;
+  // Les contrôles sont visibles si le node OU un des contrôles est hovered
+  const showBatchControl = isNodeHovered || isBatchControlHovered || isToolbarHovered;
 
   // Handlers de hover avec délai
   const handleNodeMouseEnter = () => {
@@ -183,8 +184,13 @@ export const NodeLayout = ({
   return (
     <>
       {/* Toolbar visible au hover seulement */}
-      {type !== 'drop' && Boolean(toolbar?.length) && showBatchControl && (
-        <NodeToolbar id={id} items={toolbar} />
+      {type !== 'drop' && Boolean(toolbar?.length) && (
+        <NodeToolbar 
+          id={id} 
+          items={toolbar} 
+          isNodeHovered={showBatchControl}
+          onHoverChange={setIsToolbarHovered}
+        />
       )}
       {type !== 'file' && type !== 'tweet' && (
         <Handle type="target" position={Position.Left} />
