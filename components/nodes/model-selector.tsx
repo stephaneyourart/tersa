@@ -154,11 +154,13 @@ export const ModelSelector = ({
   const { plan } = useSubscription();
   const activeModel = options[value];
   
-  // Détecter le mode local
-  const [isLocalMode, setIsLocalMode] = useState(false);
-  useEffect(() => {
-    setIsLocalMode(window.location.pathname.startsWith('/local'));
-  }, []);
+  // Détecter le mode local (initialisation synchrone)
+  const [isLocalMode, setIsLocalMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname.startsWith('/local');
+    }
+    return false;
+  });
 
   useEffect(() => {
     if (value && !options[value]) {
