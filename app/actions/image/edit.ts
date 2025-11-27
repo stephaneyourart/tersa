@@ -7,6 +7,7 @@ import { imageModels } from '@/lib/models/image';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { isLocalProject } from '@/lib/local-project';
+import { wavespeedImage, type WaveSpeedEditParams } from '@/lib/models/image/wavespeed';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import {
@@ -40,6 +41,24 @@ async function fetchImageContent(url: string): Promise<{ blob: Blob; buffer: Buf
   const buffer = Buffer.from(arrayBuffer);
   const blob = new Blob([buffer]);
   return { blob, buffer };
+}
+
+// Convertit un fichier local en URL publique pour WaveSpeed
+async function getPublicImageUrl(url: string): Promise<string> {
+  // Si c'est déjà une URL absolue, la retourner
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // Si c'est une URL locale, convertir en base64 data URL
+  if (url.startsWith('/api/storage/')) {
+    const { buffer } = await fetchImageContent(url);
+    const ext = url.split('.').pop()?.toLowerCase();
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  }
+
+  return url;
 }
 
 type EditImageActionProps = {
@@ -107,6 +126,61 @@ const generateGptImage1Image = async ({
   };
 };
 
+// Édite une image via WaveSpeed API
+async function editWaveSpeedImage(
+  modelId: string,
+  images: { url: string; type: string }[],
+  prompt: string,
+  size?: string
+): Promise<{ url: string; mediaType: string }> {
+  // Mapper les IDs de modèle vers les instances WaveSpeed Edit
+  const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaProEdit>> = {
+    // Nano Banana Edit
+    'nano-banana-edit-wavespeed': wavespeedImage.nanoBananaEdit,
+    'nano-banana-pro-edit-wavespeed': wavespeedImage.nanoBananaProEdit,
+    'nano-banana-pro-edit-multi-wavespeed': wavespeedImage.nanoBananaProEditMulti,
+    'nano-banana-pro-edit-ultra-wavespeed': wavespeedImage.nanoBananaProEditUltra,
+    'nano-banana-effects-wavespeed': wavespeedImage.nanoBananaEffects,
+    // Gemini Edit
+    'gemini-2.5-flash-edit-wavespeed': wavespeedImage.gemini25FlashEdit,
+    'gemini-3-pro-edit-wavespeed': wavespeedImage.gemini3ProEdit,
+    // Flux Kontext (edit)
+    'flux-kontext-dev-wavespeed': wavespeedImage.fluxKontextDev,
+    'flux-kontext-pro-wavespeed': wavespeedImage.fluxKontextPro,
+    'flux-kontext-max-wavespeed': wavespeedImage.fluxKontextMax,
+    // Qwen Edit
+    'qwen-edit-wavespeed': wavespeedImage.qwenEdit,
+    'qwen-edit-plus-wavespeed': wavespeedImage.qwenEditPlus,
+  };
+
+  const modelFactory = modelMap[modelId];
+  if (!modelFactory) {
+    throw new Error(`Modèle WaveSpeed Edit non supporté: ${modelId}`);
+  }
+
+  const model = modelFactory();
+  
+  // Convertir les images en URLs publiques ou base64
+  const imageUrls = await Promise.all(
+    images.map(img => getPublicImageUrl(img.url))
+  );
+
+  const params: WaveSpeedEditParams = {
+    prompt,
+    images: imageUrls,
+    resolution: size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k',
+    output_format: 'png',
+  };
+
+  console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`);
+  const imageUrl = await model.generate(params);
+
+  return {
+    url: imageUrl,
+    mediaType: 'image/png',
+  };
+}
+
 export const editImageAction = async ({
   images,
   instructions,
@@ -137,7 +211,8 @@ export const editImageAction = async ({
 
     const provider = model.providers[0];
 
-    let image: Experimental_GenerateImageResult['image'] | undefined;
+    let imageBuffer: Buffer;
+    let mediaType: string = 'image/png';
 
     const defaultPrompt =
       images.length > 1
@@ -147,7 +222,22 @@ export const editImageAction = async ({
     const prompt =
       !instructions || instructions === '' ? defaultPrompt : instructions;
 
-    if (provider.model.modelId === 'gpt-image-1') {
+    // Vérifier si c'est un modèle WaveSpeed Edit
+    if (modelId.endsWith('-wavespeed') && model.supportsEdit) {
+      console.log(`[WaveSpeed] Détecté modèle Edit WaveSpeed: ${modelId}`);
+      const result = await editWaveSpeedImage(modelId, images, prompt, size);
+      
+      // Télécharger l'image depuis l'URL WaveSpeed
+      const response = await fetch(result.url);
+      const arrayBuffer = await response.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      mediaType = result.mediaType;
+
+      await trackCreditUsage({
+        action: 'generate_image',
+        cost: provider.getCost({ size }),
+      });
+    } else if (provider.model.modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         prompt,
         images,
@@ -162,7 +252,8 @@ export const editImageAction = async ({
         }),
       });
 
-      image = generatedImageResponse.image;
+      imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
+      mediaType = generatedImageResponse.image.mediaType;
     } else {
       const { buffer } = await fetchImageContent(images[0].url);
       const base64Image = buffer.toString('base64');
@@ -180,16 +271,15 @@ export const editImageAction = async ({
 
       await trackCreditUsage({
         action: 'generate_image',
-        cost: provider.getCost({
-          size,
-        }),
+        cost: provider.getCost({ size }),
       });
 
-      image = generatedImageResponse.image;
+      imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
+      mediaType = generatedImageResponse.image.mediaType;
     }
 
-    const bytes = Buffer.from(image.base64, 'base64');
-    const contentType = 'image/png';
+    const bytes = imageBuffer;
+    const contentType = mediaType;
 
     // Utiliser le wrapper de stockage unifié (local ou Supabase)
     const name = generateUniqueFilename('png');

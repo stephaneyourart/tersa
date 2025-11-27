@@ -8,6 +8,7 @@ import { visionModels } from '@/lib/models/vision';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { isLocalProject, getLocalProject } from '@/lib/local-project';
+import { wavespeedImage, type WaveSpeedTextToImageParams, type WaveSpeedAspectRatio } from '@/lib/models/image/wavespeed';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import {
@@ -84,6 +85,93 @@ const generateGptImage1Image = async ({
 
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 
+// Convertit une taille "1024x1024" en aspect ratio "1:1"
+function sizeToAspectRatio(size: string): WaveSpeedAspectRatio {
+  const [width, height] = size.split('x').map(Number);
+  const ratio = width / height;
+  
+  if (ratio === 1) return '1:1';
+  if (Math.abs(ratio - 16/9) < 0.1) return '16:9';
+  if (Math.abs(ratio - 9/16) < 0.1) return '9:16';
+  if (Math.abs(ratio - 4/3) < 0.1) return '4:3';
+  if (Math.abs(ratio - 3/4) < 0.1) return '3:4';
+  if (Math.abs(ratio - 3/2) < 0.1) return '3:2';
+  if (Math.abs(ratio - 2/3) < 0.1) return '2:3';
+  if (Math.abs(ratio - 21/9) < 0.1) return '21:9';
+  if (Math.abs(ratio - 9/21) < 0.1) return '9:21';
+  
+  return '1:1'; // Par défaut
+}
+
+// Génère une image via WaveSpeed API
+async function generateWaveSpeedImage(
+  modelId: string,
+  prompt: string,
+  instructions?: string,
+  size?: string
+): Promise<{ url: string; mediaType: string }> {
+  // Mapper les IDs de modèle vers les instances WaveSpeed
+  const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaPro>> = {
+    // Nano Banana
+    'nano-banana-wavespeed': wavespeedImage.nanoBanana,
+    'nano-banana-pro-wavespeed': wavespeedImage.nanoBananaPro,
+    'nano-banana-pro-multi-wavespeed': wavespeedImage.nanoBananaProMulti,
+    'nano-banana-pro-ultra-wavespeed': wavespeedImage.nanoBananaProUltra,
+    // Imagen
+    'imagen3-wavespeed': wavespeedImage.imagen3,
+    'imagen3-fast-wavespeed': wavespeedImage.imagen3Fast,
+    'imagen4-wavespeed': wavespeedImage.imagen4,
+    'imagen4-fast-wavespeed': wavespeedImage.imagen4Fast,
+    'imagen4-ultra-wavespeed': wavespeedImage.imagen4Ultra,
+    // Gemini
+    'gemini-2.5-flash-wavespeed': wavespeedImage.gemini25FlashText2Img,
+    'gemini-3-pro-wavespeed': wavespeedImage.gemini3ProText2Img,
+    // Flux
+    'flux-dev-wavespeed': wavespeedImage.fluxDev,
+    'flux-dev-ultra-fast-wavespeed': wavespeedImage.fluxDevUltraFast,
+    'flux-schnell-wavespeed': wavespeedImage.fluxSchnell,
+    'flux-1.1-pro-wavespeed': wavespeedImage.flux11Pro,
+    'flux-1.1-pro-ultra-wavespeed': wavespeedImage.flux11ProUltra,
+    'flux-2-dev-wavespeed': wavespeedImage.flux2DevText2Img,
+    'flux-2-pro-wavespeed': wavespeedImage.flux2ProText2Img,
+    // Qwen
+    'qwen-text2img-wavespeed': wavespeedImage.qwenText2Img,
+    // Hunyuan
+    'hunyuan-2.1-wavespeed': wavespeedImage.hunyuan21,
+    'hunyuan-3-wavespeed': wavespeedImage.hunyuan3,
+    // Stability AI
+    'sdxl-wavespeed': wavespeedImage.sdxl,
+    'sd3-wavespeed': wavespeedImage.sd3,
+    'sd35-large-wavespeed': wavespeedImage.sd35Large,
+    'sd35-large-turbo-wavespeed': wavespeedImage.sd35LargeTurbo,
+  };
+
+  const modelFactory = modelMap[modelId];
+  if (!modelFactory) {
+    throw new Error(`Modèle WaveSpeed non supporté: ${modelId}`);
+  }
+
+  const model = modelFactory();
+  
+  const fullPrompt = instructions 
+    ? `${instructions}\n\n${prompt}`
+    : prompt;
+
+  const params: WaveSpeedTextToImageParams = {
+    prompt: fullPrompt,
+    aspect_ratio: size ? sizeToAspectRatio(size) : '1:1',
+    output_format: 'png',
+  };
+
+  console.log(`[WaveSpeed] Génération avec modèle: ${modelId}`);
+  const imageUrl = await model.generate(params);
+
+  return {
+    url: imageUrl,
+    mediaType: 'image/png',
+  };
+}
+
 export const generateImageAction = async ({
   prompt,
   modelId,
@@ -107,11 +195,28 @@ export const generateImageAction = async ({
       throw new Error('Model not found');
     }
 
-    let image: Experimental_GenerateImageResult['image'] | undefined;
+    let imageUrl: string;
+    let mediaType: string = 'image/png';
+    let imageBuffer: Buffer;
 
     const provider = model.providers[0];
 
-    if (provider.model.modelId === 'gpt-image-1') {
+    // Vérifier si c'est un modèle WaveSpeed
+    if (modelId.endsWith('-wavespeed')) {
+      console.log(`[WaveSpeed] Détecté modèle WaveSpeed: ${modelId}`);
+      const result = await generateWaveSpeedImage(modelId, prompt, instructions, size);
+      
+      // Télécharger l'image depuis l'URL WaveSpeed
+      const response = await fetch(result.url);
+      const arrayBuffer = await response.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      mediaType = result.mediaType;
+
+      await trackCreditUsage({
+        action: 'generate_image',
+        cost: provider.getCost({ size }),
+      });
+    } else if (provider.model.modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         instructions,
         prompt,
@@ -126,7 +231,8 @@ export const generateImageAction = async ({
         }),
       });
 
-      image = generatedImageResponse.image;
+      imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
+      mediaType = generatedImageResponse.image.mediaType;
     } else {
       let aspectRatio: `${number}:${number}` | undefined;
       if (size) {
@@ -152,16 +258,14 @@ export const generateImageAction = async ({
 
       await trackCreditUsage({
         action: 'generate_image',
-        cost: provider.getCost({
-          size,
-        }),
+        cost: provider.getCost({ size }),
       });
 
-      image = generatedImageResponse.image;
+      imageBuffer = Buffer.from(generatedImageResponse.image.uint8Array);
+      mediaType = generatedImageResponse.image.mediaType;
     }
 
-    let extension = image.mediaType.split('/').pop();
-
+    let extension = mediaType.split('/').pop();
     if (extension === 'jpeg') {
       extension = 'jpg';
     }
@@ -169,25 +273,20 @@ export const generateImageAction = async ({
     const name = generateUniqueFilename(extension || 'png');
 
     // Utiliser le wrapper de stockage unifié (local ou Supabase)
-    const stored = await uploadBuffer(
-      Buffer.from(image.uint8Array),
-      name,
-      image.mediaType
-    );
+    const stored = await uploadBuffer(imageBuffer, name, mediaType);
 
-    // URL pour affichage : en mode local on utilise l'URL de stockage local
+    // URL pour affichage
     const displayUrl = stored.url;
     
     // URL pour OpenAI : doit être base64 en mode local
     const openaiUrl = isLocalMode
-      ? `data:${image.mediaType};base64,${Buffer.from(image.uint8Array).toString('base64')}`
+      ? `data:${mediaType};base64,${imageBuffer.toString('base64')}`
       : stored.url;
 
     // Description optionnelle - essayer avec OpenAI si disponible
     let description = `Generated from prompt: ${prompt}`;
     
     try {
-      // Vérifier si on a une clé OpenAI
       if (process.env.OPENAI_API_KEY) {
         const project = isLocalProject(projectId)
           ? getLocalProject()
@@ -233,28 +332,39 @@ export const generateImageAction = async ({
       updatedAt: new Date().toISOString(),
       generated: {
         url: displayUrl,
-        type: image.mediaType,
+        type: mediaType,
       },
       description,
     };
 
-    // En mode local, on ne met pas à jour la BDD - le frontend gère l'état
+    // En mode local, on ne met pas à jour la BDD
     if (!isLocalProject(projectId)) {
-      const updatedNodes = content.nodes.map((existingNode) => {
-        if (existingNode.id === nodeId) {
-          return {
-            ...existingNode,
-            data: newData,
-          };
-        }
-
-        return existingNode;
+      const project = await database.query.projects.findFirst({
+        where: eq(projects.id, projectId),
       });
 
-      await database
-        .update(projects)
-        .set({ content: { ...content, nodes: updatedNodes } })
-        .where(eq(projects.id, projectId));
+      if (project) {
+        const content = project.content as {
+          nodes: Node[];
+          edges: Edge[];
+          viewport: Viewport;
+        };
+
+        const updatedNodes = content.nodes.map((existingNode) => {
+          if (existingNode.id === nodeId) {
+            return {
+              ...existingNode,
+              data: newData,
+            };
+          }
+          return existingNode;
+        });
+
+        await database
+          .update(projects)
+          .set({ content: { ...content, nodes: updatedNodes } })
+          .where(eq(projects.id, projectId));
+      }
     }
 
     return {
@@ -262,7 +372,6 @@ export const generateImageAction = async ({
     };
   } catch (error) {
     const message = parseError(error);
-
     return { error: message };
   }
 };
