@@ -20,8 +20,9 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { ASPECT_RATIOS, type AspectRatio } from '@/lib/models/image/aspect-ratio';
+import { getModelCapabilities } from '@/lib/models/image/capabilities';
 import { Settings2Icon } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 export type ImageAdvancedSettings = {
   aspectRatio: AspectRatio;
@@ -109,8 +110,11 @@ export function AdvancedSettingsPanel({
     setLocalSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Détecter si c'est un modèle WaveSpeed
-  const isWaveSpeedModel = modelId?.includes('wavespeed');
+  // Obtenir les capacités du modèle sélectionné
+  const capabilities = useMemo(() => 
+    getModelCapabilities(modelId || ''),
+    [modelId]
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -129,130 +133,142 @@ export function AdvancedSettingsPanel({
 
         <div className="grid gap-6 py-4">
           {/* Aspect Ratio */}
-          <div className="space-y-2">
-            <Label htmlFor="aspect-ratio">Format d'image</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {ASPECT_RATIOS.map((ratio) => (
-                <Button
-                  key={ratio}
-                  variant={localSettings.aspectRatio === ratio ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => updateSetting('aspectRatio', ratio)}
-                  className="text-xs"
-                >
-                  {ASPECT_RATIO_LABELS[ratio]}
-                </Button>
-              ))}
+          {capabilities.supportsAspectRatio && (
+            <div className="space-y-2">
+              <Label htmlFor="aspect-ratio">Format d'image</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {ASPECT_RATIOS.map((ratio) => (
+                  <Button
+                    key={ratio}
+                    variant={localSettings.aspectRatio === ratio ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSetting('aspectRatio', ratio)}
+                    className="text-xs"
+                  >
+                    {ASPECT_RATIO_LABELS[ratio]}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Dimensions personnalisées */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="width">Largeur</Label>
-              <Input
-                id="width"
-                type="number"
-                placeholder="Auto"
-                value={localSettings.width || ''}
-                onChange={(e) => updateSetting('width', e.target.value ? parseInt(e.target.value) : undefined)}
-                min={256}
-                max={4096}
-                step={64}
-              />
+          {capabilities.supportsAspectRatio && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="width">Largeur</Label>
+                <Input
+                  id="width"
+                  type="number"
+                  placeholder="Auto"
+                  value={localSettings.width || ''}
+                  onChange={(e) => updateSetting('width', e.target.value ? parseInt(e.target.value) : undefined)}
+                  min={256}
+                  max={4096}
+                  step={64}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="height">Hauteur</Label>
+                <Input
+                  id="height"
+                  type="number"
+                  placeholder="Auto"
+                  value={localSettings.height || ''}
+                  onChange={(e) => updateSetting('height', e.target.value ? parseInt(e.target.value) : undefined)}
+                  min={256}
+                  max={4096}
+                  step={64}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="height">Hauteur</Label>
-              <Input
-                id="height"
-                type="number"
-                placeholder="Auto"
-                value={localSettings.height || ''}
-                onChange={(e) => updateSetting('height', e.target.value ? parseInt(e.target.value) : undefined)}
-                min={256}
-                max={4096}
-                step={64}
-              />
-            </div>
-          </div>
+          )}
 
           {/* Qualité */}
-          <div className="space-y-2">
-            <Label>Qualité</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {QUALITY_OPTIONS.map((option) => (
-                <Button
-                  key={option.value}
-                  variant={localSettings.quality === option.value ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => updateSetting('quality', option.value as 'standard' | 'hd' | 'ultra')}
-                  className="flex flex-col h-auto py-2"
-                >
-                  <span className="font-medium">{option.label}</span>
-                  <span className="text-xs opacity-70">{option.description}</span>
-                </Button>
-              ))}
+          {capabilities.supportsQuality && (
+            <div className="space-y-2">
+              <Label>Qualité</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {QUALITY_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={localSettings.quality === option.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSetting('quality', option.value as 'standard' | 'hd' | 'ultra')}
+                    className="flex flex-col h-auto py-2"
+                  >
+                    <span className="font-medium">{option.label}</span>
+                    <span className="text-xs opacity-70">{option.description}</span>
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Style Preset */}
-          <div className="space-y-2">
-            <Label htmlFor="style">Style</Label>
-            <Select
-              value={localSettings.style || ''}
-              onValueChange={(value) => updateSetting('style', value || undefined)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Choisir un style..." />
-              </SelectTrigger>
-              <SelectContent>
-                {STYLE_PRESETS.map((style) => (
-                  <SelectItem key={style.value} value={style.value || 'none'}>
-                    {style.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {capabilities.supportsStyle && (
+            <div className="space-y-2">
+              <Label htmlFor="style">Style</Label>
+              <Select
+                value={localSettings.style || ''}
+                onValueChange={(value) => updateSetting('style', value || undefined)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir un style..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {STYLE_PRESETS.map((style) => (
+                    <SelectItem key={style.value} value={style.value || 'none'}>
+                      {style.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Guidance Scale */}
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Guidance Scale</Label>
-              <span className="text-sm text-muted-foreground">{localSettings.guidanceScale}</span>
+          {capabilities.supportsGuidanceScale && (
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label>Guidance Scale</Label>
+                <span className="text-sm text-muted-foreground">{localSettings.guidanceScale}</span>
+              </div>
+              <Slider
+                value={[localSettings.guidanceScale]}
+                onValueChange={([value]) => updateSetting('guidanceScale', value)}
+                min={capabilities.minGuidanceScale ?? 1}
+                max={capabilities.maxGuidanceScale ?? 20}
+                step={0.5}
+              />
+              <p className="text-xs text-muted-foreground">
+                Plus élevé = plus fidèle au prompt, moins de créativité
+              </p>
             </div>
-            <Slider
-              value={[localSettings.guidanceScale]}
-              onValueChange={([value]) => updateSetting('guidanceScale', value)}
-              min={1}
-              max={20}
-              step={0.5}
-            />
-            <p className="text-xs text-muted-foreground">
-              Plus élevé = plus fidèle au prompt, moins de créativité
-            </p>
-          </div>
+          )}
 
           {/* Inference Steps */}
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Étapes d'inférence</Label>
-              <span className="text-sm text-muted-foreground">{localSettings.numInferenceSteps}</span>
+          {capabilities.supportsInferenceSteps && (
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label>Étapes d'inférence</Label>
+                <span className="text-sm text-muted-foreground">{localSettings.numInferenceSteps}</span>
+              </div>
+              <Slider
+                value={[localSettings.numInferenceSteps]}
+                onValueChange={([value]) => updateSetting('numInferenceSteps', value)}
+                min={capabilities.minInferenceSteps ?? 10}
+                max={capabilities.maxInferenceSteps ?? 100}
+                step={5}
+              />
+              <p className="text-xs text-muted-foreground">
+                Plus d'étapes = meilleure qualité, plus lent
+              </p>
             </div>
-            <Slider
-              value={[localSettings.numInferenceSteps]}
-              onValueChange={([value]) => updateSetting('numInferenceSteps', value)}
-              min={10}
-              max={100}
-              step={5}
-            />
-            <p className="text-xs text-muted-foreground">
-              Plus d'étapes = meilleure qualité, plus lent
-            </p>
-          </div>
+          )}
 
           {/* Strength (pour edit/img2img) */}
-          {supportsEdit && (
+          {supportsEdit && capabilities.supportsStrength && (
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label>Force de transformation</Label>
@@ -272,42 +288,59 @@ export function AdvancedSettingsPanel({
           )}
 
           {/* Seed */}
-          <div className="space-y-2">
-            <Label htmlFor="seed">Seed (optionnel)</Label>
-            <div className="flex gap-2">
-              <Input
-                id="seed"
-                type="number"
-                placeholder="Aléatoire"
-                value={localSettings.seed ?? ''}
-                onChange={(e) => updateSetting('seed', e.target.value ? parseInt(e.target.value) : undefined)}
-              />
-              <Button
-                variant="outline"
-                onClick={() => updateSetting('seed', Math.floor(Math.random() * 2147483647))}
-              >
-                🎲
-              </Button>
+          {capabilities.supportsSeed && (
+            <div className="space-y-2">
+              <Label htmlFor="seed">Seed (optionnel)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="seed"
+                  type="number"
+                  placeholder="Aléatoire"
+                  value={localSettings.seed ?? ''}
+                  onChange={(e) => updateSetting('seed', e.target.value ? parseInt(e.target.value) : undefined)}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => updateSetting('seed', Math.floor(Math.random() * 2147483647))}
+                >
+                  🎲
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Même seed = même résultat (reproductibilité)
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Même seed = même résultat (reproductibilité)
-            </p>
-          </div>
+          )}
 
           {/* Negative Prompt */}
-          <div className="space-y-2">
-            <Label htmlFor="negative-prompt">Prompt Négatif</Label>
-            <Textarea
-              id="negative-prompt"
-              placeholder="Éléments à éviter dans l'image..."
-              value={localSettings.negativePrompt}
-              onChange={(e) => updateSetting('negativePrompt', e.target.value)}
-              rows={3}
-            />
-            <p className="text-xs text-muted-foreground">
-              Décrivez ce que vous ne voulez PAS voir dans l'image
+          {capabilities.supportsNegativePrompt && (
+            <div className="space-y-2">
+              <Label htmlFor="negative-prompt">Prompt Négatif</Label>
+              <Textarea
+                id="negative-prompt"
+                placeholder="Éléments à éviter dans l'image..."
+                value={localSettings.negativePrompt}
+                onChange={(e) => updateSetting('negativePrompt', e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Décrivez ce que vous ne voulez PAS voir dans l'image
+              </p>
+            </div>
+          )}
+
+          {/* Message si aucune option disponible */}
+          {!capabilities.supportsAspectRatio && 
+           !capabilities.supportsQuality && 
+           !capabilities.supportsStyle && 
+           !capabilities.supportsGuidanceScale && 
+           !capabilities.supportsInferenceSteps && 
+           !capabilities.supportsSeed && 
+           !capabilities.supportsNegativePrompt && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Ce modèle ne supporte pas de paramètres avancés.
             </p>
-          </div>
+          )}
         </div>
 
         {/* Actions */}
