@@ -19,10 +19,10 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { ASPECT_RATIOS, type AspectRatio } from '@/lib/models/image/aspect-ratio';
+import { ASPECT_RATIOS, type AspectRatio, getAspectRatioSize } from '@/lib/models/image/aspect-ratio';
 import { getModelCapabilities } from '@/lib/models/image/capabilities';
 import { Settings2Icon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 export type ImageAdvancedSettings = {
   aspectRatio: AspectRatio;
@@ -110,11 +110,34 @@ export function AdvancedSettingsPanel({
     setLocalSettings((prev) => ({ ...prev, [key]: value }));
   };
 
+  // Mettre à jour l'aspect ratio ET les dimensions
+  const updateAspectRatio = (ratio: AspectRatio) => {
+    const { width, height } = getAspectRatioSize(ratio);
+    setLocalSettings((prev) => ({
+      ...prev,
+      aspectRatio: ratio,
+      width,
+      height,
+    }));
+  };
+
   // Obtenir les capacités du modèle sélectionné
   const capabilities = useMemo(() => 
     getModelCapabilities(modelId || ''),
     [modelId]
   );
+
+  // Initialiser les dimensions au premier rendu si non définies
+  useEffect(() => {
+    if (!localSettings.width || !localSettings.height) {
+      const { width, height } = getAspectRatioSize(localSettings.aspectRatio);
+      setLocalSettings((prev) => ({
+        ...prev,
+        width: prev.width || width,
+        height: prev.height || height,
+      }));
+    }
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -142,7 +165,7 @@ export function AdvancedSettingsPanel({
                     key={ratio}
                     variant={localSettings.aspectRatio === ratio ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => updateSetting('aspectRatio', ratio)}
+                    onClick={() => updateAspectRatio(ratio)}
                     className="text-xs"
                   >
                     {ASPECT_RATIO_LABELS[ratio]}

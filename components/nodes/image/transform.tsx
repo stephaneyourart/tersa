@@ -56,7 +56,7 @@ export const ImageTransform = ({
   type,
   title,
 }: ImageTransformProps) => {
-  const { updateNodeData, getNodes, getEdges } = useReactFlow();
+  const { updateNodeData, getNodes, getEdges, addNodes, addEdges, getNode } = useReactFlow();
   const [loading, setLoading] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [advancedSettings, setAdvancedSettings] = useState<ImageAdvancedSettings>(
@@ -84,11 +84,14 @@ export const ImageTransform = ({
   const analytics = useAnalytics();
   const selectedModel = imageModels[modelId];
 
-  // Calculer la taille à partir de l'aspect ratio des paramètres avancés
-  const sizeFromAspectRatio = useMemo(() => {
+  // Calculer la taille : utiliser les dimensions personnalisées si définies, sinon l'aspect ratio
+  const sizeFromSettings = useMemo(() => {
+    if (advancedSettings.width && advancedSettings.height) {
+      return `${advancedSettings.width}x${advancedSettings.height}`;
+    }
     const { width, height } = getAspectRatioSize(advancedSettings.aspectRatio);
     return `${width}x${height}`;
-  }, [advancedSettings.aspectRatio]);
+  }, [advancedSettings.aspectRatio, advancedSettings.width, advancedSettings.height]);
 
   const handleGenerate = useCallback(async () => {
     if (loading || !project?.id) {
@@ -122,7 +125,7 @@ export const ImageTransform = ({
             nodeId: id,
             projectId: project.id,
             modelId,
-            size: sizeFromAspectRatio,
+            size: sizeFromSettings,
           })
         : await generateImageAction({
             prompt: textNodes.join('\n'),
@@ -130,7 +133,7 @@ export const ImageTransform = ({
             instructions: data.instructions,
             projectId: project.id,
             nodeId: id,
-            size: sizeFromAspectRatio,
+            size: sizeFromSettings,
           });
 
       if ('error' in response) {
@@ -142,11 +145,12 @@ export const ImageTransform = ({
       // Calculer le temps écoulé et le coût estimé
       const duration = Math.round((Date.now() - startTime) / 1000);
       const provider = selectedModel?.providers?.[0];
-      const cost = provider?.getCost?.({ size: sizeFromAspectRatio }) ?? 0;
+      const cost = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
       
       toast.success('Image générée !', {
         description: `⏱️ ${duration}s • 💰 ~$${cost.toFixed(3)}`,
-        duration: 5000,
+        duration: Infinity,
+        closeButton: true,
       });
 
       setTimeout(() => mutate('credits'), 5000);
@@ -158,7 +162,7 @@ export const ImageTransform = ({
   }, [
     loading,
     project?.id,
-    sizeFromAspectRatio,
+    sizeFromSettings,
     id,
     analytics,
     type,
@@ -167,6 +171,133 @@ export const ImageTransform = ({
     modelId,
     selectedModel,
     getNodes,
+    updateNodeData,
+  ]);
+
+  // Handler pour le batch : duplique le nœud N-1 fois et lance N générations en parallèle
+  const handleBatchRun = useCallback(async (count: number) => {
+    if (loading || !project?.id || count < 1) return;
+
+    const currentNode = getNode(id);
+    if (!currentNode) return;
+
+    const incomers = getIncomers({ id }, getNodes(), getEdges());
+    const textNodes = getTextFromTextNodes(incomers);
+    const imageNodes = getImagesFromImageNodes(incomers);
+
+    if (!textNodes.length && !imageNodes.length) {
+      handleError('Error', new Error('No input provided'));
+      return;
+    }
+
+    // Collecter tous les nœuds (original + à dupliquer)
+    const nodeIds: string[] = [id];
+    const edges = getEdges().filter(e => e.target === id);
+    
+    // Dupliquer le nœud N-1 fois
+    for (let i = 1; i < count; i++) {
+      const newNodeId = `${id}-batch-${i}-${Date.now()}`;
+      const offsetY = (currentNode.measured?.height ?? 200) + 50;
+      
+      // Créer le nœud dupliqué
+      addNodes({
+        ...currentNode,
+        id: newNodeId,
+        position: {
+          x: currentNode.position.x,
+          y: currentNode.position.y + (offsetY * i),
+        },
+        selected: false,
+        data: { ...currentNode.data },
+      });
+
+      // Dupliquer les connexions entrantes
+      for (const edge of edges) {
+        addEdges({
+          ...edge,
+          id: `${edge.id}-batch-${i}-${Date.now()}`,
+          target: newNodeId,
+        });
+      }
+
+      nodeIds.push(newNodeId);
+    }
+
+    toast.info(`Lancement de ${count} génération${count > 1 ? 's' : ''} en parallèle...`, {
+      duration: 3000,
+    });
+
+    // Lancer les générations en parallèle
+    const startTime = Date.now();
+    const generatePromises = nodeIds.map(async (nodeId, index) => {
+      try {
+        const response = imageNodes.length
+          ? await editImageAction({
+              images: imageNodes,
+              instructions: data.instructions,
+              nodeId,
+              projectId: project.id,
+              modelId,
+              size: sizeFromSettings,
+            })
+          : await generateImageAction({
+              prompt: textNodes.join('\n'),
+              modelId,
+              instructions: data.instructions,
+              projectId: project.id,
+              nodeId,
+              size: sizeFromSettings,
+            });
+
+        if ('error' in response) {
+          throw new Error(response.error);
+        }
+
+        // Mettre à jour le nœud avec le résultat
+        updateNodeData(nodeId, response.nodeData);
+        return { success: true, nodeId };
+      } catch (error) {
+        return { success: false, nodeId, error };
+      }
+    });
+
+    // Attendre toutes les générations
+    const results = await Promise.all(generatePromises);
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    const duration = Math.round((Date.now() - startTime) / 1000);
+    const provider = selectedModel?.providers?.[0];
+    const costPerImage = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
+    const totalCost = costPerImage * successCount;
+
+    if (failCount > 0) {
+      toast.warning(`${successCount}/${count} images générées`, {
+        description: `⏱️ ${duration}s • 💰 ~$${totalCost.toFixed(3)} • ${failCount} échec(s)`,
+        duration: Infinity,
+        closeButton: true,
+      });
+    } else {
+      toast.success(`${successCount} image${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} !`, {
+        description: `⏱️ ${duration}s • 💰 ~$${totalCost.toFixed(3)}`,
+        duration: Infinity,
+        closeButton: true,
+      });
+    }
+
+    setTimeout(() => mutate('credits'), 5000);
+  }, [
+    loading,
+    project?.id,
+    id,
+    getNode,
+    getNodes,
+    getEdges,
+    addNodes,
+    addEdges,
+    data.instructions,
+    modelId,
+    sizeFromSettings,
+    selectedModel,
     updateNodeData,
   ]);
 
@@ -284,7 +415,7 @@ export const ImageTransform = ({
     updateNodeData,
     selectedModel?.sizes,
     selectedModel?.supportsEdit,
-    sizeFromAspectRatio,
+    sizeFromSettings,
     loading,
     data.generated,
     data.updatedAt,
@@ -298,8 +429,22 @@ export const ImageTransform = ({
     return `${width}/${height}`;
   }, [advancedSettings.aspectRatio]);
 
+  // Combiner data avec advancedSettings pour le NodeLayout
+  const nodeData = useMemo(() => ({
+    ...data,
+    advancedSettings,
+  }), [data, advancedSettings]);
+
   return (
-    <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar}>
+    <NodeLayout 
+      id={id} 
+      data={nodeData} 
+      type={type} 
+      title={title} 
+      toolbar={toolbar}
+      modelLabel={selectedModel?.label}
+      onBatchRun={handleBatchRun}
+    >
       {loading && (
         <Skeleton
           className="flex w-full animate-pulse items-center justify-center rounded-b-xl flex-col gap-2"
