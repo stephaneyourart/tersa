@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 const themes = [
   {
@@ -30,6 +31,21 @@ const themes = [
 
 export const ThemeSwitcher = () => {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Évite l'erreur d'hydratation en n'affichant l'icône qu'après le montage
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Icône par défaut pendant le SSR pour éviter le mismatch
+  const ThemeIcon = mounted
+    ? theme === 'light'
+      ? SunIcon
+      : theme === 'dark'
+        ? MoonIcon
+        : MonitorIcon
+    : MonitorIcon;
 
   return (
     <div>
@@ -41,9 +57,7 @@ export const ThemeSwitcher = () => {
             aria-label="Select theme"
             className="rounded-full"
           >
-            {theme === 'light' && <SunIcon size={16} />}
-            {theme === 'dark' && <MoonIcon size={16} />}
-            {theme === 'system' && <MonitorIcon size={16} />}
+            <ThemeIcon size={16} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="min-w-32">
