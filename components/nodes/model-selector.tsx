@@ -99,8 +99,8 @@ const getModelDisabled = (
   plan: SubscriptionContextType['plan'],
   isLocalMode: boolean
 ) => {
-  // En mode local, tous les modèles sont accessibles
-  if (isLocalMode) {
+  // FORCE: En mode local, JAMAIS désactiver (sauf si vraiment disabled)
+  if (isLocalMode || process.env.NEXT_PUBLIC_LOCAL_MODE === 'true') {
     return model.disabled === true;
   }
 
