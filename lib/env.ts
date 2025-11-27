@@ -2,58 +2,79 @@ import { vercel } from '@t3-oss/env-core/presets-zod';
 import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 
+// Mode local - toutes les variables sont optionnelles
+const isLocalMode = process.env.LOCAL_MODE === 'true';
+
+// Helper pour rendre une validation optionnelle en mode local
+const optionalInLocal = <T extends z.ZodTypeAny>(schema: T) => 
+  isLocalMode ? schema.optional().or(z.literal('')) : schema;
+
 export const env = createEnv({
-  extends: [vercel()],
+  extends: isLocalMode ? [] : [vercel()],
   server: {
-    UPSTASH_REDIS_REST_URL: z.string().url().min(1),
-    UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
+    // Mode local
+    LOCAL_MODE: z.string().optional(),
+    LOCAL_USER_ID: z.string().optional(),
+    LOCAL_STORAGE_PATH: z.string().optional(),
 
-    RESEND_TOKEN: z.string().min(1).startsWith('re_'),
-    RESEND_EMAIL: z.string().email().min(1),
+    // Services externes - optionnels en mode local
+    UPSTASH_REDIS_REST_URL: optionalInLocal(z.string().url().min(1)),
+    UPSTASH_REDIS_REST_TOKEN: optionalInLocal(z.string().min(1)),
 
-    STRIPE_SECRET_KEY: z.string().min(1).startsWith('sk_'),
-    STRIPE_HOBBY_PRODUCT_ID: z.string().min(1).startsWith('prod_'),
-    STRIPE_PRO_PRODUCT_ID: z.string().min(1).startsWith('prod_'),
-    STRIPE_USAGE_PRODUCT_ID: z.string().min(1).startsWith('prod_'),
-    STRIPE_CREDITS_METER_ID: z.string().min(1).startsWith('mtr_'),
-    STRIPE_CREDITS_METER_NAME: z.string().min(1),
-    STRIPE_WEBHOOK_SECRET: z.string().min(1).startsWith('whsec_'),
+    RESEND_TOKEN: optionalInLocal(z.string().min(1).startsWith('re_')),
+    RESEND_EMAIL: optionalInLocal(z.string().email().min(1)),
 
-    SUPABASE_AUTH_HOOK_SECRET: z.string().min(1).startsWith('v1,whsec_'),
+    STRIPE_SECRET_KEY: optionalInLocal(z.string().min(1).startsWith('sk_')),
+    STRIPE_HOBBY_PRODUCT_ID: optionalInLocal(z.string().min(1).startsWith('prod_')),
+    STRIPE_PRO_PRODUCT_ID: optionalInLocal(z.string().min(1).startsWith('prod_')),
+    STRIPE_USAGE_PRODUCT_ID: optionalInLocal(z.string().min(1).startsWith('prod_')),
+    STRIPE_CREDITS_METER_ID: optionalInLocal(z.string().min(1).startsWith('mtr_')),
+    STRIPE_CREDITS_METER_NAME: optionalInLocal(z.string().min(1)),
+    STRIPE_WEBHOOK_SECRET: optionalInLocal(z.string().min(1).startsWith('whsec_')),
 
-    // Supabase Integration
-    POSTGRES_URL: z.string().url().min(1),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+    SUPABASE_AUTH_HOOK_SECRET: optionalInLocal(z.string().min(1).startsWith('v1,whsec_')),
 
-    // AI SDK
-    OPENAI_API_KEY: z.string().min(1).startsWith('sk-'),
-    XAI_API_KEY: z.string().min(1).startsWith('xai-'),
-    AWS_ACCESS_KEY_ID: z.string().min(1),
-    AWS_SECRET_ACCESS_KEY: z.string().min(1),
-    AWS_REGION: z.string().min(1),
-    HUME_API_KEY: z.string().min(1),
-    LMNT_API_KEY: z.string().min(1),
+    // Supabase Integration - optionnel en mode local
+    POSTGRES_URL: optionalInLocal(z.string().url().min(1)),
+    SUPABASE_SERVICE_ROLE_KEY: optionalInLocal(z.string().min(1)),
 
-    // Other Models
-    MINIMAX_GROUP_ID: z.string().min(1),
-    MINIMAX_API_KEY: z.string().min(1),
-    RUNWAYML_API_SECRET: z.string().min(1).startsWith('key_'),
-    LUMA_API_KEY: z.string().min(1).startsWith('luma-'),
-    BF_API_KEY: z.string().min(1),
+    // AI SDK - optionnels, utiliser ceux que vous avez
+    OPENAI_API_KEY: z.string().optional(),
+    XAI_API_KEY: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_REGION: z.string().optional(),
+    HUME_API_KEY: z.string().optional(),
+    LMNT_API_KEY: z.string().optional(),
 
-    // Vercel AI Gateway
-    AI_GATEWAY_API_KEY: z.string().min(1),
+    // Other Models - optionnels
+    MINIMAX_GROUP_ID: z.string().optional(),
+    MINIMAX_API_KEY: z.string().optional(),
+    RUNWAYML_API_SECRET: z.string().optional(),
+    LUMA_API_KEY: z.string().optional(),
+    BF_API_KEY: z.string().optional(),
+
+    // Nouveaux providers
+    FAL_API_KEY: z.string().optional(),
+    WAVESPEED_API_KEY: z.string().optional(),
+    LUPA_API_KEY: z.string().optional(),
+
+    // Vercel AI Gateway - optionnel
+    AI_GATEWAY_API_KEY: z.string().optional(),
   },
   client: {
-    NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1),
-    NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1),
-    NEXT_PUBLIC_POSTHOG_HOST: z.string().url().min(1),
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: optionalInLocal(z.string().min(1)),
+    NEXT_PUBLIC_POSTHOG_KEY: optionalInLocal(z.string().min(1)),
+    NEXT_PUBLIC_POSTHOG_HOST: optionalInLocal(z.string().url().min(1)),
 
-    // Supabase Integration
-    NEXT_PUBLIC_SUPABASE_URL: z.string().url().min(1),
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+    // Supabase Integration - optionnel en mode local
+    NEXT_PUBLIC_SUPABASE_URL: optionalInLocal(z.string().url().min(1)),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalInLocal(z.string().min(1)),
   },
   runtimeEnv: {
+    LOCAL_MODE: process.env.LOCAL_MODE,
+    LOCAL_USER_ID: process.env.LOCAL_USER_ID,
+    LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     XAI_API_KEY: process.env.XAI_API_KEY,
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
@@ -86,5 +107,10 @@ export const env = createEnv({
     LMNT_API_KEY: process.env.LMNT_API_KEY,
     BF_API_KEY: process.env.BF_API_KEY,
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+    FAL_API_KEY: process.env.FAL_API_KEY,
+    WAVESPEED_API_KEY: process.env.WAVESPEED_API_KEY,
+    LUPA_API_KEY: process.env.LUPA_API_KEY,
   },
+  // Skip validation en mode local si des variables manquent
+  skipValidation: isLocalMode,
 });
