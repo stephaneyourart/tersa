@@ -1,14 +1,15 @@
 /**
  * Modèles d'Upscaling pour TersaFork
- * Supporte: Topaz (via Fal), et autres providers
+ * Supporte: Lupa AI, Topaz (via Fal), et autres providers
  */
 
-import { FalIcon } from '@/lib/icons';
+import { FalIcon, LupaIcon } from '@/lib/icons';
 import {
   type TersaModel,
   type TersaProvider,
   providers,
 } from '@/lib/providers';
+import { lupa } from './lupa';
 import { topaz } from './topaz';
 
 export type UpscaleModel = {
@@ -39,6 +40,57 @@ export type TersaUpscaleModel = TersaModel & {
 };
 
 export const upscaleModels: Record<string, TersaUpscaleModel> = {
+  // ========================================
+  // LUPA AI UPSCALERS
+  // Documentation: https://lupaupscaler.gitbook.io/lupaupscaler-docs/api
+  // ========================================
+  
+  'lupa-standard': {
+    label: 'Lupa Standard',
+    chef: providers.unknown, // Lupa AI
+    type: 'image',
+    providers: [
+      {
+        ...providers.unknown,
+        id: 'lupa',
+        name: 'Lupa AI',
+        icon: LupaIcon,
+        model: lupa.standard(),
+        getCost: (props) => {
+          // Prix estimé basé sur le plan
+          const scale = props?.scale || 2;
+          return 0.05 * (scale / 2);
+        },
+      },
+    ],
+    maxScale: 6,
+    supportsEnhanceFace: true,
+    supportsDenoise: false,
+    default: true,
+  },
+
+  'lupa-precision': {
+    label: 'Lupa Precision',
+    chef: providers.unknown, // Lupa AI
+    type: 'image',
+    providers: [
+      {
+        ...providers.unknown,
+        id: 'lupa',
+        name: 'Lupa AI',
+        icon: LupaIcon,
+        model: lupa.precision(),
+        getCost: (props) => {
+          const scale = props?.scale || 2;
+          return 0.08 * (scale / 2);
+        },
+      },
+    ],
+    maxScale: 6,
+    supportsEnhanceFace: true,
+    supportsDenoise: false,
+  },
+
   // ========================================
   // TOPAZ UPSCALERS (via Fal.ai)
   // ========================================
