@@ -1771,3 +1771,55 @@ export const NovitaIcon = (props: SVGProps<SVGSVGElement>) => (
     />
   </svg>
 );
+
+export const WaveSpeedIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <title>WaveSpeed</title>
+    <path
+      d="M2 12C2 12 5 8 9 8C13 8 15 16 19 16C23 16 22 12 22 12"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2 8C2 8 5 4 9 4C13 4 15 12 19 12C23 12 22 8 22 8"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2 16C2 16 5 12 9 12C13 12 15 20 19 20C23 20 22 16 22 16"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const PixverseIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <title>Pixverse</title>
+    <rect x="4" y="4" width="4" height="4" fill="currentColor" />
+    <rect x="10" y="4" width="4" height="4" fill="currentColor" />
+    <rect x="16" y="4" width="4" height="4" fill="currentColor" />
+    <rect x="4" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="10" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="16" y="10" width="4" height="4" fill="currentColor" />
+    <rect x="4" y="16" width="4" height="4" fill="currentColor" />
+    <rect x="10" y="16" width="4" height="4" fill="currentColor" />
+    <rect x="16" y="16" width="4" height="4" fill="currentColor" />
+  </svg>
+);

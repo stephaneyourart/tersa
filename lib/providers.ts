@@ -28,11 +28,13 @@ import {
   NovitaIcon,
   OpenAiIcon,
   PerplexityIcon,
+  PixverseIcon,
   ReplicateIcon,
   RunwayIcon,
   TogetherIcon,
   UnknownIcon,
   VercelIcon,
+  WaveSpeedIcon,
   XaiIcon,
   ZaiIcon,
 } from './icons';
@@ -218,6 +220,16 @@ export const providers = {
     id: 'novita',
     name: 'Novita',
     icon: NovitaIcon,
+  },
+  wavespeed: {
+    id: 'wavespeed',
+    name: 'WaveSpeed',
+    icon: WaveSpeedIcon,
+  },
+  pixverse: {
+    id: 'pixverse',
+    name: 'Pixverse',
+    icon: PixverseIcon,
   },
   unknown: {
     id: 'unknown',

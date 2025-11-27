@@ -1,13 +1,15 @@
-import { ReplicateIcon } from '@/lib/icons';
+import { FalIcon, ReplicateIcon, WaveSpeedIcon } from '@/lib/icons';
 import {
   type TersaModel,
   type TersaProvider,
   providers,
 } from '@/lib/providers';
+import { fal } from './fal';
 import { luma } from './luma';
 import { minimax } from './minimax';
 import { replicate } from './replicate';
 import { runway } from './runway';
+import { wavespeed } from './wavespeed';
 
 const million = 1000000;
 
@@ -293,6 +295,179 @@ export const videoModels: Record<string, TersaVideoModel> = {
 
           return unitCost * duration;
         },
+      },
+    ],
+  },
+
+  // ========================================
+  // NOUVEAUX MODÈLES VIA FAL.AI
+  // ========================================
+
+  'kling-v2.5-standard-fal': {
+    label: 'Kling v2.5 Standard (Fal)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.kling25Standard(false),
+        getCost: ({ duration }) => 0.05 * duration,
+      },
+    ],
+  },
+
+  'kling-v2.5-standard-i2v-fal': {
+    label: 'Kling v2.5 Standard I2V (Fal)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.kling25Standard(true),
+        getCost: ({ duration }) => 0.05 * duration,
+      },
+    ],
+  },
+
+  'kling-v2.5-pro-fal': {
+    label: 'Kling v2.5 Pro (Fal)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.kling25Pro(false),
+        getCost: ({ duration }) => 0.1 * duration,
+      },
+    ],
+  },
+
+  'kling-v2.5-pro-i2v-fal': {
+    label: 'Kling v2.5 Pro I2V (Fal)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.kling25Pro(true),
+        getCost: ({ duration }) => 0.1 * duration,
+      },
+    ],
+  },
+
+  'pixverse-v3.5-t2v': {
+    label: 'Pixverse v3.5 T2V',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.pixverse35(false),
+        getCost: ({ duration }) => 0.04 * duration,
+      },
+    ],
+  },
+
+  'pixverse-v3.5-i2v': {
+    label: 'Pixverse v3.5 I2V',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.pixverse35(true),
+        getCost: ({ duration }) => 0.04 * duration,
+      },
+    ],
+  },
+
+  'mochi-v1': {
+    label: 'Mochi v1',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.mochi(),
+        getCost: ({ duration }) => 0.03 * duration,
+      },
+    ],
+  },
+
+  'hunyuan-video': {
+    label: 'Hunyuan Video',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.hunyuan(),
+        getCost: ({ duration }) => 0.05 * duration,
+      },
+    ],
+  },
+
+  'cogvideox-5b': {
+    label: 'CogVideoX 5B',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        icon: FalIcon,
+        model: fal.cogVideoX(),
+        getCost: ({ duration }) => 0.02 * duration,
+      },
+    ],
+  },
+
+  // ========================================
+  // NOUVEAUX MODÈLES VIA WAVESPEED
+  // ========================================
+
+  'kling-v2.5-turbo-wavespeed': {
+    label: 'Kling v2.5 Turbo (WaveSpeed)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal, // Utilise l'icône fal pour wavespeed pour l'instant
+        model: wavespeed.kling25Turbo(),
+        getCost: ({ duration }) => 0.03 * duration,
+      },
+    ],
+  },
+
+  'seedream-v1': {
+    label: 'Seedream v1',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.seedream(),
+        getCost: ({ duration }) => 0.04 * duration,
+      },
+    ],
+  },
+
+  'wan-2.1': {
+    label: 'Wan 2.1',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.wan21(),
+        getCost: ({ duration }) => 0.03 * duration,
+      },
+    ],
+  },
+
+  'wan-2.1-pro': {
+    label: 'Wan 2.1 Pro',
+    chef: providers.fal,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.wan21Pro(),
+        getCost: ({ duration }) => 0.05 * duration,
       },
     ],
   },

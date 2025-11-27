@@ -4,13 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -n \"Next.js,Supabase,Email,Stripe\" \"next dev --turbopack\" \"npx supabase start\" \"email dev --port 3001\" \"stripe listen --forward-to localhost:3000/api/webhooks/stripe\"",
+    "dev:local": "next dev --turbopack",
+    "init:local": "npx tsx scripts/init-local.ts",
     "bump-deps": "npx npm-check-updates -u && pnpm install",
     "bump-ui": "npx shadcn@latest add --all --overwrite",
     "build": "next build --turbopack",
+    "build:local": "LOCAL_MODE=true next build --turbopack",
     "start": "next start",
     "lint": "next lint",
     "export": "email export",
     "migrate": "npx drizzle-kit push",
+    "migrate:local": "LOCAL_MODE=true npx drizzle-kit push",
     "generate": "npx -y openapi-typescript@latest https://api.us1.bfl.ai/openapi.json -o ./openapi/bfl.d.ts"
   },
   "dependencies": {
@@ -152,6 +156,7 @@
     "prettier": "^3.5.3",
     "react-email": "4.0.16",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5",
     "ultracite": "4.2.10"
   },
