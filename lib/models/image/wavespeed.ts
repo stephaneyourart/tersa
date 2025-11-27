@@ -5,20 +5,21 @@
  */
 
 // Types pour l'API WaveSpeed Image v3
-// Format: provider/model-name (kebab-case basé sur la documentation WaveSpeed)
+// Format basé sur la documentation: https://wavespeed.ai/docs/docs-api/
+// Exemple: google/nano-banana-pro/edit-ultra
 export type WaveSpeedImageModelId =
   // Nano Banana (Google) - Text to Image
-  | 'google/nano-banana-text-to-image'
-  | 'google/nano-banana-pro-text-to-image'
-  | 'google/nano-banana-pro-text-to-image-multi'
-  | 'google/nano-banana-pro-text-to-image-ultra'
+  | 'google/nano-banana/text-to-image'
+  | 'google/nano-banana-pro/text-to-image'
+  | 'google/nano-banana-pro/text-to-image-multi'
+  | 'google/nano-banana-pro/text-to-image-ultra'
   // Nano Banana (Google) - Edit
-  | 'google/nano-banana-edit'
-  | 'google/nano-banana-pro-edit'
-  | 'google/nano-banana-pro-edit-multi'
-  | 'google/nano-banana-pro-edit-ultra'
+  | 'google/nano-banana/edit'
+  | 'google/nano-banana-pro/edit'
+  | 'google/nano-banana-pro/edit-multi'
+  | 'google/nano-banana-pro/edit-ultra'
   // Nano Banana (Google) - Effects
-  | 'google/nano-banana-effects'
+  | 'google/nano-banana/effects'
   // Imagen (Google)
   | 'google/imagen3'
   | 'google/imagen3-fast'
@@ -26,23 +27,23 @@ export type WaveSpeedImageModelId =
   | 'google/imagen4-fast'
   | 'google/imagen4-ultra'
   // Gemini (Google)
-  | 'google/gemini-2.5-flash-image-text-to-image'
-  | 'google/gemini-2.5-flash-image-edit'
-  | 'google/gemini-3-pro-image-text-to-image'
-  | 'google/gemini-3-pro-image-edit'
+  | 'google/gemini-2.5-flash-image/text-to-image'
+  | 'google/gemini-2.5-flash-image/edit'
+  | 'google/gemini-3-pro-image/text-to-image'
+  | 'google/gemini-3-pro-image/edit'
   // Flux (WaveSpeed)
   | 'wavespeed-ai/flux-dev'
-  | 'wavespeed-ai/flux-dev-ultra-fast'
+  | 'wavespeed-ai/flux-dev/ultra-fast'
   | 'wavespeed-ai/flux-schnell'
   | 'wavespeed-ai/flux-1.1-pro'
   | 'wavespeed-ai/flux-1.1-pro-ultra'
   | 'wavespeed-ai/flux-kontext-dev'
   | 'wavespeed-ai/flux-kontext-pro'
   | 'wavespeed-ai/flux-kontext-max'
-  | 'wavespeed-ai/flux-2-dev-text-to-image'
-  | 'wavespeed-ai/flux-2-pro-text-to-image'
+  | 'wavespeed-ai/flux-2-dev/text-to-image'
+  | 'wavespeed-ai/flux-2-pro/text-to-image'
   // Qwen Image
-  | 'wavespeed-ai/qwen-image-text-to-image'
+  | 'wavespeed-ai/qwen-image/text-to-image'
   | 'wavespeed-ai/qwen-image-edit'
   | 'wavespeed-ai/qwen-image-edit-plus'
   // Hunyuan
@@ -275,22 +276,23 @@ export function getAspectRatioSize(ratio: WaveSpeedAspectRatio): { width: number
 export const wavespeedImage = {
   // ========================================
   // NANO BANANA (Google) - Text to Image
+  // Docs: https://wavespeed.ai/docs/docs-api/google/
   // ========================================
-  nanoBanana: () => createTextToImageModel('google/nano-banana-text-to-image'),
-  nanoBananaPro: () => createTextToImageModel('google/nano-banana-pro-text-to-image'),
-  nanoBananaProMulti: () => createTextToImageModel('google/nano-banana-pro-text-to-image-multi'),
-  nanoBananaProUltra: () => createTextToImageModel('google/nano-banana-pro-text-to-image-ultra'),
+  nanoBanana: () => createTextToImageModel('google/nano-banana/text-to-image'),
+  nanoBananaPro: () => createTextToImageModel('google/nano-banana-pro/text-to-image'),
+  nanoBananaProMulti: () => createTextToImageModel('google/nano-banana-pro/text-to-image-multi'),
+  nanoBananaProUltra: () => createTextToImageModel('google/nano-banana-pro/text-to-image-ultra'),
   
   // ========================================
   // NANO BANANA (Google) - Edit
   // ========================================
-  nanoBananaEdit: () => createEditModel('google/nano-banana-edit'),
-  nanoBananaProEdit: () => createEditModel('google/nano-banana-pro-edit'),
-  nanoBananaProEditMulti: () => createEditModel('google/nano-banana-pro-edit-multi'),
-  nanoBananaProEditUltra: () => createEditModel('google/nano-banana-pro-edit-ultra'),
+  nanoBananaEdit: () => createEditModel('google/nano-banana/edit'),
+  nanoBananaProEdit: () => createEditModel('google/nano-banana-pro/edit'),
+  nanoBananaProEditMulti: () => createEditModel('google/nano-banana-pro/edit-multi'),
+  nanoBananaProEditUltra: () => createEditModel('google/nano-banana-pro/edit-ultra'),
   
   // Effects
-  nanoBananaEffects: () => createEditModel('google/nano-banana-effects'),
+  nanoBananaEffects: () => createEditModel('google/nano-banana/effects'),
 
   // ========================================
   // IMAGEN (Google)
@@ -304,29 +306,29 @@ export const wavespeedImage = {
   // ========================================
   // GEMINI (Google)
   // ========================================
-  gemini25FlashText2Img: () => createTextToImageModel('google/gemini-2.5-flash-image-text-to-image'),
-  gemini25FlashEdit: () => createEditModel('google/gemini-2.5-flash-image-edit'),
-  gemini3ProText2Img: () => createTextToImageModel('google/gemini-3-pro-image-text-to-image'),
-  gemini3ProEdit: () => createEditModel('google/gemini-3-pro-image-edit'),
+  gemini25FlashText2Img: () => createTextToImageModel('google/gemini-2.5-flash-image/text-to-image'),
+  gemini25FlashEdit: () => createEditModel('google/gemini-2.5-flash-image/edit'),
+  gemini3ProText2Img: () => createTextToImageModel('google/gemini-3-pro-image/text-to-image'),
+  gemini3ProEdit: () => createEditModel('google/gemini-3-pro-image/edit'),
 
   // ========================================
   // FLUX (WaveSpeed)
   // ========================================
   fluxDev: () => createTextToImageModel('wavespeed-ai/flux-dev'),
-  fluxDevUltraFast: () => createTextToImageModel('wavespeed-ai/flux-dev-ultra-fast'),
+  fluxDevUltraFast: () => createTextToImageModel('wavespeed-ai/flux-dev/ultra-fast'),
   fluxSchnell: () => createTextToImageModel('wavespeed-ai/flux-schnell'),
   flux11Pro: () => createTextToImageModel('wavespeed-ai/flux-1.1-pro'),
   flux11ProUltra: () => createTextToImageModel('wavespeed-ai/flux-1.1-pro-ultra'),
   fluxKontextDev: () => createEditModel('wavespeed-ai/flux-kontext-dev'),
   fluxKontextPro: () => createEditModel('wavespeed-ai/flux-kontext-pro'),
   fluxKontextMax: () => createEditModel('wavespeed-ai/flux-kontext-max'),
-  flux2DevText2Img: () => createTextToImageModel('wavespeed-ai/flux-2-dev-text-to-image'),
-  flux2ProText2Img: () => createTextToImageModel('wavespeed-ai/flux-2-pro-text-to-image'),
+  flux2DevText2Img: () => createTextToImageModel('wavespeed-ai/flux-2-dev/text-to-image'),
+  flux2ProText2Img: () => createTextToImageModel('wavespeed-ai/flux-2-pro/text-to-image'),
 
   // ========================================
   // QWEN IMAGE
   // ========================================
-  qwenText2Img: () => createTextToImageModel('wavespeed-ai/qwen-image-text-to-image'),
+  qwenText2Img: () => createTextToImageModel('wavespeed-ai/qwen-image/text-to-image'),
   qwenEdit: () => createEditModel('wavespeed-ai/qwen-image-edit'),
   qwenEditPlus: () => createEditModel('wavespeed-ai/qwen-image-edit-plus'),
 
