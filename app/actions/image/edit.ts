@@ -16,6 +16,31 @@ import {
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import OpenAI, { toFile } from 'openai';
+import fs from 'fs';
+import path from 'path';
+
+// Convertit une URL relative en contenu (pour les fichiers locaux)
+async function fetchImageContent(url: string): Promise<{ blob: Blob; buffer: Buffer }> {
+  // Si c'est une URL locale /api/storage/...
+  if (url.startsWith('/api/storage/')) {
+    const relativePath = url.replace('/api/storage/', '');
+    const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+    const filePath = path.join(storagePath, relativePath);
+    
+    if (fs.existsSync(filePath)) {
+      const buffer = fs.readFileSync(filePath);
+      const blob = new Blob([buffer]);
+      return { blob, buffer };
+    }
+  }
+  
+  // Sinon, fetch normal (URL absolue)
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const blob = new Blob([buffer]);
+  return { blob, buffer };
+}
 
 type EditImageActionProps = {
   images: {
@@ -44,8 +69,7 @@ const generateGptImage1Image = async ({
   const openai = new OpenAI();
   const promptImages = await Promise.all(
     images.map(async (image) => {
-      const response = await fetch(image.url);
-      const blob = await response.blob();
+      const { blob } = await fetchImageContent(image.url);
 
       return toFile(blob, nanoid(), {
         type: image.type,
@@ -140,9 +164,8 @@ export const editImageAction = async ({
 
       image = generatedImageResponse.image;
     } else {
-      const base64Image = await fetch(images[0].url)
-        .then((res) => res.arrayBuffer())
-        .then((buffer) => Buffer.from(buffer).toString('base64'));
+      const { buffer } = await fetchImageContent(images[0].url);
+      const base64Image = buffer.toString('base64');
 
       const generatedImageResponse = await generateImage({
         model: provider.model,

@@ -10,6 +10,27 @@ import { isLocalProject, getLocalProject } from '@/lib/local-project';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
 import { eq } from 'drizzle-orm';
+import fs from 'fs';
+import path from 'path';
+
+// Lit le contenu d'une image (locale ou distante)
+async function readImageContent(url: string): Promise<Buffer> {
+  // Si c'est une URL locale /api/storage/...
+  if (url.startsWith('/api/storage/')) {
+    const relativePath = url.replace('/api/storage/', '');
+    const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+    const filePath = path.join(storagePath, relativePath);
+    
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath);
+    }
+  }
+  
+  // Sinon, fetch normal (URL absolue)
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
 
 type GenerateVideoActionProps = {
   modelId: string;
@@ -48,13 +69,11 @@ export const generateVideoAction = async ({
 
     let firstFrameImage = images.at(0)?.url;
 
-    if (firstFrameImage && process.env.NODE_ENV !== 'production') {
-      const response = await fetch(firstFrameImage);
-      const blob = await response.blob();
-      const uint8Array = new Uint8Array(await blob.arrayBuffer());
-      const base64 = Buffer.from(uint8Array).toString('base64');
-
-      firstFrameImage = `data:${images.at(0)?.type};base64,${base64}`;
+    // Convertir l'image en base64 si nécessaire (pour les APIs qui ne supportent pas les URLs)
+    if (firstFrameImage) {
+      const buffer = await readImageContent(firstFrameImage);
+      const base64 = buffer.toString('base64');
+      firstFrameImage = `data:${images.at(0)?.type || 'image/jpeg'};base64,${base64}`;
     }
 
     const url = await provider.model.generate({

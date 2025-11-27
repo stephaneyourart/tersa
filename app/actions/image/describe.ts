@@ -47,7 +47,7 @@ export const describeAction = async (
     let parsedUrl = url;
 
     // En mode local avec URL relative, lire le fichier directement
-    if (isLocalMode && url.startsWith('/api/storage/')) {
+    if (url.startsWith('/api/storage/')) {
       const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
       // /api/storage/images/filename.jpg -> storage/images/filename.jpg
       const relativePath = url.replace('/api/storage/', '');
@@ -58,11 +58,9 @@ export const describeAction = async (
       const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
       
       parsedUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
-    } else if (process.env.NODE_ENV !== 'production') {
-      const response = await fetch(url);
-      const blob = await response.blob();
-
-      parsedUrl = `data:${blob.type};base64,${Buffer.from(await blob.arrayBuffer()).toString('base64')}`;
+    } else if (!url.startsWith('http') && process.env.NODE_ENV !== 'production') {
+      // URL relative non-locale - ne devrait pas arriver mais on gère
+      console.warn('URL relative non supportée:', url);
     }
 
     const response = await openai.chat.completions.create({
