@@ -43,6 +43,7 @@ export const ImagePrimitive = ({
       const [file] = files;
       const { url, type } = await uploadFile(file, 'files');
 
+      // Mettre à jour le node avec l'image immédiatement
       updateNodeData(id, {
         content: {
           url,
@@ -50,15 +51,20 @@ export const ImagePrimitive = ({
         },
       });
 
-      const description = await describeAction(url, project?.id);
-
-      if ('error' in description) {
-        throw new Error(description.error);
+      // Essayer de décrire l'image (optionnel - ne bloque pas si ça échoue)
+      try {
+        const description = await describeAction(url, project?.id);
+        if (!('error' in description)) {
+          updateNodeData(id, {
+            description: description.description,
+          });
+        } else {
+          console.warn('Description auto désactivée:', description.error);
+        }
+      } catch (descError) {
+        // La description a échoué mais l'image est uploadée - c'est OK
+        console.warn('Description auto échouée (OpenAI quota?):', descError);
       }
-
-      updateNodeData(id, {
-        description: description.description,
-      });
     } catch (error) {
       handleError('Error uploading image', error);
     } finally {
