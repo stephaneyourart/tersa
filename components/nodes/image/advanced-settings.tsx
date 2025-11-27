@@ -19,12 +19,12 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { WAVESPEED_ASPECT_RATIOS, type WaveSpeedAspectRatio } from '@/lib/models/image/wavespeed';
+import { ASPECT_RATIOS, type AspectRatio } from '@/lib/models/image/aspect-ratio';
 import { Settings2Icon } from 'lucide-react';
 import { useState } from 'react';
 
 export type ImageAdvancedSettings = {
-  aspectRatio: WaveSpeedAspectRatio;
+  aspectRatio: AspectRatio;
   width?: number;
   height?: number;
   seed?: number;
@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS: ImageAdvancedSettings = {
   strength: 0.8,
 };
 
-const ASPECT_RATIO_LABELS: Record<WaveSpeedAspectRatio, string> = {
+const ASPECT_RATIO_LABELS: Record<AspectRatio, string> = {
   '1:1': '1:1 (Carré)',
   '16:9': '16:9 (Paysage)',
   '9:16': '9:16 (Portrait)',
@@ -132,7 +132,7 @@ export function AdvancedSettingsPanel({
           <div className="space-y-2">
             <Label htmlFor="aspect-ratio">Format d'image</Label>
             <div className="grid grid-cols-3 gap-2">
-              {WAVESPEED_ASPECT_RATIOS.map((ratio) => (
+              {ASPECT_RATIOS.map((ratio) => (
                 <Button
                   key={ratio}
                   variant={localSettings.aspectRatio === ratio ? 'default' : 'outline'}

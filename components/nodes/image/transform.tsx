@@ -32,7 +32,7 @@ import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
-import { getAspectRatioSize } from '@/lib/models/image/wavespeed';
+import { getAspectRatioSize } from '@/lib/models/image/aspect-ratio';
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
