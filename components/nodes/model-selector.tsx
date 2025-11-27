@@ -94,10 +94,20 @@ const getCostBracketLabel = (bracket: PriceBracket) => {
   }
 };
 
+// Vérifie si on est en mode local
+const isLocalMode = typeof window !== 'undefined' 
+  ? window.location.pathname.startsWith('/local')
+  : false;
+
 const getModelDisabled = (
   model: TersaModel,
   plan: SubscriptionContextType['plan']
 ) => {
+  // En mode local, tous les modèles sont accessibles
+  if (isLocalMode) {
+    return model.disabled === true;
+  }
+
   if (model.disabled) {
     return true;
   }
