@@ -18,6 +18,10 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { NodeToolbar } from './toolbar';
+import { BatchRunsControl } from './batch-runs-control';
+
+// Types de nodes qui supportent le batch/runs parallèles
+const BATCH_SUPPORTED_TYPES = ['image', 'video', 'audio', 'generate-image', 'generate-video'];
 
 type NodeLayoutProps = {
   children: ReactNode;
@@ -34,6 +38,7 @@ type NodeLayoutProps = {
     children: ReactNode;
   }[];
   className?: string;
+  onBatchRun?: (count: number) => void;
 };
 
 export const NodeLayout = ({
@@ -44,10 +49,55 @@ export const NodeLayout = ({
   toolbar,
   title,
   className,
+  onBatchRun,
 }: NodeLayoutProps) => {
-  const { deleteElements, setCenter, getNode, updateNode } = useReactFlow();
+  const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const [showData, setShowData] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Vérifie si ce type de node supporte le batch
+  const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
+
+  // Handler pour le batch run
+  const handleBatchRun = async (count: number) => {
+    if (onBatchRun) {
+      // Utiliser le callback fourni par le composant parent
+      onBatchRun(count);
+    } else {
+      // Comportement par défaut: dupliquer le node N-1 fois
+      const currentNode = getNode(id);
+      if (!currentNode) return;
+
+      const edges = getEdges().filter(e => e.target === id || e.source === id);
+      
+      for (let i = 1; i < count; i++) {
+        const newNodeId = `${id}-batch-${i}-${Date.now()}`;
+        const offsetY = (currentNode.measured?.height ?? 200) + 50;
+        
+        // Dupliquer le node
+        addNodes({
+          ...currentNode,
+          id: newNodeId,
+          position: {
+            x: currentNode.position.x,
+            y: currentNode.position.y + (offsetY * i),
+          },
+          selected: false,
+        });
+
+        // Dupliquer les connections
+        for (const edge of edges) {
+          addEdges({
+            ...edge,
+            id: `${edge.id}-batch-${i}`,
+            source: edge.source === id ? newNodeId : edge.source,
+            target: edge.target === id ? newNodeId : edge.target,
+          });
+        }
+      }
+    }
+  };
 
   const handleFocus = () => {
     const node = getNode(id);
@@ -102,7 +152,11 @@ export const NodeLayout = ({
       )}
       <ContextMenu onOpenChange={handleSelect}>
         <ContextMenuTrigger>
-          <div className="relative size-full h-auto w-sm">
+          <div 
+            className="relative size-full h-auto w-sm"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+          >
             {type !== 'drop' && (
               <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 items-center justify-between">
                 <p className="font-mono text-muted-foreground text-xs tracking-tighter">
@@ -120,6 +174,16 @@ export const NodeLayout = ({
                 {children}
               </div>
             </div>
+            
+            {/* Contrôle des runs parallèles (comme Flora AI) */}
+            {supportsBatch && (
+              <BatchRunsControl
+                nodeId={id}
+                isVisible={isHovered}
+                onRun={handleBatchRun}
+                maxRuns={10}
+              />
+            )}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
