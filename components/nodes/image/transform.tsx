@@ -23,6 +23,7 @@ import {
   type ChangeEventHandler,
   type ComponentProps,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -57,10 +58,25 @@ export const ImageTransform = ({
 }: ImageTransformProps) => {
   const { updateNodeData, getNodes, getEdges } = useReactFlow();
   const [loading, setLoading] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [advancedSettings, setAdvancedSettings] = useState<ImageAdvancedSettings>(
     data.advancedSettings ?? DEFAULT_SETTINGS
   );
   const project = useProject();
+
+  // Timer pour afficher le temps écoulé pendant la génération
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (loading) {
+      setElapsedTime(0);
+      interval = setInterval(() => {
+        setElapsedTime((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading]);
   const hasIncomingImageNodes =
     getImagesFromImageNodes(getIncomers({ id }, getNodes(), getEdges()))
       .length > 0;
@@ -289,13 +305,22 @@ export const ImageTransform = ({
     <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar}>
       {loading && (
         <Skeleton
-          className="flex w-full animate-pulse items-center justify-center rounded-b-xl"
+          className="flex w-full animate-pulse items-center justify-center rounded-b-xl flex-col gap-2"
           style={{ aspectRatio }}
         >
           <Loader2Icon
-            size={16}
-            className="size-4 animate-spin text-muted-foreground"
+            size={24}
+            className="size-6 animate-spin text-muted-foreground"
           />
+          <div className="text-center">
+            <p className="text-sm font-medium text-muted-foreground">
+              Génération en cours...
+            </p>
+            <p className="text-xs text-muted-foreground/70">
+              {elapsedTime}s
+              {elapsedTime > 10 && " • Les modèles 4K peuvent prendre ~60-90s"}
+            </p>
+          </div>
         </Skeleton>
       )}
       {!loading && !data.generated?.url && (

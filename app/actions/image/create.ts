@@ -207,8 +207,16 @@ export const generateImageAction = async ({
       const result = await generateWaveSpeedImage(modelId, prompt, instructions, size);
       
       // Télécharger l'image depuis l'URL WaveSpeed
+      console.log(`[WaveSpeed] Téléchargement de l'image: ${result.url}`);
       const response = await fetch(result.url);
+      
+      if (!response.ok) {
+        console.error(`[WaveSpeed] Erreur téléchargement: ${response.status} ${response.statusText}`);
+        throw new Error(`Erreur téléchargement image: ${response.status}`);
+      }
+      
       const arrayBuffer = await response.arrayBuffer();
+      console.log(`[WaveSpeed] Image téléchargée: ${arrayBuffer.byteLength} bytes`);
       imageBuffer = Buffer.from(arrayBuffer);
       mediaType = result.mediaType;
 
