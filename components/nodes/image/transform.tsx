@@ -284,7 +284,7 @@ export const ImageTransform = ({
     updateNodeData,
     selectedModel?.sizes,
     selectedModel?.supportsEdit,
-    size,
+    sizeFromAspectRatio,
     loading,
     data.generated,
     data.updatedAt,
@@ -294,13 +294,9 @@ export const ImageTransform = ({
   ]);
 
   const aspectRatio = useMemo(() => {
-    if (!data.size) {
-      return '1/1';
-    }
-
-    const [width, height] = data.size.split('x').map(Number);
+    const { width, height } = getAspectRatioSize(advancedSettings.aspectRatio);
     return `${width}/${height}`;
-  }, [data.size]);
+  }, [advancedSettings.aspectRatio]);
 
   return (
     <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar}>
