@@ -182,7 +182,8 @@ export const NodeLayout = ({
 
   return (
     <>
-      {type !== 'drop' && Boolean(toolbar?.length) && (
+      {/* Toolbar visible au hover seulement */}
+      {type !== 'drop' && Boolean(toolbar?.length) && showBatchControl && (
         <NodeToolbar id={id} items={toolbar} />
       )}
       {type !== 'file' && type !== 'tweet' && (
@@ -196,30 +197,10 @@ export const NodeLayout = ({
             onMouseLeave={handleNodeMouseLeave}
           >
             {type !== 'drop' && (
-              <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 flex-col gap-1">
+              <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 items-center justify-between">
                 <p className="font-mono text-muted-foreground text-xs tracking-tighter">
                   {title}
                 </p>
-                {/* Chips model/params au hover */}
-                {showBatchControl && (modelLabel || data?.advancedSettings) && (
-                  <div className="flex flex-wrap gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                    {modelLabel && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
-                        {modelLabel}
-                      </span>
-                    )}
-                    {data?.advancedSettings?.width && data?.advancedSettings?.height && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                        {data.advancedSettings.width}×{data.advancedSettings.height}
-                      </span>
-                    )}
-                    {data?.advancedSettings?.quality && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                        {data.advancedSettings.quality}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
             )}
             <div
