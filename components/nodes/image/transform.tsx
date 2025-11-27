@@ -278,8 +278,13 @@ export const ImageTransform = ({
 
     // ÉTAPE 2: Préparer les jobs pour l'API batch
     // Extraire le modèle WaveSpeed path depuis le modelId
-    const modelPath = selectedModel?.providers?.[0]?.model || modelId;
+    // Le model est un objet { modelId, isEdit, generate } - on veut modelId
+    const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
+    const modelPath = modelObj?.modelId || modelId;
     const isEdit = imageNodes.length > 0;
+    
+    console.log(`[Batch] Model object:`, modelObj);
+    console.log(`[Batch] Extracted model path: ${modelPath}`);
     
     const jobs = nodeIds.map((nodeId) => ({
       nodeId,
