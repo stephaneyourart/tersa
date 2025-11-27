@@ -96,26 +96,13 @@ const getCostBracketLabel = (bracket: PriceBracket) => {
 
 const getModelDisabled = (
   model: TersaModel,
-  plan: SubscriptionContextType['plan'],
-  isLocalMode: boolean
+  _plan: SubscriptionContextType['plan'],
+  _isLocalMode: boolean
 ) => {
-  // FORCE: En mode local, JAMAIS désactiver (sauf si vraiment disabled)
-  if (isLocalMode || process.env.NEXT_PUBLIC_LOCAL_MODE === 'true') {
-    return model.disabled === true;
-  }
-
-  if (model.disabled) {
-    return true;
-  }
-
-  if (
-    (!plan || plan === 'hobby') &&
-    (model.priceIndicator === 'highest' || model.priceIndicator === 'high')
-  ) {
-    return true;
-  }
-
-  return false;
+  // MODE LOCAL: Tous les modèles sont toujours accessibles
+  // On ignore complètement le plan et le priceIndicator
+  // Seuls les modèles explicitement marqués disabled:true sont grisés
+  return model.disabled === true;
 };
 
 const CommandGroupHeading = ({ data }: { data: TersaProvider }) => (
@@ -242,7 +229,7 @@ export const ModelSelector = ({
                       onChange?.(id);
                       setOpen(false);
                     }}
-                    disabled={getModelDisabled(model, plan, isLocalMode)}
+                    disabled={false}
                     className={cn(
                       value === id &&
                         'bg-primary text-primary-foreground data-[selected=true]:bg-primary/80 data-[selected=true]:text-primary-foreground'

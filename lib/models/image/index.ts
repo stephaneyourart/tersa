@@ -599,8 +599,24 @@ export const imageModels: Record<string, TersaImageModel> = {
   },
 
   // ========================================
-  // MODÈLES WAVESPEED
+  // MODÈLES WAVESPEED - NANO BANANA
   // ========================================
+
+  'nano-banana-wavespeed': {
+    label: 'Nano Banana (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBanana() as unknown as ImageModel,
+        getCost: () => 0.006,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344', '1152x896', '896x1152'],
+    priceIndicator: 'lowest',
+  },
 
   'nano-banana-pro-wavespeed': {
     label: 'Nano Banana Pro (WaveSpeed)',
@@ -611,28 +627,276 @@ export const imageModels: Record<string, TersaImageModel> = {
         ...providers.wavespeed,
         icon: WaveSpeedIcon,
         model: wavespeedImage.nanoBananaPro() as unknown as ImageModel,
-        // Ultra rapide et économique
         getCost: () => 0.008,
       },
     ],
-    sizes: ['1024x1024', '1024x768', '768x1024', '1536x1024', '1024x1536'],
+    sizes: ['1024x1024', '1344x768', '768x1344', '1152x896', '896x1152'],
     priceIndicator: 'low',
   },
 
-  'seedream-wavespeed': {
-    label: 'Seedream 3.0 (WaveSpeed)',
+  'nano-banana-pro-multi-wavespeed': {
+    label: 'Nano Banana Pro Multi (WaveSpeed)',
     chef: providers.wavespeed,
     icon: WaveSpeedIcon,
     providers: [
       {
         ...providers.wavespeed,
         icon: WaveSpeedIcon,
-        model: wavespeedImage.seedream() as unknown as ImageModel,
+        model: wavespeedImage.nanoBananaProMulti() as unknown as ImageModel,
+        getCost: () => 0.012,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'nano-banana-pro-ultra-wavespeed': {
+    label: 'Nano Banana Pro Ultra (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaProUltra() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344', '2048x2048'],
+  },
+
+  'nano-banana-edit-wavespeed': {
+    label: 'Nano Banana Edit (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaEdit() as unknown as ImageModel,
+        getCost: () => 0.008,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'nano-banana-pro-edit-wavespeed': {
+    label: 'Nano Banana Pro Edit (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaProEdit() as unknown as ImageModel,
+        getCost: () => 0.01,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'nano-banana-pro-edit-multi-wavespeed': {
+    label: 'Nano Banana Pro Edit Multi (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaProEditMulti() as unknown as ImageModel,
         getCost: () => 0.015,
       },
     ],
-    sizes: ['1024x1024', '1024x768', '768x1024'],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
   },
+
+  'nano-banana-pro-edit-ultra-wavespeed': {
+    label: 'Nano Banana Pro Edit Ultra (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaProEditUltra() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344', '2048x2048'],
+  },
+
+  'nano-banana-effects-wavespeed': {
+    label: 'Nano Banana Effects (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.nanoBananaEffects() as unknown as ImageModel,
+        getCost: () => 0.01,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - IMAGEN (Google)
+  // ========================================
+
+  'imagen3-wavespeed': {
+    label: 'Imagen 3 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.imagen3() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'imagen3-fast-wavespeed': {
+    label: 'Imagen 3 Fast (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.imagen3Fast() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'imagen4-wavespeed': {
+    label: 'Imagen 4 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.imagen4() as unknown as ImageModel,
+        getCost: () => 0.05,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344', '2048x2048'],
+  },
+
+  'imagen4-fast-wavespeed': {
+    label: 'Imagen 4 Fast (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.imagen4Fast() as unknown as ImageModel,
+        getCost: () => 0.03,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'imagen4-ultra-wavespeed': {
+    label: 'Imagen 4 Ultra (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.imagen4Ultra() as unknown as ImageModel,
+        getCost: () => 0.08,
+      },
+    ],
+    sizes: ['1024x1024', '2048x2048', '4096x4096'],
+    priceIndicator: 'high',
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - GEMINI
+  // ========================================
+
+  'gemini-2.5-flash-wavespeed': {
+    label: 'Gemini 2.5 Flash (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.gemini25FlashText2Img() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'gemini-2.5-flash-edit-wavespeed': {
+    label: 'Gemini 2.5 Flash Edit (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.gemini25FlashEdit() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'gemini-3-pro-wavespeed': {
+    label: 'Gemini 3 Pro (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.gemini3ProText2Img() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'gemini-3-pro-edit-wavespeed': {
+    label: 'Gemini 3 Pro Edit (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.gemini3ProEdit() as unknown as ImageModel,
+        getCost: () => 0.05,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - FLUX
+  // ========================================
 
   'flux-dev-wavespeed': {
     label: 'FLUX Dev (WaveSpeed)',
@@ -646,8 +910,24 @@ export const imageModels: Record<string, TersaImageModel> = {
         getCost: () => 0.02,
       },
     ],
-    sizes: ['1024x1024', '1024x768', '768x1024'],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
     priceIndicator: 'low',
+  },
+
+  'flux-dev-ultra-fast-wavespeed': {
+    label: 'FLUX Dev Ultra Fast (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxDevUltraFast() as unknown as ImageModel,
+        getCost: () => 0.015,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'lowest',
   },
 
   'flux-schnell-wavespeed': {
@@ -659,27 +939,275 @@ export const imageModels: Record<string, TersaImageModel> = {
         ...providers.wavespeed,
         icon: WaveSpeedIcon,
         model: wavespeedImage.fluxSchnell() as unknown as ImageModel,
-        // Ultra rapide
         getCost: () => 0.003,
       },
     ],
-    sizes: ['1024x1024', '1024x768', '768x1024'],
-    priceIndicator: 'low',
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'lowest',
   },
 
-  'sdxl-turbo-wavespeed': {
-    label: 'SDXL Turbo (WaveSpeed)',
+  'flux-1.1-pro-wavespeed': {
+    label: 'FLUX 1.1 Pro (WaveSpeed)',
     chef: providers.wavespeed,
     icon: WaveSpeedIcon,
     providers: [
       {
         ...providers.wavespeed,
         icon: WaveSpeedIcon,
-        model: wavespeedImage.sdxlTurbo() as unknown as ImageModel,
-        getCost: () => 0.005,
+        model: wavespeedImage.flux11Pro() as unknown as ImageModel,
+        getCost: () => 0.04,
       },
     ],
-    sizes: ['1024x1024', '512x512'],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'flux-1.1-pro-ultra-wavespeed': {
+    label: 'FLUX 1.1 Pro Ultra (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.flux11ProUltra() as unknown as ImageModel,
+        getCost: () => 0.06,
+      },
+    ],
+    sizes: ['1024x1024', '2048x2048'],
+    priceIndicator: 'high',
+  },
+
+  'flux-kontext-dev-wavespeed': {
+    label: 'FLUX Kontext Dev (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxKontextDev() as unknown as ImageModel,
+        getCost: () => 0.03,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'flux-kontext-pro-wavespeed': {
+    label: 'FLUX Kontext Pro (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxKontextPro() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'flux-kontext-max-wavespeed': {
+    label: 'FLUX Kontext Max (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxKontextMax() as unknown as ImageModel,
+        getCost: () => 0.08,
+      },
+    ],
+    sizes: ['1024x1024', '2048x2048'],
+    priceIndicator: 'high',
+  },
+
+  'flux-2-dev-wavespeed': {
+    label: 'FLUX 2 Dev (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.flux2DevText2Img() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'flux-2-pro-wavespeed': {
+    label: 'FLUX 2 Pro (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.flux2ProText2Img() as unknown as ImageModel,
+        getCost: () => 0.05,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - QWEN
+  // ========================================
+
+  'qwen-text2img-wavespeed': {
+    label: 'Qwen Text to Image (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.qwenText2Img() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'qwen-edit-wavespeed': {
+    label: 'Qwen Edit (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.qwenEdit() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'qwen-edit-plus-wavespeed': {
+    label: 'Qwen Edit Plus (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.qwenEditPlus() as unknown as ImageModel,
+        getCost: () => 0.04,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - HUNYUAN
+  // ========================================
+
+  'hunyuan-2.1-wavespeed': {
+    label: 'Hunyuan 2.1 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.hunyuan21() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'hunyuan-3-wavespeed': {
+    label: 'Hunyuan 3 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.hunyuan3() as unknown as ImageModel,
+        getCost: () => 0.03,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - STABILITY AI
+  // ========================================
+
+  'sdxl-wavespeed': {
+    label: 'SDXL (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.sdxl() as unknown as ImageModel,
+        getCost: () => 0.01,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'lowest',
+  },
+
+  'sd3-wavespeed': {
+    label: 'Stable Diffusion 3 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.sd3() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+    priceIndicator: 'low',
+  },
+
+  'sd35-large-wavespeed': {
+    label: 'SD 3.5 Large (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.sd35Large() as unknown as ImageModel,
+        getCost: () => 0.035,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
+  'sd35-large-turbo-wavespeed': {
+    label: 'SD 3.5 Large Turbo (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.sd35LargeTurbo() as unknown as ImageModel,
+        getCost: () => 0.02,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
     priceIndicator: 'low',
   },
 };
