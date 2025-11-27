@@ -92,8 +92,18 @@ export type WaveSpeedEditParams = {
 };
 
 type WaveSpeedResponse = {
+  code?: number;
+  message?: string;
   data?: {
     id?: string;
+    model?: string;
+    outputs?: string[]; // URLs des images générées
+    urls?: {
+      get?: string; // URL pour polling
+    };
+    status?: string; // created, processing, completed, failed
+    error?: string;
+    // Anciennes structures pour compatibilité
     images?: Array<{ url: string }>;
     image?: { url: string };
     output?: string | string[];
@@ -101,7 +111,6 @@ type WaveSpeedResponse = {
   id?: string;
   status?: string;
   error?: string;
-  message?: string;
 };
 
 /**
@@ -142,79 +151,92 @@ async function callWaveSpeedApi(
   }
 
   const responseData: WaveSpeedResponse = await submitResponse.json();
-  console.log(`[WaveSpeed] Réponse:`, JSON.stringify(responseData).slice(0, 200));
+  console.log(`[WaveSpeed] Réponse:`, JSON.stringify(responseData).slice(0, 300));
   
-  // Si la réponse contient directement les images
+  // Vérifier si la génération a réussi immédiatement
+  if (responseData.data?.outputs && responseData.data.outputs.length > 0) {
+    console.log(`[WaveSpeed] Image générée immédiatement:`, responseData.data.outputs[0]);
+    return responseData.data.outputs[0];
+  }
+  
+  // Anciennes structures pour compatibilité
   if (responseData.data?.images?.[0]?.url) {
     return responseData.data.images[0].url;
   }
   if (responseData.data?.image?.url) {
     return responseData.data.image.url;
   }
-  if (responseData.data?.output) {
-    const output = responseData.data.output;
-    if (Array.isArray(output) && output[0]) {
-      return output[0];
-    }
-    if (typeof output === 'string') {
-      return output;
-    }
-  }
 
   // Sinon, on a un ID et on doit faire du polling
   const requestId = responseData.data?.id || responseData.id;
+  const pollingUrl = responseData.data?.urls?.get;
   
-  if (!requestId) {
+  if (!requestId && !pollingUrl) {
     console.error(`[WaveSpeed] Réponse complète:`, JSON.stringify(responseData));
     throw new Error('Pas d\'ID de requête retourné');
   }
 
   console.log(`[WaveSpeed] Polling pour requestId: ${requestId}`);
+  console.log(`[WaveSpeed] URL de polling: ${pollingUrl || `${baseUrl}/predictions/${requestId}/result`}`);
 
-  // Polling pour le résultat
+  // Polling pour le résultat (intervalle de 2 secondes)
   let attempts = 0;
-  const maxAttempts = 120; // 10 minutes max
+  const maxAttempts = 150; // 5 minutes max (150 * 2s)
 
   while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const statusResponse = await fetch(`${baseUrl}/predictions/${requestId}/result`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-    });
+    const pollUrl = pollingUrl || `${baseUrl}/predictions/${requestId}/result`;
+    
+    try {
+      const statusResponse = await fetch(pollUrl, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+        },
+      });
 
-    if (!statusResponse.ok) {
-      attempts++;
-      continue;
-    }
-
-    const statusData: WaveSpeedResponse = await statusResponse.json();
-
-    if (statusData.data?.images?.[0]?.url) {
-      return statusData.data.images[0].url;
-    }
-    if (statusData.data?.image?.url) {
-      return statusData.data.image.url;
-    }
-    if (statusData.data?.output) {
-      const output = statusData.data.output;
-      if (Array.isArray(output) && output[0]) {
-        return output[0];
+      if (!statusResponse.ok) {
+        console.log(`[WaveSpeed] Polling attempt ${attempts + 1}: HTTP ${statusResponse.status}`);
+        attempts++;
+        continue;
       }
-      if (typeof output === 'string') {
-        return output;
-      }
-    }
 
-    if (statusData.status === 'failed') {
-      throw new Error(statusData.error || statusData.message || 'Génération échouée');
+      const statusData: WaveSpeedResponse = await statusResponse.json();
+      console.log(`[WaveSpeed] Polling attempt ${attempts + 1}:`, JSON.stringify(statusData).slice(0, 200));
+
+      // Vérifier outputs (format WaveSpeed v3)
+      if (statusData.data?.outputs && statusData.data.outputs.length > 0) {
+        console.log(`[WaveSpeed] Image générée:`, statusData.data.outputs[0]);
+        return statusData.data.outputs[0];
+      }
+      
+      // Anciennes structures
+      if (statusData.data?.images?.[0]?.url) {
+        return statusData.data.images[0].url;
+      }
+      if (statusData.data?.image?.url) {
+        return statusData.data.image.url;
+      }
+
+      // Vérifier le statut
+      const status = statusData.data?.status || statusData.status;
+      if (status === 'failed') {
+        throw new Error(statusData.data?.error || statusData.error || 'Génération échouée');
+      }
+      
+      if (status === 'completed' && (!statusData.data?.outputs || statusData.data.outputs.length === 0)) {
+        console.error(`[WaveSpeed] Complété mais pas d'outputs:`, JSON.stringify(statusData));
+        throw new Error('Génération complétée mais aucune image retournée');
+      }
+
+    } catch (fetchError) {
+      console.error(`[WaveSpeed] Erreur polling:`, fetchError);
     }
 
     attempts++;
   }
 
-  throw new Error('Timeout: génération trop longue');
+  throw new Error('Timeout: génération trop longue (5 minutes)');
 }
 
 /**
