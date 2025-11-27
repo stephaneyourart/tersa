@@ -94,14 +94,10 @@ const getCostBracketLabel = (bracket: PriceBracket) => {
   }
 };
 
-// Vérifie si on est en mode local
-const isLocalMode = typeof window !== 'undefined' 
-  ? window.location.pathname.startsWith('/local')
-  : false;
-
 const getModelDisabled = (
   model: TersaModel,
-  plan: SubscriptionContextType['plan']
+  plan: SubscriptionContextType['plan'],
+  isLocalMode: boolean
 ) => {
   // En mode local, tous les modèles sont accessibles
   if (isLocalMode) {
@@ -157,6 +153,12 @@ export const ModelSelector = ({
   const [open, setOpen] = useState(false);
   const { plan } = useSubscription();
   const activeModel = options[value];
+  
+  // Détecter le mode local
+  const [isLocalMode, setIsLocalMode] = useState(false);
+  useEffect(() => {
+    setIsLocalMode(window.location.pathname.startsWith('/local'));
+  }, []);
 
   useEffect(() => {
     if (value && !options[value]) {
@@ -238,7 +240,7 @@ export const ModelSelector = ({
                       onChange?.(id);
                       setOpen(false);
                     }}
-                    disabled={getModelDisabled(model, plan)}
+                    disabled={getModelDisabled(model, plan, isLocalMode)}
                     className={cn(
                       value === id &&
                         'bg-primary text-primary-foreground data-[selected=true]:bg-primary/80 data-[selected=true]:text-primary-foreground'
