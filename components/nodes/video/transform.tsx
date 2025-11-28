@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { GeneratingSkeleton } from '@/components/nodes/generating-skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
+import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
 import { videoModels } from '@/lib/models/video';
@@ -53,6 +54,7 @@ export const VideoTransform = ({
     data.advancedSettings || DEFAULT_VIDEO_SETTINGS
   );
   const project = useProject();
+  const { trackGeneration } = useGenerationTracker();
   const modelId = data.model ?? getDefaultModel(videoModels);
   const analytics = useAnalytics();
 
@@ -83,6 +85,8 @@ export const VideoTransform = ({
     if (loading || !project?.id) {
       return;
     }
+
+    const startTime = Date.now();
 
     try {
       const incomers = getIncomers({ id }, getNodes(), getEdges());
@@ -126,15 +130,55 @@ export const VideoTransform = ({
 
       updateNodeData(id, response.nodeData);
 
-      toast.success('Video generated successfully');
+      // Calculer le temps écoulé et le coût
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      const provider = selectedModel?.providers?.[0];
+      // Durée vidéo par défaut 5 secondes (peut être ajusté selon les settings)
+      const videoDuration = advancedSettings.duration || 5;
+      const cost = provider?.getCost?.({ duration: videoDuration }) ?? 0;
+
+      // Tracker la génération
+      trackGeneration({
+        type: 'video',
+        model: modelId,
+        modelLabel: selectedModel?.label,
+        prompt: data.instructions,
+        duration,
+        cost,
+        status: 'success',
+        outputUrl: response.nodeData?.generated?.url,
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+        videoDuration,
+      });
+
+      toast.success('Vidéo générée !', {
+        description: `⏱️ ${duration}s • 💰 ~$${cost.toFixed(3)}`,
+        duration: Infinity,
+        closeButton: true,
+      });
 
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
       handleError('Error generating video', error);
+      
+      // Tracker l'erreur
+      trackGeneration({
+        type: 'video',
+        model: modelId,
+        modelLabel: selectedModel?.label,
+        prompt: data.instructions,
+        duration: Math.round((Date.now() - startTime) / 1000),
+        cost: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
     } finally {
       setLoading(false);
     }
-  }, [loading, project?.id, id, getNodes, getEdges, analytics, type, modelId, data.instructions, updateNodeData]);
+  }, [loading, project?.id, id, getNodes, getEdges, analytics, type, modelId, data.instructions, updateNodeData, selectedModel, advancedSettings.duration, trackGeneration]);
 
   // Handler pour le batch : duplique le nœud N-1 fois et lance N générations en parallèle
   const handleBatchRun = useCallback(async (count: number) => {
@@ -245,6 +289,12 @@ export const VideoTransform = ({
       const batchResult = await response.json();
       console.log(`[Video Batch] API response:`, batchResult);
 
+      // Calculer le temps total et le coût
+      const totalDuration = Math.round((Date.now() - startTime) / 1000);
+      const provider = selectedModel?.providers?.[0];
+      const videoDuration = advancedSettings.duration || 5;
+      const costPerVideo = provider?.getCost?.({ duration: videoDuration }) ?? 0;
+      
       // Mettre à jour chaque nœud avec son résultat
       const results = batchResult.results || [];
       let successCount = 0;
@@ -260,6 +310,21 @@ export const VideoTransform = ({
             generatingStartTime: undefined,
           });
           successCount++;
+          
+          // Tracker la génération réussie
+          trackGeneration({
+            type: 'video',
+            model: modelId,
+            modelLabel: selectedModel?.label,
+            prompt: promptText,
+            duration: Math.round(totalDuration / count),
+            cost: costPerVideo,
+            status: 'success',
+            outputUrl: result.videoUrl,
+            nodeId: result.nodeId,
+            nodeName: (data as { customName?: string }).customName,
+            videoDuration,
+          });
         } else {
           updateNodeData(result.nodeId, { 
             generating: false,
@@ -268,10 +333,39 @@ export const VideoTransform = ({
           if (result.error) {
             toast.error(`Erreur nœud ${result.nodeId}: ${result.error}`);
           }
+          
+          // Tracker l'erreur
+          trackGeneration({
+            type: 'video',
+            model: modelId,
+            modelLabel: selectedModel?.label,
+            prompt: promptText,
+            duration: Math.round(totalDuration / count),
+            cost: 0,
+            status: 'error',
+            error: result.error || 'Unknown error',
+            nodeId: result.nodeId,
+            nodeName: (data as { customName?: string }).customName,
+          });
         }
       }
 
-      toast.success(`✅ ${successCount}/${count} vidéo${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''}`);
+      const totalCost = costPerVideo * successCount;
+
+      const failCount = count - successCount;
+      if (failCount > 0) {
+        toast.warning(`${successCount}/${count} vidéo${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''}`, {
+          description: `⏱️ ${totalDuration}s • 💰 ~$${totalCost.toFixed(3)} • ${failCount} échec(s)`,
+          duration: Infinity,
+          closeButton: true,
+        });
+      } else {
+        toast.success(`✅ ${successCount} vidéo${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} !`, {
+          description: `⏱️ ${totalDuration}s • 💰 ~$${totalCost.toFixed(3)}`,
+          duration: Infinity,
+          closeButton: true,
+        });
+      }
     } catch (error) {
       console.error('[Video Batch] Error:', error);
       // Réinitialiser l'état de tous les nœuds
@@ -280,12 +374,26 @@ export const VideoTransform = ({
           generating: false,
           generatingStartTime: undefined,
         });
+        
+        // Tracker l'erreur
+        trackGeneration({
+          type: 'video',
+          model: modelId,
+          modelLabel: selectedModel?.label,
+          prompt: data.instructions,
+          duration: Math.round((Date.now() - startTime) / 1000),
+          cost: 0,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          nodeId,
+          nodeName: (data as { customName?: string }).customName,
+        });
       });
       handleError('Erreur génération batch', error);
     }
     
     setTimeout(() => mutate('credits'), 5000);
-  }, [loading, project?.id, id, getNode, getNodes, getEdges, addNodes, addEdges, updateNodeData, modelId, data.instructions]);
+  }, [loading, project?.id, id, getNode, getNodes, getEdges, addNodes, addEdges, updateNodeData, modelId, data.instructions, selectedModel, advancedSettings.duration, trackGeneration]);
 
   const toolbar: ComponentProps<typeof NodeLayout>['toolbar'] = useMemo(() => {
     const items: ComponentProps<typeof NodeLayout>['toolbar'] = [
@@ -369,10 +477,15 @@ export const VideoTransform = ({
     event
   ) => updateNodeData(id, { instructions: event.target.value });
 
+  const [isHovered, setIsHovered] = useState(false);
+  const isGenerating = loading || data.generating;
+  const hasContent = isGenerating || data.generated?.url;
+  const hasPrompt = Boolean(data.instructions?.trim());
+
   return (
     <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar} onBatchRun={handleBatchRun}>
       {/* Vignettes first/last frame des images connectées */}
-      {connectedImages.length > 0 && !loading && !data.generating && (
+      {connectedImages.length > 0 && !isGenerating && !data.generated?.url && (
         <div className="flex items-center gap-2 p-3 bg-secondary/50 border-b border-border/50">
           {connectedImages.map((imageUrl, index) => (
             <div key={`frame-${index}`} className="relative">
@@ -401,14 +514,14 @@ export const VideoTransform = ({
         </div>
       )}
 
-      {(loading || data.generating) && (
+      {isGenerating && (
         <GeneratingSkeleton 
           className="rounded-b-xl"
           estimatedDuration={60} // Vidéo ~60 secondes
           startTime={data.generatingStartTime}
         />
       )}
-      {!loading && !data.generating && !data.generated?.url && (
+      {!isGenerating && !data.generated?.url && (
         <div className="flex aspect-video w-full items-center justify-center rounded-b-xl bg-secondary">
           <p className="text-muted-foreground text-sm text-center">
             {connectedImages.length > 0 
@@ -417,24 +530,41 @@ export const VideoTransform = ({
           </p>
         </div>
       )}
-      {data.generated?.url && !loading && !data.generating && (
-        <video
-          src={data.generated.url}
-          width={data.width ?? 800}
-          height={data.height ?? 450}
-          autoPlay
-          muted
-          loop
-          playsInline
-          className="w-full rounded-b-xl object-cover"
+      {data.generated?.url && !isGenerating && (
+        <div 
+          className="relative"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          <video
+            src={data.generated.url}
+            width={data.width ?? 800}
+            height={data.height ?? 450}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full rounded-b-xl object-cover"
+          />
+          {/* Overlay du prompt au hover */}
+          {hasPrompt && isHovered && (
+            <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 transition-opacity">
+              <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
+                {data.instructions}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Textarea visible uniquement quand pas de contenu */}
+      {!hasContent && (
+        <Textarea
+          value={data.instructions ?? ''}
+          onChange={handleInstructionsChange}
+          placeholder="Enter instructions"
+          className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
         />
       )}
-      <Textarea
-        value={data.instructions ?? ''}
-        onChange={handleInstructionsChange}
-        placeholder="Enter instructions"
-        className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
-      />
     </NodeLayout>
   );
 };

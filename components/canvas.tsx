@@ -27,21 +27,73 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
 } from '@xyflow/react';
-import { BoxSelectIcon, PlusIcon } from 'lucide-react';
+import { BoxSelectIcon, LinkIcon, PlusIcon, RefreshCwIcon } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { MouseEvent, MouseEventHandler } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
+
+// Hook pour la couleur de fond du canvas
+const BG_STORAGE_KEY = 'tersa-canvas-bg-color';
+const DEFAULT_BG = '#0a0a0a';
+
+function useCanvasBgColor() {
+  const [bgColor, setBgColor] = useState<string>(DEFAULT_BG);
+
+  useEffect(() => {
+    // Charger la couleur initiale
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(BG_STORAGE_KEY);
+      if (stored) setBgColor(stored);
+    }
+
+    // Écouter les changements
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      setBgColor(customEvent.detail);
+    };
+
+    window.addEventListener('tersa-bg-color-change', handler);
+    return () => window.removeEventListener('tersa-bg-color-change', handler);
+  }, []);
+
+  return bgColor;
+}
+
+// Type pour l'historique
+type HistoryState = {
+  nodes: Node[];
+  edges: Edge[];
+};
 import { useDebouncedCallback } from 'use-debounce';
 import { ConnectionLine } from './connection-line';
 import { edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
+import { ProximityHandles } from './proximity-handles';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from './ui/context-menu';
+
+// Types de nœuds qui supportent le remplacement de contenu
+const REPLACEABLE_TYPES = ['text', 'image', 'video'];
+
+// Vérifier si un nœud a du contenu
+const nodeHasContent = (node: Node): boolean => {
+  const data = node.data as Record<string, unknown>;
+  return Boolean(data?.content || data?.generated || data?.text);
+};
+
+// Type pour une connexion en attente (pour le menu Replace/Connect)
+type PendingConnection = {
+  sourceId: string;
+  targetId: string;
+  sourceNode: Node;
+  targetNode: Node;
+  position: { x: number; y: number };
+} | null;
 
 type CanvasProps = ReactFlowProps & {
   initialNodes?: Node[];
@@ -52,6 +104,7 @@ type CanvasProps = ReactFlowProps & {
 
 export const Canvas = ({ children, ...props }: CanvasProps) => {
   const project = useProject();
+  const canvasBgColor = useCanvasBgColor();
   const {
     onConnect,
     onConnectStart,
@@ -74,10 +127,21 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     localInitialEdges ?? propsEdges ?? content?.edges ?? []
   );
   const [copiedNodes, setCopiedNodes] = useState<Node[]>([]);
+  const [copiedEdges, setCopiedEdges] = useState<Edge[]>([]);
+  const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
+  
+  // Historique pour undo/redo
+  const historyRef = useRef<HistoryState[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const isUndoingRef = useRef<boolean>(false);
+  const historyInitializedRef = useRef<boolean>(false);
+  const MAX_HISTORY = 50;
+
   const {
     getEdges,
     toObject,
     screenToFlowPosition,
+    flowToScreenPosition,
     getNodes,
     getNode,
     updateNode,
@@ -122,43 +186,352 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     }
   }, 1000);
 
+  // Initialiser l'historique avec l'état actuel au premier changement
+  useEffect(() => {
+    if (!historyInitializedRef.current && nodes.length > 0) {
+      historyRef.current = [{
+        nodes: JSON.parse(JSON.stringify(nodes)),
+        edges: JSON.parse(JSON.stringify(edges)),
+      }];
+      historyIndexRef.current = 0;
+      historyInitializedRef.current = true;
+    }
+  }, [nodes, edges]);
+
+  // Sauvegarder l'état actuel dans l'historique
+  const pushHistory = useCallback(() => {
+    if (isUndoingRef.current) return;
+    
+    const currentState: HistoryState = {
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+    };
+    
+    // Supprimer les états futurs si on a fait des undos
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    }
+    
+    historyRef.current.push(currentState);
+    historyIndexRef.current = historyRef.current.length - 1;
+    
+    // Limiter la taille de l'historique
+    if (historyRef.current.length > MAX_HISTORY) {
+      historyRef.current.shift();
+      historyIndexRef.current--;
+    }
+    
+    console.log('[History] Pushed state, index:', historyIndexRef.current, 'length:', historyRef.current.length);
+  }, [nodes, edges]);
+
+  // Undo - revenir à l'état précédent
+  const undo = useCallback(() => {
+    console.log('[Undo] Called, index:', historyIndexRef.current, 'length:', historyRef.current.length);
+    
+    if (historyIndexRef.current <= 0) {
+      console.log('[Undo] Cannot undo - at beginning of history');
+      return;
+    }
+    
+    isUndoingRef.current = true;
+    historyIndexRef.current--;
+    const previousState = historyRef.current[historyIndexRef.current];
+    
+    if (previousState) {
+      console.log('[Undo] Restoring state with', previousState.nodes.length, 'nodes');
+      setNodes(JSON.parse(JSON.stringify(previousState.nodes)));
+      setEdges(JSON.parse(JSON.stringify(previousState.edges)));
+    }
+    
+    setTimeout(() => {
+      isUndoingRef.current = false;
+      save();
+    }, 100);
+  }, [save]);
+
+  // Redo - aller à l'état suivant
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    
+    isUndoingRef.current = true;
+    historyIndexRef.current++;
+    const nextState = historyRef.current[historyIndexRef.current];
+    
+    if (nextState) {
+      setNodes(JSON.parse(JSON.stringify(nextState.nodes)));
+      setEdges(JSON.parse(JSON.stringify(nextState.edges)));
+    }
+    
+    setTimeout(() => {
+      isUndoingRef.current = false;
+      save();
+    }, 100);
+  }, [save]);
+
+  // Hotkeys pour undo/redo - utiliser useEffect avec event listener natif
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+Z ou Ctrl+Z
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        console.log('[Hotkey] Cmd+Z pressed');
+        undo();
+      }
+      // Cmd+Shift+Z ou Ctrl+Shift+Z
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        console.log('[Hotkey] Cmd+Shift+Z pressed');
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
   const handleNodesChange = useCallback<OnNodesChange>(
     (changes) => {
+      // Sauvegarder l'historique AVANT les changements significatifs (add, remove)
+      const hasSignificantChange = changes.some(
+        (c) => c.type === 'add' || c.type === 'remove'
+      );
+      
       setNodes((current) => {
+        // Sauvegarder l'état actuel AVANT d'appliquer les changements
+        if (hasSignificantChange && !isUndoingRef.current) {
+          const currentState: HistoryState = {
+            nodes: JSON.parse(JSON.stringify(current)),
+            edges: JSON.parse(JSON.stringify(edges)),
+          };
+          
+          if (historyIndexRef.current < historyRef.current.length - 1) {
+            historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+          }
+          
+          historyRef.current.push(currentState);
+          historyIndexRef.current = historyRef.current.length - 1;
+          
+          if (historyRef.current.length > MAX_HISTORY) {
+            historyRef.current.shift();
+            historyIndexRef.current--;
+          }
+          
+          console.log('[History] Pushed state before node change, index:', historyIndexRef.current);
+        }
+        
         const updated = applyNodeChanges(changes, current);
         save();
         onNodesChange?.(changes);
         return updated;
       });
     },
-    [save, onNodesChange]
+    [save, onNodesChange, edges]
   );
 
   const handleEdgesChange = useCallback<OnEdgesChange>(
     (changes) => {
+      // Sauvegarder l'historique AVANT les changements significatifs (add, remove)
+      const hasSignificantChange = changes.some(
+        (c) => c.type === 'add' || c.type === 'remove'
+      );
+      
       setEdges((current) => {
+        // Sauvegarder l'état actuel AVANT d'appliquer les changements
+        if (hasSignificantChange && !isUndoingRef.current) {
+          const currentState: HistoryState = {
+            nodes: JSON.parse(JSON.stringify(nodes)),
+            edges: JSON.parse(JSON.stringify(current)),
+          };
+          
+          if (historyIndexRef.current < historyRef.current.length - 1) {
+            historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+          }
+          
+          historyRef.current.push(currentState);
+          historyIndexRef.current = historyRef.current.length - 1;
+          
+          if (historyRef.current.length > MAX_HISTORY) {
+            historyRef.current.shift();
+            historyIndexRef.current--;
+          }
+          
+          console.log('[History] Pushed state before edge change, index:', historyIndexRef.current);
+        }
+        
         const updated = applyEdgeChanges(changes, current);
         save();
         onEdgesChange?.(changes);
         return updated;
       });
     },
-    [save, onEdgesChange]
+    [save, onEdgesChange, nodes]
   );
 
   const handleConnect = useCallback<OnConnect>(
-    (connection) => {
+    (connection, event?: globalThis.MouseEvent) => {
+      const sourceNode = getNodes().find((n) => n.id === connection.source);
+      const targetNode = getNodes().find((n) => n.id === connection.target);
+
+      // Vérifier si c'est une connexion "remplaçable"
+      // (même type, les deux ont du contenu)
+      if (
+        sourceNode &&
+        targetNode &&
+        sourceNode.type === targetNode.type &&
+        REPLACEABLE_TYPES.includes(sourceNode.type || '') &&
+        nodeHasContent(sourceNode) &&
+        nodeHasContent(targetNode)
+      ) {
+        // Stocker la connexion en attente et afficher le menu
+        setPendingConnection({
+          sourceId: connection.source!,
+          targetId: connection.target!,
+          sourceNode,
+          targetNode,
+          position: { x: (event as MouseEvent)?.clientX || 0, y: (event as MouseEvent)?.clientY || 0 },
+        });
+
+        // Créer un edge temporaire "replace" pour montrer visuellement
+        const tempEdge: Edge = {
+          id: `pending-${nanoid()}`,
+          type: 'replace',
+          source: connection.source!,
+          target: connection.target!,
+        };
+        setEdges((eds: Edge[]) => eds.concat(tempEdge));
+
+        return;
+      }
+
+      // Connexion normale
       const newEdge: Edge = {
         id: nanoid(),
-        type: 'animated',
+        type: 'flora',
         ...connection,
       };
       setEdges((eds: Edge[]) => eds.concat(newEdge));
       save();
       onConnect?.(connection);
     },
-    [save, onConnect]
+    [save, onConnect, getNodes]
   );
+
+  // Confirmer la connexion normale (depuis le menu Replace/Connect)
+  const confirmNormalConnection = useCallback(() => {
+    if (!pendingConnection) return;
+
+    // Supprimer l'edge temporaire et créer l'edge normal
+    setEdges((eds: Edge[]) => {
+      const filtered = eds.filter(
+        (e) =>
+          !(e.source === pendingConnection.sourceId && e.target === pendingConnection.targetId && e.type === 'replace')
+      );
+      return filtered.concat({
+        id: nanoid(),
+        type: 'flora',
+        source: pendingConnection.sourceId,
+        target: pendingConnection.targetId,
+      });
+    });
+
+    setPendingConnection(null);
+    save();
+  }, [pendingConnection, save]);
+
+  // Réinitialiser récursivement tous les nœuds connectés en sortie (outgoers)
+  const resetOutgoers = useCallback((startNodeId: string, visitedIds = new Set<string>()) => {
+    if (visitedIds.has(startNodeId)) return;
+    visitedIds.add(startNodeId);
+
+    const nodes = getNodes();
+    const edges = getEdges();
+    const currentNode = nodes.find(n => n.id === startNodeId);
+    
+    if (!currentNode) return;
+
+    const outgoers = getOutgoers(currentNode, nodes, edges);
+
+    for (const outgoer of outgoers) {
+      setNodes((nds: Node[]) =>
+        nds.map((n) =>
+          n.id === outgoer.id
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  generated: undefined,
+                  generating: false,
+                  batchGenerating: false,
+                  generatingStartTime: undefined,
+                  batchStartTime: undefined,
+                },
+              }
+            : n
+        )
+      );
+      resetOutgoers(outgoer.id, visitedIds);
+    }
+  }, [getNodes, getEdges]);
+
+  // Remplacer le contenu du nœud cible par celui du source
+  const confirmReplaceConnection = useCallback(() => {
+    if (!pendingConnection) return;
+
+    const { sourceId, targetId } = pendingConnection;
+    
+    // Récupérer les données FRAÎCHES des nœuds (pas celles capturées)
+    const freshSourceNode = getNode(sourceId);
+    const freshTargetNode = getNode(targetId);
+    
+    console.log('[Replace] sourceId:', sourceId);
+    console.log('[Replace] targetId:', targetId);
+    console.log('[Replace] freshSourceNode:', freshSourceNode);
+    console.log('[Replace] freshTargetNode:', freshTargetNode);
+    
+    if (!freshSourceNode || !freshTargetNode) {
+      console.log('[Replace] ABORT: nodes not found');
+      setPendingConnection(null);
+      return;
+    }
+
+    const sourceData = freshSourceNode.data as Record<string, unknown>;
+    console.log('[Replace] sourceData:', sourceData);
+
+    // Copier TOUT le contenu du source (copie profonde complète)
+    const newData = JSON.parse(JSON.stringify(sourceData));
+    console.log('[Replace] newData:', newData);
+
+    // Utiliser updateNode de ReactFlow pour mettre à jour le nœud cible
+    updateNode(targetId, { data: newData });
+    console.log('[Replace] updateNode called');
+
+    // Réinitialiser les nœuds en aval du nœud cible
+    resetOutgoers(targetId);
+
+    // Supprimer l'edge temporaire - PAS de connexion créée en mode Replace
+    setEdges((eds: Edge[]) =>
+      eds.filter((e) => e.type !== 'replace')
+    );
+
+    setPendingConnection(null);
+    save();
+    console.log('[Replace] Done!');
+  }, [pendingConnection, save, resetOutgoers, updateNode, getNode]);
+
+  // Annuler la connexion en attente
+  const cancelPendingConnection = useCallback(() => {
+    if (!pendingConnection) return;
+
+    // Supprimer l'edge temporaire
+    setEdges((eds: Edge[]) =>
+      eds.filter(
+        (e) =>
+          !(e.source === pendingConnection.sourceId && e.target === pendingConnection.targetId && e.type === 'replace')
+      )
+    );
+
+    setPendingConnection(null);
+  }, [pendingConnection]);
 
   const addNode = useCallback(
     (type: string, options?: Record<string, unknown>) => {
@@ -222,17 +595,61 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
         const { clientX, clientY } =
           'changedTouches' in event ? event.changedTouches[0] : event;
 
-        const sourceId = connectionState.fromNode?.id;
+        const sourceNode = connectionState.fromNode;
+        const sourceId = sourceNode?.id;
         const isSourceHandle = connectionState.fromHandle?.type === 'source';
 
-        if (!sourceId) {
+        if (!sourceId || !sourceNode) {
           return;
         }
+
+        // Vérifier si on a lâché près d'un nœud (toNode existe dans connectionState)
+        const toNode = connectionState.toNode;
+        
+        // Si on a un nœud cible de même type avec contenu, proposer Replace
+        if (toNode && sourceNode.type === toNode.type && REPLACEABLE_TYPES.includes(sourceNode.type || '')) {
+          const sourceData = sourceNode.data as Record<string, unknown>;
+          const toData = toNode.data as Record<string, unknown>;
+          const sourceHasContent = Boolean(sourceData?.content || sourceData?.generated || sourceData?.text);
+          const toHasContent = Boolean(toData?.content || toData?.generated || toData?.text);
+          
+          if (sourceHasContent && toHasContent) {
+            // Afficher le menu Replace/Connect
+            setPendingConnection({
+              sourceId: sourceId,
+              targetId: toNode.id,
+              sourceNode: sourceNode as Node,
+              targetNode: toNode as Node,
+              position: { x: clientX, y: clientY },
+            });
+
+            // Créer un edge temporaire "replace"
+            setEdges((eds: Edge[]) =>
+              eds.concat({
+                id: `pending-${nanoid()}`,
+                type: 'replace',
+                source: sourceId,
+                target: toNode.id,
+              })
+            );
+            return;
+          }
+        }
+
+        // Sinon, créer un DropNode comme avant
+        const sourceData = sourceNode.data as Record<string, unknown>;
+        const sourceHasContent = Boolean(
+          sourceData?.content || sourceData?.generated || sourceData?.text
+        );
 
         const newNodeId = addNode('drop', {
           position: screenToFlowPosition({ x: clientX, y: clientY }),
           data: {
             isSource: !isSourceHandle,
+            // Passer les infos du nœud source pour l'option "Replace"
+            sourceNodeType: sourceNode.type,
+            sourceNodeId: sourceId,
+            sourceHasContent,
           },
         });
 
@@ -327,29 +744,87 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     );
   }, []);
 
+  // Fonction pour copie profonde des données d'un nœud
+  const deepCloneNodeData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
+    return JSON.parse(JSON.stringify(data));
+  }, []);
+
   const handleCopy = useCallback(() => {
     const selectedNodes = getNodes().filter((node) => node.selected);
     if (selectedNodes.length > 0) {
-      setCopiedNodes(selectedNodes);
+      // Copie profonde des nœuds pour préserver tous leurs attributs
+      const nodesToCopy = selectedNodes.map((node) => ({
+        ...node,
+        // Copie profonde des données pour préserver le statut généré, content, etc.
+        data: deepCloneNodeData(node.data as Record<string, unknown>),
+      }));
+      setCopiedNodes(nodesToCopy);
+      
+      // Copier aussi les edges entre les nœuds sélectionnés
+      const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+      const edgesBetweenSelected = getEdges().filter(
+        (edge) => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
+      );
+      // Copie profonde des edges pour préserver leur type (animated, etc.)
+      const edgesToCopy = edgesBetweenSelected.map((edge) => ({
+        ...edge,
+        // Copier toutes les propriétés de l'edge
+        data: edge.data ? deepCloneNodeData(edge.data as Record<string, unknown>) : undefined,
+      }));
+      setCopiedEdges(edgesToCopy);
     }
-  }, [getNodes]);
+  }, [getNodes, getEdges, deepCloneNodeData]);
 
   const handlePaste = useCallback(() => {
     if (copiedNodes.length === 0) {
       return;
     }
 
-    const newNodes = copiedNodes.map((node) => ({
-      ...node,
+    // Créer un mapping ancien ID -> nouveau ID
+    const idMapping = new Map<string, string>();
+    
+    const newNodes = copiedNodes.map((node) => {
+      const newId = nanoid();
+      idMapping.set(node.id, newId);
+      
+      // Copie profonde des données pour préserver le statut généré/non-généré
+      const clonedData = deepCloneNodeData(node.data as Record<string, unknown>);
+      
+      return {
+        // Spread toutes les propriétés du nœud (incluant type, origin, measured, etc.)
+        ...node,
+        // Nouveau ID unique
+        id: newId,
+        // Préserver explicitement le type du nœud
+        type: node.type,
+        // Nouvelle position décalée
+        position: {
+          x: node.position.x + 100,
+          y: node.position.y + 100,
+        },
+        // Sélectionner les nouveaux nœuds
+        selected: true,
+        // Copie profonde de toutes les données (content, generated, model, instructions, etc.)
+        data: clonedData,
+      };
+    });
+
+    // Recréer les edges avec les nouveaux IDs tout en préservant leur type
+    const newEdges = copiedEdges.map((edge) => ({
+      // Spread toutes les propriétés de l'edge (incluant type: 'animated', etc.)
+      ...edge,
+      // Nouveau ID unique pour l'edge
       id: nanoid(),
-      position: {
-        x: node.position.x + 200,
-        y: node.position.y + 200,
-      },
-      selected: true,
+      // Mapper vers les nouveaux IDs des nœuds
+      source: idMapping.get(edge.source) || edge.source,
+      target: idMapping.get(edge.target) || edge.target,
+      // Préserver explicitement le type de l'edge
+      type: edge.type,
+      // Copier les données de l'edge si présentes
+      data: edge.data ? deepCloneNodeData(edge.data as Record<string, unknown>) : undefined,
     }));
 
-    // Unselect all existing nodes
+    // Désélectionner tous les nœuds existants
     setNodes((nodes: Node[]) =>
       nodes.map((node: Node) => ({
         ...node,
@@ -357,9 +832,16 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       }))
     );
 
-    // Add new nodes
+    // Ajouter les nouveaux nœuds avec leur type et données préservés
     setNodes((nodes: Node[]) => [...nodes, ...newNodes]);
-  }, [copiedNodes]);
+    
+    // Ajouter les nouvelles connexions avec leur type préservé
+    if (newEdges.length > 0) {
+      setEdges((edges: Edge[]) => [...edges, ...newEdges]);
+    }
+    
+    save();
+  }, [copiedNodes, copiedEdges, save, deepCloneNodeData]);
 
   const handleDuplicateAll = useCallback(() => {
     const selected = getNodes().filter((node) => node.selected);
@@ -398,6 +880,28 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     preventDefault: true,
   });
 
+  // Labels pour les types de nœuds
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      text: 'le texte',
+      image: "l'image",
+      video: 'la vidéo',
+    };
+    return labels[type] || type;
+  };
+
+  // Calculer la couleur des points de la grille en fonction du fond
+  const gridColor = (() => {
+    // Convertir hex en luminosité approximative
+    const hex = canvasBgColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    // Si fond sombre, points clairs et vice versa
+    return luminance < 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  })();
+
   return (
     <NodeOperationsProvider addNode={addNode} duplicateNode={duplicateNode}>
       <NodeDropzoneProvider>
@@ -423,10 +927,56 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               panOnDrag={false}
               selectionOnDrag={true}
               onDoubleClick={addDropNode}
+              minZoom={0.02}
+              maxZoom={4}
+              style={{ '--canvas-bg-color': canvasBgColor } as React.CSSProperties}
               {...rest}
             >
-              <Background />
+              <Background 
+                color={gridColor} 
+                gap={20}
+              />
+              <ProximityHandles />
               {children}
+              
+              {/* Menu flottant Replace/Connect */}
+              {pendingConnection && (() => {
+                const screenPos = flowToScreenPosition({
+                  x: pendingConnection.targetNode.position.x + 250,
+                  y: pendingConnection.targetNode.position.y + 50,
+                });
+                return (
+                  <div
+                    className="fixed z-[9999] min-w-[180px] rounded-lg border bg-popover/95 backdrop-blur-sm p-1 shadow-lg"
+                    style={{
+                      left: screenPos.x,
+                      top: screenPos.y,
+                    }}
+                  >
+                    <button
+                      onClick={confirmReplaceConnection}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+                    >
+                      <RefreshCwIcon size={12} />
+                      <span>Remplacer {getTypeLabel(pendingConnection.sourceNode.type || '')}</span>
+                    </button>
+                    <div className="my-1 h-px bg-border" />
+                    <button
+                      onClick={confirmNormalConnection}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+                    >
+                      <LinkIcon size={12} />
+                      <span>Connecter normalement</span>
+                    </button>
+                    <button
+                      onClick={cancelPendingConnection}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                    >
+                      <span>Annuler</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </ReactFlow>
           </ContextMenuTrigger>
           <ContextMenuContent>

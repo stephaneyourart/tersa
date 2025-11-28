@@ -48,7 +48,7 @@ const Project = async ({ params }: ProjectProps) => {
   }
 
   return (
-    <div className="flex h-screen w-screen items-stretch overflow-hidden">
+    <div className="flex h-[100dvh] w-full items-stretch overflow-hidden">
       <div className="relative flex-1">
         <ProjectProvider data={project}>
           <Canvas>

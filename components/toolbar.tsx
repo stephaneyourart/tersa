@@ -36,7 +36,7 @@ export const ToolbarInner = () => {
   return (
     <Panel
       position="bottom-center"
-      className="m-4 flex items-center rounded-full border bg-card/90 p-1 drop-shadow-xs backdrop-blur-sm"
+      className="z-50 m-4 mb-8 flex items-center rounded-full border bg-card/90 p-2 drop-shadow-xs backdrop-blur-sm"
     >
       {nodeButtons.map((button) => (
         <Tooltip key={button.id}>
@@ -44,10 +44,10 @@ export const ToolbarInner = () => {
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full"
+              className="rounded-full h-11 w-11"
               onClick={() => handleAddNode(button.id, button.data)}
             >
-              <button.icon size={12} />
+              <button.icon size={20} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{button.label}</TooltipContent>

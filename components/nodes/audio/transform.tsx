@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
+import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
 import { speechModels } from '@/lib/models/speech';
@@ -55,11 +56,14 @@ export const AudioTransform = ({
   const modelId = data.model ?? getDefaultModel(speechModels);
   const model = speechModels[modelId];
   const analytics = useAnalytics();
+  const { trackGeneration } = useGenerationTracker();
 
   const handleGenerate = async () => {
     if (loading || !project?.id) {
       return;
     }
+
+    const startTime = Date.now();
 
     try {
       const incomers = getIncomers({ id }, getNodes(), getEdges());
@@ -103,11 +107,44 @@ export const AudioTransform = ({
 
       updateNodeData(id, response.nodeData);
 
+      // Calculer la durée et le coût
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      const provider = model?.providers?.[0];
+      const cost = provider?.getCost?.(text.length) ?? 0;
+
+      // Tracker la génération
+      trackGeneration({
+        type: 'audio',
+        model: modelId,
+        modelLabel: model?.label,
+        prompt: text.substring(0, 100),
+        duration,
+        cost,
+        status: 'success',
+        outputUrl: (response.nodeData as { generated?: { url?: string } })?.generated?.url,
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
+
       toast.success('Audio generated successfully');
 
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
       handleError('Error generating audio', error);
+      
+      // Tracker l'erreur
+      trackGeneration({
+        type: 'audio',
+        model: modelId,
+        modelLabel: model?.label,
+        prompt: data.instructions?.substring(0, 100),
+        duration: Math.round((Date.now() - startTime) / 1000),
+        cost: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
     } finally {
       setLoading(false);
     }

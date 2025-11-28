@@ -1,6 +1,6 @@
 /**
  * Contrôle du nombre de runs parallèles (style Flora)
- * S'affiche au hover d'un node - incrusté sur le côté droit
+ * S'affiche au hover d'un node - en bas à droite, compact
  */
 
 'use client';
@@ -73,70 +73,69 @@ export function BatchRunsControl({
   const shouldShow = isVisible || isControlHovered;
 
   return (
-    <>
-      {/* Zone de hover invisible pour relier le node au contrôle */}
-      <div
-        className={cn(
-          'absolute -right-1 top-0 bottom-0 w-16 z-40',
-          shouldShow ? 'pointer-events-auto' : 'pointer-events-none'
-        )}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      />
-      
-      <div
-        className={cn(
-          'absolute right-4 top-1/2 -translate-y-1/2 translate-x-full z-50',
-          'flex flex-col items-center gap-3',
-          'transition-all duration-200',
-          shouldShow ? 'opacity-100' : 'opacity-0 pointer-events-none',
-          className
-        )}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        {/* Contrôle du compteur - style Flora */}
-        <div className="flex flex-col items-center bg-zinc-800 rounded-full overflow-hidden shadow-xl">
-          <button
-            onClick={increment}
-            disabled={count >= maxRuns}
-            className={cn(
-              'p-3 transition-colors',
-              'hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed'
-            )}
-          >
-            <PlusIcon size={20} className="text-white" />
-          </button>
-          
-          <div className="py-1 px-3 font-mono text-xl font-bold text-white min-w-[3rem] text-center select-none">
-            {count}
-          </div>
-          
+    <div
+      className={cn(
+        'flex items-center gap-2',
+        'transition-all duration-200',
+        shouldShow ? 'opacity-100' : 'opacity-0 pointer-events-none',
+        className
+      )}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Compteur compact - seulement si > 1 */}
+      {count > 1 && (
+        <div className="flex items-center bg-zinc-800/90 rounded-full overflow-hidden shadow-lg backdrop-blur-sm">
           <button
             onClick={decrement}
             disabled={count <= 1}
             className={cn(
-              'p-3 transition-colors',
+              'p-1.5 transition-colors',
               'hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed'
             )}
           >
-            <MinusIcon size={20} className="text-white" />
+            <MinusIcon size={12} className="text-white" />
+          </button>
+          
+          <span className="px-1.5 font-mono text-sm font-bold text-white min-w-[1.5rem] text-center select-none">
+            {count}
+          </span>
+          
+          <button
+            onClick={increment}
+            disabled={count >= maxRuns}
+            className={cn(
+              'p-1.5 transition-colors',
+              'hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+          >
+            <PlusIcon size={12} className="text-white" />
           </button>
         </div>
+      )}
 
-        {/* Bouton de lancement - blanc avec icône noire */}
+      {/* Indicateur de multiplicateur si count = 1 - juste le chiffre cliquable pour incrémenter */}
+      {count === 1 && (
         <button
-          onClick={handleRun}
-          className={cn(
-            'p-4 rounded-full bg-white shadow-xl',
-            'hover:bg-zinc-100 hover:scale-105 transition-all',
-            'flex items-center justify-center'
-          )}
-          title={`Lancer ${count} run${count > 1 ? 's' : ''}`}
+          onClick={increment}
+          className="flex items-center justify-center w-7 h-7 bg-zinc-800/90 rounded-full text-white text-xs font-bold shadow-lg backdrop-blur-sm hover:bg-zinc-700 transition-colors"
         >
-          <ArrowUpIcon size={22} className="text-black" strokeWidth={2.5} />
+          {count}×
         </button>
-      </div>
-    </>
+      )}
+
+      {/* Bouton de lancement - compact */}
+      <button
+        onClick={handleRun}
+        className={cn(
+          'p-1.5 rounded-full bg-white shadow-lg',
+          'hover:bg-zinc-100 hover:scale-105 transition-all',
+          'flex items-center justify-center'
+        )}
+        title={`Lancer ${count} run${count > 1 ? 's' : ''}`}
+      >
+        <ArrowUpIcon size={12} className="text-black" strokeWidth={2.5} />
+      </button>
+    </div>
   );
 }

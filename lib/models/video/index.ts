@@ -122,7 +122,6 @@ export const videoModels: Record<string, TersaVideoModel> = {
         getCost: () => 0.5,
       },
     ],
-    default: true,
   },
   'runway-gen3a-turbo': {
     label: 'Gen3a Turbo',
@@ -435,6 +434,7 @@ export const videoModels: Record<string, TersaVideoModel> = {
         getCost: ({ duration }) => 0.03 * duration,
       },
     ],
+    default: true,
   },
 
   'seedream-v1': {

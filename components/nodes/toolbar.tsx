@@ -52,10 +52,10 @@ export const NodeToolbar = ({ id, items, isNodeHovered, onHoverChange }: NodeToo
     <NodeToolbarRaw
       isVisible={isVisible}
       position={Position.Bottom}
-      className="flex items-center gap-1 rounded-full bg-background/40 p-1.5 backdrop-blur-sm"
+      className="flex items-center gap-1.5 rounded-full bg-background/40 p-1 backdrop-blur-sm"
     >
       <div 
-        className="flex items-center gap-1"
+        className="flex items-center gap-1.5"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >

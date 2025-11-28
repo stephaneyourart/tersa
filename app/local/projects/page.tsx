@@ -25,7 +25,8 @@ import {
   renameLocalProject,
   type LocalProject,
 } from '@/lib/local-projects-store';
-import { CopyIcon, FolderOpenIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { BarChart3Icon, CopyIcon, FolderOpenIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -100,14 +101,22 @@ export default function LocalProjectsPage() {
       <header className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between px-4">
           <h1 className="text-xl font-semibold">TersaFork</h1>
-          <Button onClick={handleNewProject} className="gap-2">
-            <PlusIcon size={16} />
-            New project
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/local/dashboard">
+              <Button variant="outline" className="gap-2">
+                <BarChart3Icon size={16} />
+                Dashboard
+              </Button>
+            </Link>
+            <Button onClick={handleNewProject} className="gap-2">
+              <PlusIcon size={16} />
+              Nouveau projet
+            </Button>
+          </div>
         </div>
       </header>
 
-      {/* Projects Grid */}
+      {/* Main Content */}
       <main className="container px-4 py-8">
         {projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">

@@ -14,6 +14,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
+import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { useReasoning } from '@/hooks/use-reasoning';
 import { handleError } from '@/lib/error/handle';
 import {
@@ -43,6 +44,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
@@ -78,15 +80,36 @@ export const TextTransform = ({
   const modelId = data.model ?? getDefaultModel(models);
   const analytics = useAnalytics();
   const [reasoning, setReasoning] = useReasoning();
+  const { trackGeneration } = useGenerationTracker();
+  const generationStartTimeRef = useRef<number>(0);
   const { sendMessage, messages, setMessages, status, stop } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
     }),
-    onError: (error) => handleError('Error generating text', error),
-    onFinish: ({ message }) => {
+    onError: (error) => {
+      handleError('Error generating text', error);
+      
+      // Tracker l'erreur
+      const duration = Math.round((Date.now() - generationStartTimeRef.current) / 1000);
+      trackGeneration({
+        type: 'text',
+        model: modelId,
+        modelLabel: models[modelId]?.name,
+        prompt: data.instructions?.substring(0, 100),
+        duration,
+        cost: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
+    },
+    onFinish: ({ message, usage }) => {
+      const generatedText = message.parts.find((part) => part.type === 'text')?.text ?? '';
+      
       updateNodeData(id, {
         generated: {
-          text: message.parts.find((part) => part.type === 'text')?.text ?? '',
+          text: generatedText,
           sources:
             message.parts?.filter((part) => part.type === 'source-url') ?? [],
         },
@@ -98,6 +121,31 @@ export const TextTransform = ({
         isGenerating: false,
       }));
 
+      // Calculer la durée et le coût
+      const duration = Math.round((Date.now() - generationStartTimeRef.current) / 1000);
+      const model = models[modelId];
+      const inputPrice = Number.parseFloat(model?.pricing?.input ?? '0');
+      const outputPrice = Number.parseFloat(model?.pricing?.output ?? '0');
+      const inputTokens = usage?.promptTokens ?? 0;
+      const outputTokens = usage?.completionTokens ?? 0;
+      const cost = (inputTokens * inputPrice + outputTokens * outputPrice) / 1000;
+
+      // Tracker la génération
+      trackGeneration({
+        type: 'text',
+        model: modelId,
+        modelLabel: model?.name,
+        prompt: data.instructions?.substring(0, 100),
+        duration,
+        cost,
+        status: 'success',
+        outputText: generatedText.substring(0, 200),
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+        inputTokens,
+        outputTokens,
+      });
+
       toast.success('Text generated successfully');
 
       setTimeout(() => mutate('credits'), 5000);
@@ -105,6 +153,9 @@ export const TextTransform = ({
   });
 
   const handleGenerate = useCallback(async () => {
+    // Enregistrer le temps de départ
+    generationStartTimeRef.current = Date.now();
+    
     const incomers = getIncomers({ id }, getNodes(), getEdges());
     const textPrompts = getTextFromTextNodes(incomers);
     const audioPrompts = getTranscriptionFromAudioNodes(incomers);
@@ -221,11 +272,11 @@ export const TextTransform = ({
         children: (
           <Button
             size="icon"
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
             onClick={stop}
             disabled={!project?.id}
           >
-            <SquareIcon size={12} />
+            <SquareIcon size={10} />
           </Button>
         ),
       });
@@ -245,11 +296,11 @@ export const TextTransform = ({
         children: (
           <Button
             size="icon"
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
             onClick={handleGenerate}
             disabled={!project?.id}
           >
-            <RotateCcwIcon size={12} />
+            <RotateCcwIcon size={10} />
           </Button>
         ),
       });
@@ -258,12 +309,12 @@ export const TextTransform = ({
         children: (
           <Button
             size="icon"
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
             disabled={!text}
             onClick={() => handleCopy(text ?? '')}
             variant="ghost"
           >
-            <CopyIcon size={12} />
+            <CopyIcon size={10} />
           </Button>
         ),
       });
@@ -273,11 +324,11 @@ export const TextTransform = ({
         children: (
           <Button
             size="icon"
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
             onClick={handleGenerate}
             disabled={!project?.id}
           >
-            <PlayIcon size={12} />
+            <PlayIcon size={10} />
           </Button>
         ),
       });
@@ -290,8 +341,8 @@ export const TextTransform = ({
           timeStyle: 'short',
         }).format(new Date(data.updatedAt))}`,
         children: (
-          <Button size="icon" variant="ghost" className="rounded-full">
-            <ClockIcon size={12} />
+          <Button size="icon" variant="ghost" className="rounded-full h-7 w-7">
+            <ClockIcon size={10} />
           </Button>
         ),
       });

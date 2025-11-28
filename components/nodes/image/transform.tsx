@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { GeneratingSkeleton } from '@/components/nodes/generating-skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
+import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
 import { imageModels } from '@/lib/models/image';
@@ -62,6 +63,7 @@ export const ImageTransform = ({
     data.advancedSettings ?? DEFAULT_SETTINGS
   );
   const project = useProject();
+  const { trackGeneration } = useGenerationTracker();
 
   // État de génération: soit local (single run), soit batch
   const isGenerating = loading || data.batchGenerating === true;
@@ -181,6 +183,21 @@ export const ImageTransform = ({
       const provider = selectedModel?.providers?.[0];
       const cost = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
       
+      // Tracker la génération
+      trackGeneration({
+        type: 'image',
+        model: modelId,
+        modelLabel: selectedModel?.label,
+        prompt: data.instructions,
+        duration,
+        cost,
+        status: 'success',
+        outputUrl: response.nodeData?.generated?.url,
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+        size: sizeFromSettings,
+      });
+      
       toast.success('Image générée !', {
         description: `⏱️ ${duration}s • 💰 ~$${cost.toFixed(3)}`,
         duration: Infinity,
@@ -190,6 +207,20 @@ export const ImageTransform = ({
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
       handleError('Error generating image', error);
+      
+      // Tracker l'erreur
+      trackGeneration({
+        type: 'image',
+        model: modelId,
+        modelLabel: selectedModel?.label,
+        prompt: data.instructions,
+        duration: Math.round((Date.now() - startTime) / 1000),
+        cost: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
     } finally {
       setLoading(false);
     }
@@ -206,6 +237,7 @@ export const ImageTransform = ({
     selectedModel,
     getNodes,
     updateNodeData,
+    trackGeneration,
   ]);
 
   // Handler pour le batch : duplique le nœud N-1 fois et lance N générations en parallèle
@@ -353,6 +385,10 @@ export const ImageTransform = ({
 
       // Mettre à jour chaque nœud avec son résultat
       const results = batchResult.results || [];
+      const duration = batchResult.totalDuration || Math.round((Date.now() - startTime) / 1000);
+      const provider = selectedModel?.providers?.[0];
+      const costPerImage = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
+      
       for (const result of results) {
         if (result.success && result.imageUrl) {
           updateNodeData(result.nodeId, {
@@ -364,20 +400,46 @@ export const ImageTransform = ({
             batchStartTime: undefined,
             updatedAt: new Date().toISOString(),
           });
+          
+          // Tracker la génération réussie
+          trackGeneration({
+            type: 'image',
+            model: modelId,
+            modelLabel: selectedModel?.label,
+            prompt: textNodes.join('\n') || data.instructions,
+            duration: Math.round(duration / count), // Durée moyenne par image
+            cost: costPerImage,
+            status: 'success',
+            outputUrl: result.imageUrl,
+            nodeId: result.nodeId,
+            nodeName: (data as { customName?: string }).customName,
+            size: sizeFromSettings,
+          });
         } else {
           updateNodeData(result.nodeId, {
             batchGenerating: false,
             batchStartTime: undefined,
           });
           console.error(`[Batch] Failed for node ${result.nodeId}:`, result.error);
+          
+          // Tracker l'erreur
+          trackGeneration({
+            type: 'image',
+            model: modelId,
+            modelLabel: selectedModel?.label,
+            prompt: textNodes.join('\n') || data.instructions,
+            duration: Math.round(duration / count),
+            cost: 0,
+            status: 'error',
+            error: result.error || 'Unknown error',
+            nodeId: result.nodeId,
+            nodeName: (data as { customName?: string }).customName,
+          });
         }
       }
 
       const successCount = results.filter((r: { success: boolean }) => r.success).length;
       const failCount = results.filter((r: { success: boolean }) => !r.success).length;
-      const duration = batchResult.totalDuration || Math.round((Date.now() - startTime) / 1000);
-      const provider = selectedModel?.providers?.[0];
-      const costPerImage = provider?.getCost?.({ size: sizeFromSettings }) ?? 0;
       const totalCost = costPerImage * successCount;
 
       if (failCount > 0) {
@@ -401,6 +463,20 @@ export const ImageTransform = ({
           batchGenerating: false,
           batchStartTime: undefined,
         });
+        
+        // Tracker l'erreur pour chaque nœud
+        trackGeneration({
+          type: 'image',
+          model: modelId,
+          modelLabel: selectedModel?.label,
+          prompt: data.instructions,
+          duration: Math.round((Date.now() - startTime) / 1000),
+          cost: 0,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          nodeId,
+          nodeName: (data as { customName?: string }).customName,
+        });
       });
       toast.error('Erreur lors du batch', {
         description: error instanceof Error ? error.message : 'Erreur inconnue',
@@ -421,10 +497,12 @@ export const ImageTransform = ({
     addEdges,
     data.instructions,
     modelId,
+    modelPath,
     sizeFromSettings,
     advancedSettings,
     selectedModel,
     updateNodeData,
+    trackGeneration,
   ]);
 
   const handleInstructionsChange: ChangeEventHandler<HTMLTextAreaElement> = (
@@ -547,6 +625,10 @@ export const ImageTransform = ({
     advancedSettings,
   }), [data, advancedSettings]);
 
+  const [isHovered, setIsHovered] = useState(false);
+  const hasContent = isGenerating || data.generated?.url;
+  const hasPrompt = Boolean(data.instructions?.trim());
+
   return (
     <NodeLayout 
       id={id} 
@@ -576,20 +658,37 @@ export const ImageTransform = ({
         </div>
       )}
       {!isGenerating && data.generated?.url && (
-        <Image
-          src={data.generated.url}
-          alt="Generated image"
-          width={1000}
-          height={1000}
-          className="w-full rounded-b-xl object-cover"
+        <div 
+          className="relative"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          <Image
+            src={data.generated.url}
+            alt="Generated image"
+            width={1000}
+            height={1000}
+            className="w-full rounded-b-xl object-cover"
+          />
+          {/* Overlay du prompt au hover */}
+          {hasPrompt && isHovered && (
+            <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 transition-opacity">
+              <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
+                {data.instructions}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Textarea visible uniquement quand pas de contenu */}
+      {!hasContent && (
+        <Textarea
+          value={data.instructions ?? ''}
+          onChange={handleInstructionsChange}
+          placeholder="Enter instructions"
+          className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
         />
       )}
-      <Textarea
-        value={data.instructions ?? ''}
-        onChange={handleInstructionsChange}
-        placeholder="Enter instructions"
-        className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
-      />
     </NodeLayout>
   );
 };

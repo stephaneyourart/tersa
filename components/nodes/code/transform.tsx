@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
+import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { handleError } from '@/lib/error/handle';
 import {
   getCodeFromCodeNodes,
@@ -22,6 +23,7 @@ import {
   type ComponentProps,
   useCallback,
   useMemo,
+  useRef,
 } from 'react';
 import { toast } from 'sonner';
 import { mutate } from 'swr';
@@ -57,26 +59,76 @@ export const CodeTransform = ({
   const modelId = data.model ?? getDefaultModel(textModels);
   const language = data.generated?.language ?? 'javascript';
   const analytics = useAnalytics();
+  const { trackGeneration } = useGenerationTracker();
+  const generationStartTimeRef = useRef<number>(0);
+  
   const { messages, sendMessage, setMessages, status, stop } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/code',
     }),
-    onError: (error) => handleError('Error generating text', error),
-    onFinish: ({ message }) => {
+    onError: (error) => {
+      handleError('Error generating code', error);
+      
+      // Tracker l'erreur
+      const duration = Math.round((Date.now() - generationStartTimeRef.current) / 1000);
+      trackGeneration({
+        type: 'code',
+        model: modelId,
+        modelLabel: textModels[modelId]?.name,
+        prompt: data.instructions?.substring(0, 100),
+        duration,
+        cost: 0,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+      });
+    },
+    onFinish: ({ message, usage }) => {
+      const generatedCode = message.parts.find((part) => part.type === 'text')?.text ?? '';
+      
       updateNodeData(id, {
         generated: {
-          text: message.parts.find((part) => part.type === 'text')?.text ?? '',
+          text: generatedCode,
         },
         updatedAt: new Date().toISOString(),
       });
 
-      toast.success('Text generated successfully');
+      // Calculer la durée et le coût
+      const duration = Math.round((Date.now() - generationStartTimeRef.current) / 1000);
+      const model = textModels[modelId];
+      const inputPrice = Number.parseFloat(model?.pricing?.input ?? '0');
+      const outputPrice = Number.parseFloat(model?.pricing?.output ?? '0');
+      const inputTokens = usage?.promptTokens ?? 0;
+      const outputTokens = usage?.completionTokens ?? 0;
+      const cost = (inputTokens * inputPrice + outputTokens * outputPrice) / 1000;
+
+      // Tracker la génération
+      trackGeneration({
+        type: 'code',
+        model: modelId,
+        modelLabel: model?.name,
+        prompt: data.instructions?.substring(0, 100),
+        duration,
+        cost,
+        status: 'success',
+        outputText: generatedCode.substring(0, 200),
+        nodeId: id,
+        nodeName: (data as { customName?: string }).customName,
+        inputTokens,
+        outputTokens,
+      });
+
+      toast.success('Code generated successfully');
 
       setTimeout(() => mutate('credits'), 5000);
     },
   });
 
   const handleGenerate = useCallback(() => {
+    // Enregistrer le temps de départ
+    generationStartTimeRef.current = Date.now();
+    
     const incomers = getIncomers({ id }, getNodes(), getEdges());
     const textPrompts = getTextFromTextNodes(incomers);
     const audioPrompts = getTranscriptionFromAudioNodes(incomers);

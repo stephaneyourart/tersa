@@ -19,9 +19,13 @@ import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
 import { type ReactNode, useState, useRef, useEffect } from 'react';
 import { NodeToolbar } from './toolbar';
 import { BatchRunsControl } from './batch-runs-control';
+import { ReplaceMediaButton } from './replace-media-button';
 
 // Types de nodes qui supportent le batch/runs parallèles
 const BATCH_SUPPORTED_TYPES = ['image', 'video', 'audio', 'generate-image', 'generate-video'];
+
+// Types de nodes qui supportent le remplacement de média
+const REPLACE_SUPPORTED_TYPES = ['image', 'video'];
 
 type NodeLayoutProps = {
   children: ReactNode;
@@ -29,7 +33,8 @@ type NodeLayoutProps = {
   data?: Record<string, unknown> & {
     model?: string;
     source?: string;
-    generated?: object;
+    content?: { url: string; type: string };
+    generated?: { url: string; type: string };
     advancedSettings?: {
       aspectRatio?: string;
       width?: number;
@@ -65,13 +70,20 @@ export const NodeLayout = ({
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
   const [isToolbarHovered, setIsToolbarHovered] = useState(false);
+  const [isReplaceHovered, setIsReplaceHovered] = useState(false);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Vérifie si ce type de node supporte le batch
   const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
   
+  // Vérifie si ce type de node supporte le remplacement de média
+  const supportsReplace = REPLACE_SUPPORTED_TYPES.includes(type);
+  
+  // Vérifie si le nœud a du contenu (uploadé ou généré) - donc pas vide
+  const hasMediaContent = Boolean(data?.content?.url || data?.generated?.url);
+  
   // Les contrôles sont visibles si le node OU un des contrôles est hovered
-  const showBatchControl = isNodeHovered || isBatchControlHovered || isToolbarHovered;
+  const showBatchControl = isNodeHovered || isBatchControlHovered || isToolbarHovered || isReplaceHovered;
 
   // Handlers de hover avec délai
   const handleNodeMouseEnter = () => {
@@ -211,14 +223,26 @@ export const NodeLayout = ({
             )}
             <div
               className={cn(
-                'node-container flex size-full flex-col divide-y rounded-[28px] bg-card p-2 ring-1 ring-border transition-all',
+                'node-container flex size-full flex-col divide-y rounded-[20px] bg-card transition-all',
                 className
               )}
             >
-              <div className="overflow-hidden rounded-3xl bg-card">
+              <div className="overflow-hidden rounded-[17px] bg-card">
                 {children}
               </div>
             </div>
+            
+            {/* Contrôles en bas à droite : Replace + Batch runs */}
+            <div className="absolute bottom-3 right-3 z-50 flex items-center gap-2">
+              {/* Bouton Replace - visible seulement si le nœud a du contenu */}
+              {supportsReplace && hasMediaContent && (
+                <ReplaceMediaButton
+                  nodeId={id}
+                  isVisible={showBatchControl}
+                  mediaType={type as 'image' | 'video'}
+                  onHoverChange={setIsReplaceHovered}
+                />
+              )}
             
             {/* Contrôle des runs parallèles (comme Flora AI) */}
             {supportsBatch && (
@@ -228,36 +252,38 @@ export const NodeLayout = ({
                 onRun={handleBatchRun}
                 maxRuns={100}
                 onHoverChange={setIsBatchControlHovered}
+                  className="static"
               />
             )}
+            </div>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent className="min-w-[100px]">
           <ContextMenuItem onClick={() => duplicateNode(id)}>
-            <CopyIcon size={12} />
-            <span>Duplicate</span>
+            <CopyIcon size={10} />
+            <span>Dupliquer</span>
           </ContextMenuItem>
           <ContextMenuItem onClick={handleFocus}>
-            <EyeIcon size={12} />
-            <span>Focus</span>
+            <EyeIcon size={10} />
+            <span>Centrer</span>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleDelete} variant="destructive">
-            <TrashIcon size={12} />
-            <span>Delete</span>
+            <TrashIcon size={10} />
+            <span>Supprimer</span>
           </ContextMenuItem>
           {process.env.NODE_ENV === 'development' && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={handleShowData}>
-                <CodeIcon size={12} />
-                <span>Show data</span>
+                <CodeIcon size={10} />
+                <span>Data</span>
               </ContextMenuItem>
             </>
           )}
         </ContextMenuContent>
       </ContextMenu>
-      {type !== 'video' && <Handle type="source" position={Position.Right} />}
+      <Handle type="source" position={Position.Right} />
       <Dialog open={showData} onOpenChange={setShowData}>
         <DialogContent>
           <DialogHeader>

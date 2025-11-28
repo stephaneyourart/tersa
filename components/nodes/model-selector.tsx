@@ -132,7 +132,7 @@ export const ModelSelector = ({
   id,
   value,
   options,
-  width = 250,
+  width = 175,
   className,
   onChange,
   disabled,
@@ -189,11 +189,11 @@ export const ModelSelector = ({
         disabled={disabled}
         asChild
       >
-        <Button variant="outline" className="w-full">
+        <Button variant="outline" className="w-full h-8 text-xs px-2">
           {activeModel && (
-            <div className="flex w-full items-center gap-2 overflow-hidden">
+            <div className="flex w-full items-center gap-1.5 overflow-hidden">
               <ModelIcon data={activeModel} chef={activeModel.chef} />
-              <span className="block truncate">{activeModel.label}</span>
+              <span className="block truncate text-xs">{activeModel.label}</span>
             </div>
           )}
         </Button>

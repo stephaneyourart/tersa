@@ -134,6 +134,7 @@ export const GatewayProviderClient = ({
         },
       ],
       priceIndicator: getPriceIndicator(totalCost, allCosts),
+      default: (model as { default?: boolean }).default,
     };
   }
 

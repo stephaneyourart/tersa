@@ -1,6 +1,4 @@
 import type { JSONContent } from '@tiptap/core';
-import { useNodeConnections } from '@xyflow/react';
-import { TextPrimitive } from './primitive';
 import { TextTransform } from './transform';
 
 export type TextNodeProps = {
@@ -23,11 +21,5 @@ export type TextNodeProps = {
 };
 
 export const TextNode = (props: TextNodeProps) => {
-  const connections = useNodeConnections({
-    id: props.id,
-    handleType: 'target',
-  });
-  const Component = connections.length ? TextTransform : TextPrimitive;
-
-  return <Component {...props} title="Text" />;
+  return <TextTransform {...props} title="Text" />;
 };
