@@ -102,20 +102,30 @@ export const WAVESPEED_MODEL_CONFIGS: Record<string, WaveSpeedModelConfig> = {
   },
 
   // Nano Banana Pro Edit
+  // https://wavespeed.ai/docs/docs-api/google/google-nano-banana-pro-edit
+  // Parameters: prompt, images, aspect_ratio, resolution (1k/2k/4k), output_format
   'google/nano-banana-pro/edit': {
-    supportedParams: ['prompt', 'images', 'output_format'],
-    outputFormatOptions: ['jpeg', 'png'],
+    supportedParams: ['prompt', 'images', 'aspect_ratio', 'resolution', 'output_format'],
+    aspectRatioOptions: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+    resolutionOptions: ['1k', '2k', '4k'],
+    outputFormatOptions: ['png', 'jpeg'],
     defaults: {
-      output_format: 'jpeg',
+      resolution: '1k',
+      output_format: 'png',
     },
   },
 
   // Nano Banana Pro Edit Multi
+  // https://wavespeed.ai/docs/docs-api/google/google-nano-banana-pro-edit-multi
+  // Parameters: prompt, images, aspect_ratio, resolution (1k/2k/4k), output_format
   'google/nano-banana-pro/edit-multi': {
-    supportedParams: ['prompt', 'images', 'output_format'],
-    outputFormatOptions: ['jpeg', 'png'],
+    supportedParams: ['prompt', 'images', 'aspect_ratio', 'resolution', 'output_format'],
+    aspectRatioOptions: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+    resolutionOptions: ['1k', '2k', '4k'],
+    outputFormatOptions: ['png', 'jpeg'],
     defaults: {
-      output_format: 'jpeg',
+      resolution: '1k',
+      output_format: 'png',
     },
   },
 
@@ -220,6 +230,61 @@ export const WAVESPEED_MODEL_CONFIGS: Record<string, WaveSpeedModelConfig> = {
     defaults: {
       aspect_ratio: '1:1',
       num_inference_steps: 4,
+      output_format: 'jpeg',
+    },
+  },
+
+  // Flux 2 Pro Edit
+  // https://wavespeed.ai/docs/docs-api/wavespeed-ai/flux-2-pro-edit
+  'wavespeed-ai/flux-2-pro/edit': {
+    supportedParams: ['prompt', 'images', 'aspect_ratio', 'seed', 'guidance_scale', 'output_format'],
+    aspectRatioOptions: ['1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '9:21'],
+    outputFormatOptions: ['jpeg', 'png', 'webp'],
+    defaults: {
+      aspect_ratio: '1:1',
+      guidance_scale: 3.5,
+      output_format: 'jpeg',
+    },
+  },
+
+  // Flux 2 Pro Text to Image
+  // https://wavespeed.ai/docs/docs-api/wavespeed-ai/flux-2-pro-text-to-image
+  'wavespeed-ai/flux-2-pro/text-to-image': {
+    supportedParams: ['prompt', 'aspect_ratio', 'seed', 'guidance_scale', 'output_format'],
+    aspectRatioOptions: ['1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '9:21'],
+    outputFormatOptions: ['jpeg', 'png', 'webp'],
+    defaults: {
+      aspect_ratio: '1:1',
+      guidance_scale: 3.5,
+      output_format: 'jpeg',
+    },
+  },
+
+  // Flux Controlnet Union Pro 2.0
+  // https://wavespeed.ai/docs/docs-api/wavespeed-ai/flux-controlnet-union-pro-2.0
+  'wavespeed-ai/flux-controlnet-union-pro-2.0': {
+    supportedParams: ['prompt', 'images', 'aspect_ratio', 'seed', 'guidance_scale', 'output_format'],
+    aspectRatioOptions: ['1:1', '16:9', '9:16', '4:3', '3:4', '21:9', '9:21'],
+    outputFormatOptions: ['jpeg', 'png', 'webp'],
+    defaults: {
+      aspect_ratio: '1:1',
+      guidance_scale: 3.5,
+      output_format: 'jpeg',
+    },
+  },
+
+  // ========================================
+  // WAN 2.2 (WaveSpeed AI) - Images
+  // ========================================
+  
+  // WAN 2.2 Text to Image Realism
+  // https://wavespeed.ai/docs/docs-api/wavespeed-ai/wan-2.2-text-to-image-realism
+  'wavespeed-ai/wan-2.2/text-to-image-realism': {
+    supportedParams: ['prompt', 'aspect_ratio', 'seed', 'negative_prompt', 'output_format'],
+    aspectRatioOptions: ['1:1', '16:9', '9:16', '4:3', '3:4'],
+    outputFormatOptions: ['jpeg', 'png'],
+    defaults: {
+      aspect_ratio: '1:1',
       output_format: 'jpeg',
     },
   },
