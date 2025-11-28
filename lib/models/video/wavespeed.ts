@@ -1,9 +1,28 @@
 /**
  * Provider WaveSpeed pour les modèles vidéo
- * Supporte: Kling, Seedream, et autres modèles via WaveSpeed API
+ * Supporte: Kling, Seedream, WAN et autres modèles via WaveSpeed API v3
  */
 
 import type { VideoModel } from '.';
+
+// Mapping des modelId courts vers les chemins API complets
+const MODEL_PATH_MAP: Record<string, string> = {
+  // Kling
+  'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
+  'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',
+  'kling-v2.5-pro': 'kwaivgi/kling-v2.5-pro/image-to-video',
+  // Seedream
+  'seedream-v1': 'wavespeed-ai/seedream-3.0/image-to-video',
+  // WAN
+  'wan-2.1': 'wavespeed-ai/wan-2.1/image-to-video',
+  'wan-2.1-pro': 'wavespeed-ai/wan-2.1-pro/image-to-video',
+  // Veo
+  'veo3.1-i2v': 'google/veo3.1-image-to-video',
+  'veo3.1-t2v': 'google/veo3.1-text-to-video',
+  // Sora
+  'sora-2-i2v': 'openai/sora-2-image-to-video-pro',
+  'sora-2-t2v': 'openai/sora-2-text-to-video-pro',
+};
 
 // Types pour l'API WaveSpeed
 type WaveSpeedVideoModel =
@@ -12,35 +31,46 @@ type WaveSpeedVideoModel =
   | 'kling-v2.5-pro'
   | 'seedream-v1'
   | 'wan-2.1'
-  | 'wan-2.1-pro';
+  | 'wan-2.1-pro'
+  | 'veo3.1-i2v'
+  | 'veo3.1-t2v'
+  | 'sora-2-i2v'
+  | 'sora-2-t2v';
 
 type WaveSpeedRequest = {
-  model: string;
   prompt: string;
-  image_url?: string;
+  image?: string;
+  last_image?: string;  // Last frame pour Kling (paramètre officiel)
+  images?: string[];
   duration?: number;
   aspect_ratio?: string;
+  resolution?: string;
   negative_prompt?: string;
   seed?: number;
-  cfg_scale?: number;
-  motion_bucket_id?: number;
+  guidance_scale?: number;
+  enable_base64_output?: boolean;
+  enable_sync_mode?: boolean;
 };
 
 type WaveSpeedResponse = {
-  id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  output?: {
-    video_url: string;
+  data?: {
+    id: string;
+    status: string;
+    outputs?: string[];
+    urls?: {
+      get: string;
+    };
   };
-  error?: string;
+  code?: number;
+  message?: string;
 };
 
 /**
- * Appelle l'API WaveSpeed
+ * Appelle l'API WaveSpeed v3
  */
 async function callWaveSpeedApi(
   model: WaveSpeedVideoModel,
-  input: Omit<WaveSpeedRequest, 'model'>
+  input: WaveSpeedRequest
 ): Promise<string> {
   const apiKey = process.env.WAVESPEED_API_KEY;
   
@@ -48,18 +78,27 @@ async function callWaveSpeedApi(
     throw new Error('WAVESPEED_API_KEY non configuré');
   }
 
-  const baseUrl = 'https://api.wavespeed.ai/v1';
+  const modelPath = MODEL_PATH_MAP[model];
+  if (!modelPath) {
+    throw new Error(`Modèle inconnu: ${model}`);
+  }
+
+  const baseUrl = 'https://api.wavespeed.ai/api/v3';
 
   // Soumettre la requête de génération
-  const submitResponse = await fetch(`${baseUrl}/video/generate`, {
+  console.log(`[WaveSpeed Video] POST ${baseUrl}/${modelPath}`);
+  console.log(`[WaveSpeed Video] Body:`, JSON.stringify(input, null, 2));
+
+  const submitResponse = await fetch(`${baseUrl}/${modelPath}`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model,
       ...input,
+      enable_base64_output: false,
+      enable_sync_mode: false,
     }),
   });
 
@@ -68,39 +107,55 @@ async function callWaveSpeedApi(
     throw new Error(`Erreur WaveSpeed API: ${error}`);
   }
 
-  const { id } = await submitResponse.json() as { id: string };
+  const responseData = await submitResponse.json() as WaveSpeedResponse;
+  console.log(`[WaveSpeed Video] Response:`, JSON.stringify(responseData, null, 2));
 
-  // Polling pour le résultat
+  // Vérifier si on a directement le résultat
+  if (responseData.data?.outputs?.[0]) {
+    return responseData.data.outputs[0];
+  }
+
+  // Sinon, polling pour le résultat
+  const pollUrl = responseData.data?.urls?.get;
+  if (!pollUrl) {
+    throw new Error('Pas d\'URL de polling dans la réponse');
+  }
+
   let attempts = 0;
-  const maxAttempts = 120; // 10 minutes max
+  const maxAttempts = 180; // 6 minutes max (2s * 180)
 
   while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 secondes
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 secondes
 
-    const statusResponse = await fetch(`${baseUrl}/video/status/${id}`, {
+    const statusResponse = await fetch(pollUrl, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
     });
 
     if (!statusResponse.ok) {
-      throw new Error('Erreur lors de la vérification du statut');
+      const errorText = await statusResponse.text();
+      throw new Error(`Erreur polling: ${errorText}`);
     }
 
     const statusData = await statusResponse.json() as WaveSpeedResponse;
 
-    if (statusData.status === 'completed' && statusData.output) {
-      return statusData.output.video_url;
+    if (statusData.data?.status === 'completed' && statusData.data?.outputs?.[0]) {
+      console.log(`[WaveSpeed Video] Completed after ${attempts * 2}s`);
+      return statusData.data.outputs[0];
     }
 
-    if (statusData.status === 'failed') {
-      throw new Error(statusData.error || 'Génération échouée');
+    if (statusData.data?.status === 'failed') {
+      throw new Error(statusData.message || 'Génération vidéo échouée');
     }
 
     attempts++;
+    if (attempts % 15 === 0) {
+      console.log(`[WaveSpeed Video] Still processing... (${attempts * 2}s)`);
+    }
   }
 
-  throw new Error('Timeout: génération trop longue');
+  throw new Error('Timeout: génération vidéo trop longue');
 }
 
 /**
@@ -109,15 +164,22 @@ async function callWaveSpeedApi(
 function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
   return {
     modelId,
-    generate: async ({ prompt, imagePrompt, duration, aspectRatio }) => {
-      const input: Omit<WaveSpeedRequest, 'model'> = {
+    generate: async ({ prompt, imagePrompt, lastFrameImage, duration, aspectRatio }) => {
+      const input: WaveSpeedRequest = {
         prompt,
         aspect_ratio: aspectRatio || '16:9',
         duration: duration || 5,
       };
 
+      // Ajouter first frame (image) si fournie
       if (imagePrompt) {
-        input.image_url = imagePrompt;
+        input.image = imagePrompt;
+      }
+
+      // Ajouter last frame (last_image) si fournie - supporté par Kling
+      if (lastFrameImage) {
+        input.last_image = lastFrameImage;
+        console.log(`[WaveSpeed Video] Adding last_image for first-last frame animation`);
       }
 
       return callWaveSpeedApi(modelId, input);

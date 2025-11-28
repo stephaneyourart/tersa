@@ -226,7 +226,7 @@ export const NodeLayout = ({
                 nodeId={id}
                 isVisible={showBatchControl}
                 onRun={handleBatchRun}
-                maxRuns={10}
+                maxRuns={100}
                 onHoverChange={setIsBatchControlHovered}
               />
             )}

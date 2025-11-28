@@ -43,7 +43,14 @@ import {
   ContextMenuTrigger,
 } from './ui/context-menu';
 
-export const Canvas = ({ children, ...props }: ReactFlowProps) => {
+type CanvasProps = ReactFlowProps & {
+  initialNodes?: Node[];
+  initialEdges?: Edge[];
+  initialViewport?: { x: number; y: number; zoom: number };
+  onAutoSave?: (nodes: Node[], edges: Edge[], viewport: { x: number; y: number; zoom: number }) => void;
+};
+
+export const Canvas = ({ children, ...props }: CanvasProps) => {
   const project = useProject();
   const {
     onConnect,
@@ -51,16 +58,20 @@ export const Canvas = ({ children, ...props }: ReactFlowProps) => {
     onConnectEnd,
     onEdgesChange,
     onNodesChange,
-    nodes: initialNodes,
-    edges: initialEdges,
+    nodes: propsNodes,
+    edges: propsEdges,
+    initialNodes: localInitialNodes,
+    initialEdges: localInitialEdges,
+    initialViewport,
+    onAutoSave,
     ...rest
   } = props ?? {};
   const content = project?.content as { nodes: Node[]; edges: Edge[] };
   const [nodes, setNodes] = useState<Node[]>(
-    initialNodes ?? content?.nodes ?? []
+    localInitialNodes ?? propsNodes ?? content?.nodes ?? []
   );
   const [edges, setEdges] = useState<Edge[]>(
-    initialEdges ?? content?.edges ?? []
+    localInitialEdges ?? propsEdges ?? content?.edges ?? []
   );
   const [copiedNodes, setCopiedNodes] = useState<Node[]>([]);
   const {
@@ -75,6 +86,19 @@ export const Canvas = ({ children, ...props }: ReactFlowProps) => {
   const [saveState, setSaveState] = useSaveProject();
 
   const save = useDebouncedCallback(async () => {
+    const flowObject = toObject();
+    
+    // Mode local avec onAutoSave
+    if (onAutoSave) {
+      onAutoSave(
+        flowObject.nodes as Node[], 
+        flowObject.edges as Edge[], 
+        flowObject.viewport as { x: number; y: number; zoom: number }
+      );
+      return;
+    }
+    
+    // Mode cloud avec project
     if (saveState.isSaving || !project?.userId || !project?.id) {
       return;
     }
@@ -83,7 +107,7 @@ export const Canvas = ({ children, ...props }: ReactFlowProps) => {
       setSaveState((prev) => ({ ...prev, isSaving: true }));
 
       const response = await updateProjectAction(project.id, {
-        content: toObject(),
+        content: flowObject,
       });
 
       if ('error' in response) {
@@ -393,7 +417,8 @@ export const Canvas = ({ children, ...props }: ReactFlowProps) => {
               isValidConnection={isValidConnection}
               connectionLineComponent={ConnectionLine}
               panOnScroll
-              fitView
+              fitView={!initialViewport}
+              defaultViewport={initialViewport}
               zoomOnDoubleClick={false}
               panOnDrag={false}
               selectionOnDrag={true}

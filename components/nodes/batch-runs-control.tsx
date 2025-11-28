@@ -1,12 +1,12 @@
 /**
- * Contrôle du nombre de runs parallèles (comme Flora AI)
- * S'affiche au hover d'un node pour permettre de lancer N runs en parallèle
+ * Contrôle du nombre de runs parallèles (style Flora)
+ * S'affiche au hover d'un node - incrusté sur le côté droit
  */
 
 'use client';
 
 import { cn } from '@/lib/utils';
-import { MinusIcon, PlusIcon, PlayIcon } from 'lucide-react';
+import { ArrowUpIcon, MinusIcon, PlusIcon } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 type BatchRunsControlProps = {
@@ -19,10 +19,9 @@ type BatchRunsControlProps = {
 };
 
 export function BatchRunsControl({
-  nodeId,
   isVisible,
   onRun,
-  maxRuns = 10,
+  maxRuns = 100,
   className,
   onHoverChange,
 }: BatchRunsControlProps) {
@@ -57,11 +56,10 @@ export function BatchRunsControl({
   };
 
   const handleMouseLeave = () => {
-    // Petit délai pour permettre de revenir sur le contrôle
     hideTimeoutRef.current = setTimeout(() => {
       setIsControlHovered(false);
       onHoverChange?.(false);
-    }, 150);
+    }, 200);
   };
 
   useEffect(() => {
@@ -72,7 +70,6 @@ export function BatchRunsControl({
     };
   }, []);
 
-  // Afficher si le node est hovered OU si le contrôle lui-même est hovered
   const shouldShow = isVisible || isControlHovered;
 
   return (
@@ -80,7 +77,7 @@ export function BatchRunsControl({
       {/* Zone de hover invisible pour relier le node au contrôle */}
       <div
         className={cn(
-          'absolute -right-0 top-0 bottom-0 w-20 z-40',
+          'absolute -right-1 top-0 bottom-0 w-16 z-40',
           shouldShow ? 'pointer-events-auto' : 'pointer-events-none'
         )}
         onMouseEnter={handleMouseEnter}
@@ -89,8 +86,8 @@ export function BatchRunsControl({
       
       <div
         className={cn(
-          'absolute -right-3 top-1/2 -translate-y-1/2 translate-x-full z-50',
-          'flex flex-col items-center gap-2',
+          'absolute right-4 top-1/2 -translate-y-1/2 translate-x-full z-50',
+          'flex flex-col items-center gap-3',
           'transition-all duration-200',
           shouldShow ? 'opacity-100' : 'opacity-0 pointer-events-none',
           className
@@ -98,51 +95,48 @@ export function BatchRunsControl({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-      {/* Contrôle du compteur */}
-      <div className="flex flex-col items-center bg-card rounded-full p-1.5 shadow-lg ring-1 ring-border">
-        <button
-          onClick={increment}
-          disabled={count >= maxRuns}
-          className={cn(
-            'p-2.5 rounded-full transition-colors',
-            'hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed'
-          )}
-          title="Augmenter le nombre de runs"
-        >
-          <PlusIcon size={18} />
-        </button>
-        
-        <div className="py-2 px-4 font-mono text-xl font-bold min-w-[2.5rem] text-center select-none">
-          {count}
+        {/* Contrôle du compteur - style Flora */}
+        <div className="flex flex-col items-center bg-zinc-800 rounded-full overflow-hidden shadow-xl">
+          <button
+            onClick={increment}
+            disabled={count >= maxRuns}
+            className={cn(
+              'p-3 transition-colors',
+              'hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+          >
+            <PlusIcon size={20} className="text-white" />
+          </button>
+          
+          <div className="py-1 px-3 font-mono text-xl font-bold text-white min-w-[3rem] text-center select-none">
+            {count}
+          </div>
+          
+          <button
+            onClick={decrement}
+            disabled={count <= 1}
+            className={cn(
+              'p-3 transition-colors',
+              'hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+          >
+            <MinusIcon size={20} className="text-white" />
+          </button>
         </div>
-        
+
+        {/* Bouton de lancement - blanc avec icône noire */}
         <button
-          onClick={decrement}
-          disabled={count <= 1}
+          onClick={handleRun}
           className={cn(
-            'p-2.5 rounded-full transition-colors',
-            'hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed'
+            'p-4 rounded-full bg-white shadow-xl',
+            'hover:bg-zinc-100 hover:scale-105 transition-all',
+            'flex items-center justify-center'
           )}
-          title="Diminuer le nombre de runs"
+          title={`Lancer ${count} run${count > 1 ? 's' : ''}`}
         >
-          <MinusIcon size={18} />
+          <ArrowUpIcon size={22} className="text-black" strokeWidth={2.5} />
         </button>
       </div>
-
-      {/* Bouton de lancement */}
-      <button
-        onClick={handleRun}
-        className={cn(
-          'p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg',
-          'hover:bg-primary/90 hover:scale-105 transition-all',
-          'flex items-center justify-center'
-        )}
-        title={`Lancer ${count} run${count > 1 ? 's' : ''} en parallèle`}
-      >
-        <PlayIcon size={18} fill="currentColor" />
-      </button>
-    </div>
     </>
   );
 }
-

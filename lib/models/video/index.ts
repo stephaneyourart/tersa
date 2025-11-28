@@ -17,8 +17,9 @@ export type VideoModel = {
   modelId: string;
   generate: (props: {
     prompt: string;
-    imagePrompt: string | undefined;
-    duration: 5;
+    imagePrompt: string | undefined;  // First frame
+    lastFrameImage?: string;          // Last frame (tail image)
+    duration: 5 | 10;
     aspectRatio: string;
   }) => Promise<string>;
 };

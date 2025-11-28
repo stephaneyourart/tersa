@@ -67,18 +67,36 @@ export const generateVideoAction = async ({
 
     const provider = model.providers[0];
 
-    let firstFrameImage = images.at(0)?.url;
+    console.log(`[Video Action] Received ${images.length} images:`, images.map(i => i.url?.substring(0, 50)));
 
-    // Convertir l'image en base64 si nécessaire (pour les APIs qui ne supportent pas les URLs)
+    let firstFrameImage = images.at(0)?.url;
+    let lastFrameImage = images.length > 1 ? images.at(-1)?.url : undefined;
+
+    console.log(`[Video Action] First frame URL: ${firstFrameImage?.substring(0, 50)}`);
+    console.log(`[Video Action] Last frame URL: ${lastFrameImage?.substring(0, 50)}`);
+
+    // Convertir la première image en base64 si nécessaire
     if (firstFrameImage) {
       const buffer = await readImageContent(firstFrameImage);
       const base64 = buffer.toString('base64');
       firstFrameImage = `data:${images.at(0)?.type || 'image/jpeg'};base64,${base64}`;
+      console.log(`[Video Action] First frame converted to base64 (${base64.length} chars)`);
     }
+
+    // Convertir la dernière image en base64 si nécessaire (pour tail_image)
+    if (lastFrameImage && images.length > 1) {
+      const buffer = await readImageContent(lastFrameImage);
+      const base64 = buffer.toString('base64');
+      lastFrameImage = `data:${images.at(-1)?.type || 'image/jpeg'};base64,${base64}`;
+      console.log(`[Video Action] Last frame converted to base64 (${base64.length} chars)`);
+    }
+
+    console.log(`[Video Action] Sending to API - First frame: ${firstFrameImage ? 'yes' : 'no'}, Last frame: ${lastFrameImage ? 'yes' : 'no'}`);
 
     const url = await provider.model.generate({
       prompt,
       imagePrompt: firstFrameImage,
+      lastFrameImage: lastFrameImage,
       duration: 5,
       aspectRatio: '16:9',
     });

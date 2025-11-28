@@ -2,7 +2,7 @@ import { generateImageAction } from '@/app/actions/image/create';
 import { editImageAction } from '@/app/actions/image/edit';
 import { NodeLayout } from '@/components/nodes/layout';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { GeneratingSkeleton } from '@/components/nodes/generating-skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { download } from '@/lib/download';
@@ -12,10 +12,10 @@ import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow } from '@xyflow/react';
 import {
+  ArrowUpIcon,
   ClockIcon,
   DownloadIcon,
   Loader2Icon,
-  PlayIcon,
   RotateCcwIcon,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -474,34 +474,17 @@ export const ImageTransform = ({
       ),
     });
 
-    items.push(
-      loading
-        ? {
-            tooltip: 'Generating...',
-            children: (
-              <Button size="icon" className="rounded-full" disabled>
-                <Loader2Icon className="animate-spin" size={12} />
-              </Button>
-            ),
-          }
-        : {
-            tooltip: data.generated?.url ? 'Regenerate' : 'Generate',
-            children: (
-              <Button
-                size="icon"
-                className="rounded-full"
-                onClick={handleGenerate}
-                disabled={loading || !project?.id}
-              >
-                {data.generated?.url ? (
-                  <RotateCcwIcon size={12} />
-                ) : (
-                  <PlayIcon size={12} />
-                )}
-              </Button>
-            ),
-          }
-    );
+    // Afficher un loader dans la toolbar si en cours de génération
+    if (loading) {
+      items.push({
+        tooltip: 'Generating...',
+        children: (
+          <Button size="icon" variant="ghost" className="rounded-full" disabled>
+            <Loader2Icon className="animate-spin" size={12} />
+          </Button>
+        ),
+      });
+    }
 
     if (data.generated) {
       items.push({
@@ -575,24 +558,11 @@ export const ImageTransform = ({
       onBatchRun={handleBatchRun}
     >
       {isGenerating && (
-        <Skeleton
-          className="flex w-full animate-pulse items-center justify-center rounded-b-xl flex-col gap-2"
-          style={{ aspectRatio }}
-        >
-          <Loader2Icon
-            size={24}
-            className="size-6 animate-spin text-muted-foreground"
-          />
-          <div className="text-center">
-            <p className="text-sm font-medium text-muted-foreground">
-              Génération en cours...
-            </p>
-            <p className="text-xs text-muted-foreground/70">
-              ~{elapsedTime}s
-              {elapsedTime > 10 && " • Modèles 4K: ~60-90s"}
-            </p>
-          </div>
-        </Skeleton>
+        <GeneratingSkeleton
+          className="rounded-b-xl"
+          estimatedDuration={30} // Image ~30 secondes
+          startTime={data.batchStartTime}
+        />
       )}
       {!isGenerating && !data.generated?.url && (
         <div
@@ -600,7 +570,7 @@ export const ImageTransform = ({
           style={{ aspectRatio }}
         >
           <p className="text-muted-foreground text-sm">
-            Press <PlayIcon size={12} className="-translate-y-px inline" /> to
+            Press <ArrowUpIcon size={12} className="-translate-y-px inline" /> to
             create an image
           </p>
         </div>
