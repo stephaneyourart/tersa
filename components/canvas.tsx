@@ -70,6 +70,8 @@ import { ConnectionLine } from './connection-line';
 import { edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 import { ProximityHandles } from './proximity-handles';
+import { SelectionToolbar } from './selection-toolbar';
+import { toast } from 'sonner';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -937,6 +939,18 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                 gap={20}
               />
               <ProximityHandles />
+              <SelectionToolbar
+                onCreateGroup={(nodeIds) => {
+                  // TODO: Implémenter la création de groupe
+                  toast.success(`Groupe créé avec ${nodeIds.length} nœuds`);
+                  console.log('[SelectionToolbar] Create group with nodes:', nodeIds);
+                }}
+                onAutoformat={(nodeIds) => {
+                  // TODO: Implémenter l'autoformat
+                  toast.success(`Autoformat de ${nodeIds.length} nœuds`);
+                  console.log('[SelectionToolbar] Autoformat nodes:', nodeIds);
+                }}
+              />
               {children}
               
               {/* Menu flottant Replace/Connect */}
