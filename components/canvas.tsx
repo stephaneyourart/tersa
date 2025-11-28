@@ -946,9 +946,54 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                   console.log('[SelectionToolbar] Create group with nodes:', nodeIds);
                 }}
                 onAutoformat={(nodeIds) => {
-                  // TODO: Implémenter l'autoformat
-                  toast.success(`Autoformat de ${nodeIds.length} nœuds`);
-                  console.log('[SelectionToolbar] Autoformat nodes:', nodeIds);
+                  // Récupérer les nœuds sélectionnés
+                  const selectedNodes = getNodes().filter((n) => nodeIds.includes(n.id));
+                  if (selectedNodes.length < 2) return;
+
+                  // Trouver le coin supérieur gauche de la sélection
+                  const minX = Math.min(...selectedNodes.map((n) => n.position.x));
+                  const minY = Math.min(...selectedNodes.map((n) => n.position.y));
+
+                  // Calculer la taille moyenne des nœuds pour l'espacement
+                  const avgWidth = selectedNodes.reduce((sum, n) => sum + (n.measured?.width ?? 300), 0) / selectedNodes.length;
+                  const avgHeight = selectedNodes.reduce((sum, n) => sum + (n.measured?.height ?? 200), 0) / selectedNodes.length;
+                  
+                  // Espacement entre les nœuds
+                  const gapX = avgWidth + 50;
+                  const gapY = avgHeight + 50;
+
+                  // Calculer le nombre de colonnes (racine carrée arrondie)
+                  const cols = Math.ceil(Math.sqrt(selectedNodes.length));
+
+                  // Trier les nœuds par position (haut-gauche vers bas-droite) pour un ordre prévisible
+                  const sortedNodes = [...selectedNodes].sort((a, b) => {
+                    const rowA = Math.floor(a.position.y / 100);
+                    const rowB = Math.floor(b.position.y / 100);
+                    if (rowA !== rowB) return rowA - rowB;
+                    return a.position.x - b.position.x;
+                  });
+
+                  // Appliquer les nouvelles positions en grille
+                  setNodes((nds) =>
+                    nds.map((node) => {
+                      const idx = sortedNodes.findIndex((n) => n.id === node.id);
+                      if (idx === -1) return node;
+
+                      const col = idx % cols;
+                      const row = Math.floor(idx / cols);
+
+                      return {
+                        ...node,
+                        position: {
+                          x: minX + col * gapX,
+                          y: minY + row * gapY,
+                        },
+                      };
+                    })
+                  );
+
+                  save();
+                  toast.success(`${nodeIds.length} nœuds arrangés`);
                 }}
               />
               {children}
