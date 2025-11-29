@@ -7,18 +7,18 @@
  */
 
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
-import { BoxesIcon, LayoutGridIcon } from 'lucide-react';
+import { FolderPlusIcon, LayoutGridIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 type SelectionToolbarProps = {
-  onCreateGroup?: (nodeIds: string[]) => void;
+  onCreateCollection?: (nodeIds: string[]) => void;
   onAutoformat?: (nodeIds: string[]) => void;
 };
 
 export const SelectionToolbar = ({
-  onCreateGroup,
+  onCreateCollection,
   onAutoformat,
 }: SelectionToolbarProps) => {
   // Récupérer les IDs des nœuds sélectionnés depuis le store
@@ -34,8 +34,8 @@ export const SelectionToolbar = ({
     return null;
   }
 
-  const handleCreateGroup = () => {
-    onCreateGroup?.(nodeIds);
+  const handleCreateCollection = () => {
+    onCreateCollection?.(nodeIds);
   };
 
   const handleAutoformat = () => {
@@ -56,12 +56,12 @@ export const SelectionToolbar = ({
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-full hover:bg-accent"
-            onClick={handleCreateGroup}
+            onClick={handleCreateCollection}
           >
-            <BoxesIcon size={16} />
+            <FolderPlusIcon size={16} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Créer un groupe</TooltipContent>
+        <TooltipContent>Créer une collection</TooltipContent>
       </Tooltip>
 
       <Tooltip>

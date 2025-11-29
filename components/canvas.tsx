@@ -374,6 +374,91 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       const sourceNode = getNodes().find((n) => n.id === connection.source);
       const targetNode = getNodes().find((n) => n.id === connection.target);
 
+      // Connexion vers un Collection Node - ajouter l'item à la collection
+      if (
+        sourceNode &&
+        targetNode?.type === 'collection' &&
+        ['image', 'video', 'audio', 'text'].includes(sourceNode.type || '')
+      ) {
+        const sourceData = sourceNode.data as Record<string, unknown>;
+        const generated = sourceData.generated as { url?: string; width?: number; height?: number; duration?: number; text?: string } | undefined;
+        const content = sourceData.content as { url?: string } | string | undefined;
+        
+        // Extraire les données selon le type
+        let url: string | undefined;
+        let width: number | undefined;
+        let height: number | undefined;
+        let duration: number | undefined;
+        let text: string | undefined;
+
+        if (sourceNode.type === 'image') {
+          const contentUrl = typeof content === 'object' ? content?.url : undefined;
+          url = generated?.url || contentUrl;
+          width = generated?.width || (sourceData.width as number);
+          height = generated?.height || (sourceData.height as number);
+        } else if (sourceNode.type === 'video') {
+          const contentUrl = typeof content === 'object' ? content?.url : undefined;
+          url = generated?.url || contentUrl;
+          width = generated?.width || (sourceData.width as number) || 1920;
+          height = generated?.height || (sourceData.height as number) || 1080;
+        } else if (sourceNode.type === 'audio') {
+          const contentUrl = typeof content === 'object' ? content?.url : undefined;
+          url = generated?.url || contentUrl;
+          duration = generated?.duration || (sourceData.duration as number);
+        } else if (sourceNode.type === 'text') {
+          text = generated?.text || (typeof content === 'string' ? content : undefined) || (sourceData.text as string);
+        }
+
+        // Créer le nouvel item
+        const newItemId = nanoid();
+        const newItem = {
+          id: newItemId,
+          type: sourceNode.type as 'image' | 'video' | 'audio' | 'text',
+          enabled: true,
+          url,
+          width,
+          height,
+          duration,
+          text,
+          name: (sourceData.customName as string) || undefined,
+        };
+
+        // Mettre à jour la collection
+        const collectionData = targetNode.data as { 
+          items?: unknown[]; 
+          collapsed?: boolean;
+          presets?: Array<{ id: string; name: string; itemStates: Record<string, boolean> }>;
+        };
+        const existingItems = (collectionData.items || []) as unknown[];
+        
+        // Ajouter le nouvel item comme ON dans tous les presets existants
+        const updatedPresets = (collectionData.presets || []).map(preset => ({
+          ...preset,
+          itemStates: { ...preset.itemStates, [newItemId]: true }
+        }));
+        
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === targetNode.id
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    items: [...existingItems, newItem],
+                    presets: updatedPresets,
+                    collapsed: false, // Ouvrir la collection
+                    activeTab: sourceNode.type, // Aller à l'onglet correspondant
+                  },
+                }
+              : n
+          )
+        );
+
+        save();
+        toast.success('Élément ajouté à la collection');
+        return; // Pas d'edge créé
+      }
+
       // Vérifier si c'est une connexion "remplaçable"
       // (même type, les deux ont du contenu)
       if (
@@ -940,10 +1025,88 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               />
               <ProximityHandles />
               <SelectionToolbar
-                onCreateGroup={(nodeIds) => {
-                  // TODO: Implémenter la création de groupe
-                  toast.success(`Groupe créé avec ${nodeIds.length} nœuds`);
-                  console.log('[SelectionToolbar] Create group with nodes:', nodeIds);
+                onCreateCollection={(nodeIds) => {
+                  // Récupérer les nœuds sélectionnés
+                  const selectedNodes = getNodes().filter((n) => nodeIds.includes(n.id));
+                  if (selectedNodes.length < 2) return;
+
+                  // Convertir les nœuds en items de collection
+                  const items = selectedNodes
+                    .filter((node) => ['image', 'video', 'audio', 'text'].includes(node.type || ''))
+                    .map((node) => {
+                      const data = node.data as Record<string, unknown>;
+                      const generated = data.generated as { url?: string; width?: number; height?: number; duration?: number; text?: string } | undefined;
+                      const content = data.content as { url?: string } | string | undefined;
+                      
+                      // Extraire l'URL et les dimensions selon le type
+                      let url: string | undefined;
+                      let width: number | undefined;
+                      let height: number | undefined;
+                      let duration: number | undefined;
+                      let text: string | undefined;
+
+                      if (node.type === 'image') {
+                        // content peut être un objet {url, type} ou undefined
+                        const contentUrl = typeof content === 'object' ? content?.url : undefined;
+                        url = generated?.url || contentUrl;
+                        width = generated?.width || (data.width as number);
+                        height = generated?.height || (data.height as number);
+                      } else if (node.type === 'video') {
+                        const contentUrl = typeof content === 'object' ? content?.url : undefined;
+                        url = generated?.url || contentUrl;
+                        width = generated?.width || (data.width as number) || 1920;
+                        height = generated?.height || (data.height as number) || 1080;
+                      } else if (node.type === 'audio') {
+                        const contentUrl = typeof content === 'object' ? content?.url : undefined;
+                        url = generated?.url || contentUrl;
+                        duration = generated?.duration || (data.duration as number);
+                      } else if (node.type === 'text') {
+                        // Pour le texte, content est une string ou generated.text
+                        text = generated?.text || (typeof content === 'string' ? content : undefined) || (data.text as string);
+                      }
+
+                      return {
+                        id: nanoid(),
+                        type: node.type as 'image' | 'video' | 'audio' | 'text',
+                        enabled: true,
+                        url,
+                        width,
+                        height,
+                        duration,
+                        text,
+                        name: (data.customName as string) || undefined,
+                      };
+                    });
+
+                  if (items.length === 0) {
+                    toast.error('Aucun élément compatible pour la collection');
+                    return;
+                  }
+
+                  // Calculer la position moyenne pour placer la collection
+                  const avgX = selectedNodes.reduce((sum, n) => sum + n.position.x, 0) / selectedNodes.length;
+                  const avgY = selectedNodes.reduce((sum, n) => sum + n.position.y, 0) / selectedNodes.length;
+
+                  // Créer le nœud collection
+                  const collectionId = nanoid();
+                  const collectionNode = {
+                    id: collectionId,
+                    type: 'collection',
+                    position: { x: avgX, y: avgY },
+                    data: {
+                      label: 'Collection',
+                      items,
+                    },
+                  };
+
+                  // Ajouter la collection et désélectionner les nœuds
+                  setNodes((nds) => [
+                    ...nds.map((n) => ({ ...n, selected: false })),
+                    collectionNode,
+                  ]);
+
+                  save();
+                  toast.success(`Collection créée avec ${items.length} éléments`);
                 }}
                 onAutoformat={(nodeIds) => {
                   // Récupérer les nœuds sélectionnés
