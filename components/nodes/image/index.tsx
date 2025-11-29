@@ -2,6 +2,15 @@ import { useNodeConnections } from '@xyflow/react';
 import { ImagePrimitive } from './primitive';
 import { ImageTransform } from './transform';
 
+export type UpscaleData = {
+  status: 'idle' | 'processing' | 'completed';
+  originalUrl?: string;    // URL de l'image avant upscale
+  upscaledUrl?: string;    // URL de l'image après upscale
+  model?: string;          // Modèle utilisé
+  scale?: number;          // Facteur d'upscale
+  startTime?: number;      // Timestamp début upscale
+};
+
 export type ImageNodeProps = {
   type: string;
   data: {
@@ -24,6 +33,10 @@ export type ImageNodeProps = {
     batchGenerating?: boolean;
     batchStartTime?: number;
     advancedSettings?: unknown;
+    // Upscale state
+    upscale?: UpscaleData;
+    // Flag pour distinguer images importées vs générées dans le canvas
+    isGenerated?: boolean;
   };
   id: string;
 };

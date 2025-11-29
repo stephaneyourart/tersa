@@ -66,7 +66,7 @@ export const upscaleModels: Record<string, TersaUpscaleModel> = {
     maxScale: 6,
     supportsEnhanceFace: true,
     supportsDenoise: false,
-    default: true,
+    default: true, // Lupa comme modèle par défaut
   },
 
   'lupa-precision': {
@@ -145,7 +145,7 @@ export const upscaleModels: Record<string, TersaUpscaleModel> = {
   // ========================================
 
   'real-esrgan': {
-    label: 'Real-ESRGAN',
+    label: 'Real-ESRGAN (Fal)',
     chef: providers.fal,
     type: 'image',
     providers: [
@@ -158,6 +158,8 @@ export const upscaleModels: Record<string, TersaUpscaleModel> = {
             // Implémentation Real-ESRGAN via Fal
             const apiKey = process.env.FAL_API_KEY;
             if (!apiKey) throw new Error('FAL_API_KEY non configuré');
+
+            console.log('[Real-ESRGAN] Starting upscale for:', imageUrl?.substring(0, 100));
 
             const response = await fetch('https://queue.fal.run/fal-ai/real-esrgan', {
               method: 'POST',
@@ -172,10 +174,13 @@ export const upscaleModels: Record<string, TersaUpscaleModel> = {
             });
 
             if (!response.ok) {
-              throw new Error('Erreur Real-ESRGAN');
+              const errorText = await response.text();
+              console.error('[Real-ESRGAN] Error:', errorText);
+              throw new Error(`Erreur Real-ESRGAN: ${errorText}`);
             }
 
             const { request_id, status_url } = await response.json();
+            console.log('[Real-ESRGAN] Job started:', request_id);
 
             // Polling
             let attempts = 0;
@@ -185,6 +190,8 @@ export const upscaleModels: Record<string, TersaUpscaleModel> = {
                 headers: { 'Authorization': `Key ${apiKey}` },
               });
               const status = await statusRes.json();
+              
+              console.log('[Real-ESRGAN] Status:', status.status);
               
               if (status.status === 'COMPLETED') {
                 return status.result.image.url;

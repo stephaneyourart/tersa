@@ -33,6 +33,8 @@ import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
+import { ImageCompareSlider } from './image-compare-slider';
+import type { UpscaleSettings } from './upscale-button';
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
@@ -623,11 +625,109 @@ export const ImageTransform = ({
   const nodeData = useMemo(() => ({
     ...data,
     advancedSettings,
+    isGenerated: true, // Image générée dans le canvas
   }), [data, advancedSettings]);
 
   const [isHovered, setIsHovered] = useState(false);
   const hasContent = isGenerating || data.generated?.url;
   const hasPrompt = Boolean(data.instructions?.trim());
+
+  // État d'upscale
+  const upscaleStatus = data.upscale?.status || 'idle';
+  const isUpscaling = upscaleStatus === 'processing';
+  const isUpscaled = upscaleStatus === 'completed';
+
+  // Handler pour lancer l'upscale
+  const handleUpscale = useCallback(async (settings: UpscaleSettings) => {
+    const imageUrl = data.generated?.url;
+    if (!imageUrl) return;
+
+    const startTime = Date.now();
+    
+    // Mettre à jour le statut en "processing"
+    updateNodeData(id, {
+      upscale: {
+        status: 'processing',
+        originalUrl: imageUrl,
+        model: settings.model,
+        scale: settings.scale,
+        startTime,
+      },
+    });
+
+    try {
+      // Utiliser un AbortController avec un timeout de 5 minutes pour les upscales longs
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 minutes
+
+      const response = await fetch('/api/upscale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'image',
+          model: settings.model,
+          imageUrl,
+          scale: settings.scale,
+          saveLocally: true,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Erreur HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      const duration = Math.round((Date.now() - startTime) / 1000);
+
+      // Mettre à jour avec l'image upscalée
+      updateNodeData(id, {
+        upscale: {
+          status: 'completed',
+          originalUrl: imageUrl,
+          upscaledUrl: result.result.url,
+          model: settings.model,
+          scale: settings.scale,
+        },
+      });
+
+      toast.success('Image upscalée !', {
+        description: `⏱️ ${duration}s • ${settings.scale}x • ${settings.model}`,
+        duration: 5000,
+      });
+
+    } catch (error) {
+      // Vérifier si c'est une erreur d'abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('Upscale annulé', {
+          description: 'L\'opération a pris trop de temps (>5min)',
+        });
+      } else {
+        handleError('Erreur upscale', error);
+      }
+      
+      // Reset en cas d'erreur
+      updateNodeData(id, {
+        upscale: {
+          status: 'idle',
+          originalUrl: imageUrl,
+        },
+      });
+    }
+  }, [id, data.generated?.url, updateNodeData]);
+
+  // Handler pour annuler l'upscale
+  const handleCancelUpscale = useCallback(() => {
+    updateNodeData(id, {
+      upscale: {
+        status: 'idle',
+        originalUrl: data.generated?.url,
+      },
+    });
+  }, [id, data.generated?.url, updateNodeData]);
 
   return (
     <NodeLayout 
@@ -638,15 +738,18 @@ export const ImageTransform = ({
       toolbar={toolbar}
       modelLabel={selectedModel?.label}
       onBatchRun={handleBatchRun}
+      onUpscale={handleUpscale}
+      onCancelUpscale={handleCancelUpscale}
     >
-      {isGenerating && (
+      {/* Skeleton pendant génération OU upscale */}
+      {(isGenerating || isUpscaling) && (
         <GeneratingSkeleton
           className="rounded-b-xl"
-          estimatedDuration={30} // Image ~30 secondes
-          startTime={data.batchStartTime}
+          estimatedDuration={isUpscaling ? 60 : 30} // Upscale ~60s, Image ~30s
+          startTime={isUpscaling ? data.upscale?.startTime : data.batchStartTime}
         />
       )}
-      {!isGenerating && !data.generated?.url && (
+      {!isGenerating && !isUpscaling && !data.generated?.url && (
         <div
           className="flex w-full items-center justify-center rounded-b-xl bg-secondary p-4"
           style={{ aspectRatio }}
@@ -657,21 +760,32 @@ export const ImageTransform = ({
           </p>
         </div>
       )}
-      {!isGenerating && data.generated?.url && (
+      {!isGenerating && !isUpscaling && data.generated?.url && (
         <div 
           className="relative"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <Image
-            src={data.generated.url}
-            alt="Generated image"
-            width={1000}
-            height={1000}
-            className="w-full rounded-b-xl object-cover"
-          />
-          {/* Overlay du prompt au hover */}
-          {hasPrompt && isHovered && (
+          {/* Afficher le slider de comparaison si upscalé */}
+          {isUpscaled && data.upscale?.upscaledUrl ? (
+            <ImageCompareSlider
+              beforeUrl={data.upscale.originalUrl || data.generated.url}
+              afterUrl={data.upscale.upscaledUrl}
+              className="rounded-b-xl"
+              width={1000}
+              height={1000}
+            />
+          ) : (
+            <Image
+              src={data.generated.url}
+              alt="Generated image"
+              width={1000}
+              height={1000}
+              className="w-full rounded-b-xl object-cover"
+            />
+          )}
+          {/* Overlay du prompt au hover (seulement si pas de slider de comparaison) */}
+          {hasPrompt && isHovered && !isUpscaled && (
             <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 transition-opacity">
               <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
                 {data.instructions}

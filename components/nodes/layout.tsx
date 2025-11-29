@@ -20,6 +20,7 @@ import { type ReactNode, useState, useRef, useEffect } from 'react';
 import { NodeToolbar } from './toolbar';
 import { BatchRunsControl } from './batch-runs-control';
 import { ReplaceMediaButton } from './replace-media-button';
+import { UpscaleButton, type UpscaleSettings, type UpscaleStatus } from './image/upscale-button';
 
 // Types de nodes qui supportent le batch/runs parallèles
 const BATCH_SUPPORTED_TYPES = ['image', 'video', 'audio', 'generate-image', 'generate-video'];
@@ -41,6 +42,14 @@ type NodeLayoutProps = {
       height?: number;
       quality?: string;
     };
+    isGenerated?: boolean; // Si true, l'image a été générée dans le canvas (pas importée)
+    upscale?: {
+      status: 'idle' | 'processing' | 'completed';
+      originalUrl?: string;
+      upscaledUrl?: string;
+      model?: string;
+      scale?: number;
+    };
   };
   title: string;
   type: string;
@@ -50,6 +59,8 @@ type NodeLayoutProps = {
   }[];
   className?: string;
   onBatchRun?: (count: number) => void;
+  onUpscale?: (settings: UpscaleSettings) => void;
+  onCancelUpscale?: () => void;
   modelLabel?: string; // Nom du modèle pour l'affichage
 };
 
@@ -62,6 +73,8 @@ export const NodeLayout = ({
   title,
   className,
   onBatchRun,
+  onUpscale,
+  onCancelUpscale,
   modelLabel,
 }: NodeLayoutProps) => {
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges } = useReactFlow();
@@ -71,10 +84,16 @@ export const NodeLayout = ({
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
   const [isToolbarHovered, setIsToolbarHovered] = useState(false);
   const [isReplaceHovered, setIsReplaceHovered] = useState(false);
+  const [isUpscaleHovered, setIsUpscaleHovered] = useState(false);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Vérifie si ce type de node supporte le batch
+  // Vérifie si ce type de node supporte le batch (seulement pour images GENEREES dans le canvas)
   const supportsBatch = BATCH_SUPPORTED_TYPES.includes(type);
+  
+  // Le batch est affiché SEULEMENT si l'image est générée (pas importée)
+  // Pour les images : si data.isGenerated est true OU si generated existe et pas content
+  const isGeneratedImage = type === 'image' && (data?.isGenerated || (data?.generated?.url && !data?.content?.url));
+  const showBatchForThisNode = supportsBatch && (type !== 'image' || isGeneratedImage);
   
   // Vérifie si ce type de node supporte le remplacement de média
   const supportsReplace = REPLACE_SUPPORTED_TYPES.includes(type);
@@ -82,8 +101,14 @@ export const NodeLayout = ({
   // Vérifie si le nœud a du contenu (uploadé ou généré) - donc pas vide
   const hasMediaContent = Boolean(data?.content?.url || data?.generated?.url);
   
+  // Vérifie si le nœud supporte l'upscale (images uniquement avec du contenu)
+  const supportsUpscale = type === 'image' && hasMediaContent;
+  
+  // Obtenir le statut d'upscale
+  const upscaleStatus: UpscaleStatus = data?.upscale?.status || 'idle';
+  
   // Les contrôles sont visibles si le node OU un des contrôles est hovered
-  const showBatchControl = isNodeHovered || isBatchControlHovered || isToolbarHovered || isReplaceHovered;
+  const showControls = isNodeHovered || isBatchControlHovered || isToolbarHovered || isReplaceHovered || isUpscaleHovered;
 
   // Handlers de hover avec délai
   const handleNodeMouseEnter = () => {
@@ -200,7 +225,7 @@ export const NodeLayout = ({
         <NodeToolbar 
           id={id} 
           items={toolbar} 
-          isNodeHovered={showBatchControl}
+          isNodeHovered={showControls}
           onHoverChange={setIsToolbarHovered}
         />
       )}
@@ -232,29 +257,40 @@ export const NodeLayout = ({
               </div>
             </div>
             
-            {/* Contrôles en bas à droite : Replace + Batch runs */}
+            {/* Contrôles en bas à droite : Replace + Batch runs + Upscale */}
             <div className="absolute bottom-3 right-3 z-50 flex items-center gap-2">
               {/* Bouton Replace - visible seulement si le nœud a du contenu */}
               {supportsReplace && hasMediaContent && (
                 <ReplaceMediaButton
                   nodeId={id}
-                  isVisible={showBatchControl}
+                  isVisible={showControls}
                   mediaType={type as 'image' | 'video'}
                   onHoverChange={setIsReplaceHovered}
                 />
               )}
             
-            {/* Contrôle des runs parallèles (comme Flora AI) */}
-            {supportsBatch && (
-              <BatchRunsControl
-                nodeId={id}
-                isVisible={showBatchControl}
-                onRun={handleBatchRun}
-                maxRuns={100}
-                onHoverChange={setIsBatchControlHovered}
+              {/* Contrôle des runs parallèles (comme Flora AI) - UNIQUEMENT pour images générées */}
+              {showBatchForThisNode && (
+                <BatchRunsControl
+                  nodeId={id}
+                  isVisible={showControls}
+                  onRun={handleBatchRun}
+                  maxRuns={100}
+                  onHoverChange={setIsBatchControlHovered}
                   className="static"
-              />
-            )}
+                />
+              )}
+
+              {/* Bouton Upscale - pour TOUTES les images avec contenu, SAUF si déjà upscalé (la barre de comparaison suffit) */}
+              {supportsUpscale && onUpscale && onCancelUpscale && upscaleStatus !== 'completed' && (
+                <UpscaleButton
+                  isVisible={showControls}
+                  status={upscaleStatus}
+                  onUpscale={onUpscale}
+                  onCancelUpscale={onCancelUpscale}
+                  onHoverChange={setIsUpscaleHovered}
+                />
+              )}
             </div>
           </div>
         </ContextMenuTrigger>

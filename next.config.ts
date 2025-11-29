@@ -51,6 +51,16 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '**.replicate.delivery',
       },
+
+      // Lupa AI Upscaler (S3)
+      {
+        protocol: 'https',
+        hostname: 'imagelupaai.s3.us-east-2.amazonaws.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.amazonaws.com',
+      },
     ],
   },
 

@@ -26,9 +26,12 @@ type LupaResponse = {
 };
 
 type LupaStatusResponse = {
-  status: 'processing' | 'completed' | 'error';
+  status: 'success' | 'error';
   response?: {
-    upscaled_image_url?: string;
+    process_status: 'processing' | 'completed' | 'failed';
+    final_image_url?: string;
+    error_type?: string;
+    message?: string;
   };
   message?: string;
 };
@@ -50,6 +53,8 @@ async function startLupaUpscale(
 
   const endpoint = `${BASE_URL}/${model}`;
 
+  console.log('[Lupa] Starting upscale with:', { endpoint, model, imageUrl: input.image.substring(0, 100) + '...' });
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -59,12 +64,21 @@ async function startLupaUpscale(
     body: JSON.stringify(input),
   });
 
+  const responseText = await response.text();
+  console.log('[Lupa] Start response:', response.status, responseText);
+
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Erreur Lupa API: ${error}`);
+    throw new Error(`Erreur Lupa API (${response.status}): ${responseText}`);
   }
 
-  const data = await response.json() as LupaResponse;
+  let data: LupaResponse;
+  try {
+    data = JSON.parse(responseText) as LupaResponse;
+  } catch {
+    throw new Error(`Réponse Lupa invalide: ${responseText}`);
+  }
+
+  console.log('[Lupa] Parsed response:', data);
 
   if (data.status !== 'success' || !data.response?.upscale_id) {
     throw new Error(data.message || 'Erreur lors du démarrage de l\'upscale');
@@ -75,6 +89,7 @@ async function startLupaUpscale(
 
 /**
  * Vérifie le statut d'un upscale et récupère l'URL finale
+ * Documentation: https://lupaupscaler.gitbook.io/lupaupscaler-docs/api/apis-endpoints/images-and-media
  */
 async function checkLupaStatus(upscaleId: string): Promise<string> {
   const apiKey = process.env.LUPA_API_KEY;
@@ -83,33 +98,61 @@ async function checkLupaStatus(upscaleId: string): Promise<string> {
     throw new Error('LUPA_API_KEY non configuré');
   }
 
-  // L'endpoint de statut (basé sur la documentation)
-  const endpoint = `${BASE_URL}/check_status`;
+  // L'endpoint de statut est un GET avec upscale_id en query parameter
+  const endpoint = `${BASE_URL}/check-upscale-status?upscale_id=${encodeURIComponent(upscaleId)}`;
+
+  console.log('[Lupa] Checking status for upscale_id:', upscaleId);
 
   const response = await fetch(endpoint, {
-    method: 'POST',
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       'x-api-key': apiKey,
     },
-    body: JSON.stringify({ upscale_id: upscaleId }),
   });
 
+  const responseText = await response.text();
+  console.log('[Lupa] Check status response:', response.status, responseText);
+
   if (!response.ok) {
-    throw new Error('Erreur lors de la vérification du statut');
+    // Essayer de parser l'erreur
+    try {
+      const errorData = JSON.parse(responseText);
+      throw new Error(`Lupa API error: ${errorData.message || errorData.error || response.status}`);
+    } catch {
+      throw new Error(`Erreur lors de la vérification du statut (HTTP ${response.status}): ${responseText}`);
+    }
   }
 
-  const data = await response.json() as LupaStatusResponse;
+  let data: LupaStatusResponse;
+  try {
+    data = JSON.parse(responseText) as LupaStatusResponse;
+  } catch {
+    throw new Error(`Réponse Lupa invalide: ${responseText}`);
+  }
 
-  if (data.status === 'completed' && data.response?.upscaled_image_url) {
-    return data.response.upscaled_image_url;
+  console.log('[Lupa] Status data:', data);
+
+  // Vérifier le process_status dans la réponse
+  if (data.status === 'success' && data.response) {
+    if (data.response.process_status === 'completed' && data.response.final_image_url) {
+      return data.response.final_image_url;
+    }
+
+    if (data.response.process_status === 'failed') {
+      throw new Error(data.response.message || `Upscale échoué: ${data.response.error_type || 'erreur inconnue'}`);
+    }
+
+    if (data.response.process_status === 'processing') {
+      // Encore en cours
+      throw new Error('PROCESSING');
+    }
   }
 
   if (data.status === 'error') {
     throw new Error(data.message || 'Erreur lors de l\'upscale');
   }
 
-  // Encore en cours
+  // Encore en cours par défaut
   throw new Error('PROCESSING');
 }
 
