@@ -3,6 +3,7 @@
  */
 
 import { addGeneration, type GenerationType } from '@/lib/generations-store';
+import { trackGeneration as trackProjectGeneration } from '@/lib/local-projects-store';
 import { useProject } from '@/providers/project';
 import { useCallback } from 'react';
 
@@ -25,6 +26,23 @@ type TrackGenerationParams = {
   fileSize?: number; // Taille du fichier en bytes
   videoDuration?: number;
 };
+
+/**
+ * Détermine le service/API depuis le modelId
+ */
+function getServiceFromModel(modelId: string): string {
+  const id = modelId.toLowerCase();
+  if (id.includes('wavespeed')) return 'wavespeed';
+  if (id.includes('fal')) return 'fal';
+  if (id.includes('replicate')) return 'replicate';
+  if (id.includes('openai') || id.includes('gpt') || id.includes('dall-e')) return 'openai';
+  if (id.includes('runway')) return 'runway';
+  if (id.includes('luma')) return 'luma';
+  if (id.includes('minimax')) return 'minimax';
+  if (id.includes('kling')) return 'kling';
+  if (id.includes('anthropic') || id.includes('claude')) return 'anthropic';
+  return 'other';
+}
 
 /**
  * Récupère la taille d'un fichier via une requête HEAD
@@ -56,12 +74,26 @@ export function useGenerationTracker() {
       fileSize = await getFileSize(params.outputUrl);
     }
     
+    // Tracker dans le store des générations (dashboard)
     addGeneration({
       ...params,
       fileSize,
       projectId: project?.id,
       projectName: project?.name,
     });
+    
+    // Tracker dans les stats du projet (persistées même après suppression)
+    if (project?.id && params.status === 'success') {
+      // Déterminer le service depuis le modèle
+      const service = getServiceFromModel(params.model);
+      
+      trackProjectGeneration(project.id, {
+        type: params.type as 'image' | 'video' | 'audio',
+        model: params.model,
+        service,
+        cost: params.cost,
+      });
+    }
   }, [project?.id, project?.name]);
   
   return { trackGeneration };

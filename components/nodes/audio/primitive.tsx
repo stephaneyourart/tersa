@@ -1,5 +1,6 @@
 import { transcribeAction } from '@/app/actions/speech/transcribe';
 import { NodeLayout } from '@/components/nodes/layout';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import {
   Dropzone,
   DropzoneContent,
@@ -28,6 +29,11 @@ export const AudioPrimitive = ({
   const [files, setFiles] = useState<File[] | undefined>();
   const project = useProject();
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Hook pour détecter si l'audio est expiré
+  const audioUrl = data.content?.url;
+  const isLocal = audioUrl ? isLocalUrl(audioUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(audioUrl, isLocal);
 
   const handleDrop = async (files: File[]) => {
     if (isUploading || !project?.id) {
@@ -79,12 +85,22 @@ export const AudioPrimitive = ({
         </Skeleton>
       )}
       {!isUploading && data.content && (
-        // biome-ignore lint/a11y/useMediaCaption: <explanation>
-        <audio
-          src={data.content.url}
-          controls
-          className="w-full rounded-none"
-        />
+        <>
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="L'audio n'est plus disponible"
+            />
+          ) : (
+            // biome-ignore lint/a11y/useMediaCaption: <explanation>
+            <audio
+              src={data.content.url}
+              controls
+              className="w-full rounded-none"
+              onError={() => markAsExpired()}
+            />
+          )}
+        </>
       )}
       {!isUploading && !data.content && (
         <Dropzone

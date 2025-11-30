@@ -1,4 +1,5 @@
 import { NodeLayout } from '@/components/nodes/layout';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import {
   Dropzone,
   DropzoneContent,
@@ -25,6 +26,11 @@ export const VideoPrimitive = ({
   const { updateNodeData } = useReactFlow();
   const [files, setFiles] = useState<File[] | undefined>();
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Hook pour détecter si la vidéo est expirée
+  const videoUrl = data.content?.url;
+  const isLocal = videoUrl ? isLocalUrl(videoUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(videoUrl, isLocal);
 
   const handleDrop = async (files: File[]) => {
     if (isUploading) {
@@ -66,13 +72,23 @@ export const VideoPrimitive = ({
         </Skeleton>
       )}
       {!isUploading && data.content && (
-        <video
-          src={data.content.url}
-          className="h-auto w-full"
-          autoPlay
-          muted
-          loop
-        />
+        <>
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="La vidéo n'est plus disponible"
+            />
+          ) : (
+            <video
+              src={data.content.url}
+              className="h-auto w-full"
+              autoPlay
+              muted
+              loop
+              onError={() => markAsExpired()}
+            />
+          )}
+        </>
       )}
       {!isUploading && !data.content && (
         <Dropzone

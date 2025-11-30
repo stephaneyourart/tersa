@@ -41,7 +41,10 @@ export const NodeDropzoneProvider = ({
       const centerY =
         -viewport.y / viewport.zoom + window.innerHeight / 2 / viewport.zoom;
 
-      for (const { data, name } of uploads) {
+      // Décalage diagonal pour éviter que les nœuds se superposent
+      const OFFSET_STEP = 40;
+
+      uploads.forEach(({ data, name }, index) => {
         let nodeType = 'file';
 
         if (data.type.startsWith('image/')) {
@@ -61,11 +64,11 @@ export const NodeDropzoneProvider = ({
             },
           },
           position: {
-            x: centerX,
-            y: centerY,
+            x: centerX + index * OFFSET_STEP,
+            y: centerY + index * OFFSET_STEP,
           },
         });
-      }
+      });
     },
   });
 

@@ -21,6 +21,11 @@ export const localEnv = createEnv({
     BATCH_MAX_CONCURRENCY: z.string().transform(Number).default('10'),
     BATCH_REQUEST_TIMEOUT: z.string().transform(Number).default('300000'),
 
+    // DaVinci Resolve Integration
+    DAVINCI_RESOLVE_ENABLED: z.string().transform((v) => v === 'true').default('false'),
+    DAVINCI_DEFAULT_FOLDER: z.string().optional(),
+    DAVINCI_PYTHON_PATH: z.string().default('python3'),
+
     // APIs IA - Core
     FAL_API_KEY: z.string().optional(),
     WAVESPEED_API_KEY: z.string().optional(),
@@ -83,6 +88,11 @@ export const localEnv = createEnv({
     // Batch processing
     BATCH_MAX_CONCURRENCY: process.env.BATCH_MAX_CONCURRENCY,
     BATCH_REQUEST_TIMEOUT: process.env.BATCH_REQUEST_TIMEOUT,
+
+    // DaVinci Resolve Integration
+    DAVINCI_RESOLVE_ENABLED: process.env.DAVINCI_RESOLVE_ENABLED,
+    DAVINCI_DEFAULT_FOLDER: process.env.DAVINCI_DEFAULT_FOLDER,
+    DAVINCI_PYTHON_PATH: process.env.DAVINCI_PYTHON_PATH,
 
     // APIs IA
     FAL_API_KEY: process.env.FAL_API_KEY,

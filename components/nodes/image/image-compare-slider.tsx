@@ -19,6 +19,10 @@ type ImageCompareSliderProps = {
   className?: string;
   width?: number;
   height?: number;
+  // Infos d'upscale pour affichage au hover
+  upscaleModel?: string;
+  upscaleScale?: number;
+  upscaleCreativity?: number;
 };
 
 export function ImageCompareSlider({
@@ -27,9 +31,13 @@ export function ImageCompareSlider({
   className,
   width = 1000,
   height = 1000,
+  upscaleModel,
+  upscaleScale,
+  upscaleCreativity,
 }: ImageCompareSliderProps) {
   const [sliderPosition, setSliderPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMove = useCallback((clientX: number) => {
@@ -101,6 +109,8 @@ export function ImageCompareSlider({
         'relative w-full overflow-hidden select-none',
         className
       )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Image de fond (After / Upscalé) - visible à droite */}
       <div className="relative w-full">
@@ -113,6 +123,23 @@ export function ImageCompareSlider({
           draggable={false}
         />
       </div>
+
+      {/* Overlay avec infos d'upscale au hover */}
+      {isHovered && upscaleModel && (
+        <div className="absolute top-3 left-3 z-20 pointer-events-none">
+          <div className="px-2.5 py-1.5 rounded-lg bg-black/70 backdrop-blur-sm border border-white/10">
+            <p className="text-white text-xs font-medium">
+              Upscalé avec {upscaleModel}
+            </p>
+            <div className="flex items-center gap-2 text-white/70 text-[10px]">
+              {upscaleScale && <span>{upscaleScale}x</span>}
+              {upscaleCreativity !== undefined && (
+                <span>• Créativité: {upscaleCreativity}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image de superposition (Before / Original) - clippée à gauche */}
       <div

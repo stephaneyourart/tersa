@@ -8,6 +8,7 @@ import { visionModels } from '@/lib/models/vision';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { isLocalProject, getLocalProject } from '@/lib/local-project';
+import { saveMediaMetadata } from '@/lib/media-metadata';
 import { wavespeedImage, type WaveSpeedTextToImageParams, type WaveSpeedAspectRatio } from '@/lib/models/image/wavespeed';
 import { projects } from '@/schema';
 import type { Edge, Node, Viewport } from '@xyflow/react';
@@ -20,6 +21,62 @@ import OpenAI from 'openai';
 
 // Mode local
 const isLocalMode = process.env.LOCAL_MODE === 'true';
+
+/**
+ * Génère un titre intelligent pour un fichier basé sur le prompt
+ * Utilise GPT-4.1-mini pour créer un titre court et descriptif
+ */
+async function generateSmartTitle(prompt: string, instructions?: string): Promise<string> {
+  try {
+    const openai = new OpenAI();
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Tu génères des titres de fichiers courts et descriptifs.
+Règles:
+- Maximum 50 caractères
+- Pas de caractères spéciaux (/ \\ : * ? " < > |)
+- Remplace les espaces par des tirets ou underscores
+- Capture l'essence de l'image
+- En français si le prompt est en français
+- Pas d'extension de fichier
+Réponds UNIQUEMENT avec le titre, rien d'autre.`
+        },
+        {
+          role: 'user',
+          content: `Génère un titre de fichier pour cette image:
+Prompt: ${prompt}
+${instructions ? `Instructions: ${instructions}` : ''}`
+        }
+      ],
+      max_tokens: 60,
+      temperature: 0.7,
+    });
+
+    let title = response.choices[0]?.message?.content?.trim() || 'image';
+    
+    // Nettoyer le titre
+    title = title
+      .replace(/[/\\:*?"<>|]/g, '') // Supprimer caractères interdits
+      .replace(/\s+/g, '-') // Espaces → tirets
+      .replace(/^-+|-+$/g, '') // Supprimer tirets début/fin
+      .substring(0, 50); // Max 50 caractères
+    
+    return title || 'image';
+  } catch (error) {
+    console.warn('[SmartTitle] Erreur génération titre, utilisation fallback:', error);
+    // Fallback: premiers mots du prompt
+    return prompt
+      .split(/\s+/)
+      .slice(0, 5)
+      .join('-')
+      .replace(/[/\\:*?"<>|]/g, '')
+      .substring(0, 50) || 'image';
+  }
+}
 
 type GenerateImageActionProps = {
   prompt: string;
@@ -204,21 +261,45 @@ export const generateImageAction = async ({
     // Vérifier si c'est un modèle WaveSpeed
     if (modelId.endsWith('-wavespeed')) {
       console.log(`[WaveSpeed] Détecté modèle WaveSpeed: ${modelId}`);
-      const result = await generateWaveSpeedImage(modelId, prompt, instructions, size);
       
-      // Télécharger l'image depuis l'URL WaveSpeed
-      console.log(`[WaveSpeed] Téléchargement de l'image: ${result.url}`);
+      // 1. Générer le titre via IA EN PARALLÈLE de la génération d'image
+      const titlePromise = generateSmartTitle(prompt, instructions);
+      const imagePromise = generateWaveSpeedImage(modelId, prompt, instructions, size);
+      
+      // Attendre les deux en parallèle
+      const [smartTitle, result] = await Promise.all([titlePromise, imagePromise]);
+      
+      console.log(`[WaveSpeed] Titre généré: ${smartTitle}`);
+      console.log(`[WaveSpeed] Image générée: ${result.url}`);
+      
+      // 2. Télécharger l'image depuis WaveSpeed
       const response = await fetch(result.url);
-      
       if (!response.ok) {
-        console.error(`[WaveSpeed] Erreur téléchargement: ${response.status} ${response.statusText}`);
         throw new Error(`Erreur téléchargement image: ${response.status}`);
       }
-      
       const arrayBuffer = await response.arrayBuffer();
-      console.log(`[WaveSpeed] Image téléchargée: ${arrayBuffer.byteLength} bytes`);
       imageBuffer = Buffer.from(arrayBuffer);
       mediaType = result.mediaType;
+      
+      // 3. Sauvegarder avec le titre intelligent
+      const extension = mediaType.split('/').pop() || 'png';
+      const filenameWithTitle = `${smartTitle}.${extension}`;
+      const stored = await uploadBuffer(imageBuffer, filenameWithTitle, mediaType);
+      
+      console.log(`[WaveSpeed] Fichier sauvegardé: ${stored.path}`);
+      
+      // Sauvegarder les métadonnées dans un fichier sidecar .meta.json
+      if (stored.path) {
+        saveMediaMetadata(stored.path, {
+          isGenerated: true,
+          modelId: modelId,
+          prompt: prompt,
+          aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
+          format: mediaType,
+          smartTitle: smartTitle,
+          generatedAt: new Date().toISOString(),
+        });
+      }
 
       // Ne pas tracker les crédits en mode local
       if (!isLocalMode) {
@@ -227,7 +308,59 @@ export const generateImageAction = async ({
           cost: provider.getCost({ size }),
         });
       }
-    } else if (provider.model.modelId === 'gpt-image-1') {
+
+      // Retourner avec l'URL locale et le chemin
+      const newData = {
+        updatedAt: new Date().toISOString(),
+        generated: {
+          url: stored.url,
+          type: mediaType,
+        },
+        localPath: stored.path,
+        smartTitle: smartTitle,
+        isGenerated: true,
+        modelId: modelId,
+        instructions: instructions,
+        aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
+        description: `Generated from prompt: ${prompt}`,
+      };
+
+      // En mode local, on ne met pas à jour la BDD
+      if (!isLocalProject(projectId)) {
+        const project = await database.query.projects.findFirst({
+          where: eq(projects.id, projectId),
+        });
+
+        if (project) {
+          const content = project.content as {
+            nodes: Node[];
+            edges: Edge[];
+            viewport: Viewport;
+          };
+
+          const updatedNodes = content.nodes.map((existingNode) => {
+            if (existingNode.id === nodeId) {
+              return {
+                ...existingNode,
+                data: newData,
+              };
+            }
+            return existingNode;
+          });
+
+          await database
+            .update(projects)
+            .set({ content: { ...content, nodes: updatedNodes } })
+            .where(eq(projects.id, projectId));
+        }
+      }
+
+      return {
+        nodeData: newData,
+      };
+    }
+    
+    if (provider.model.modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         instructions,
         prompt,

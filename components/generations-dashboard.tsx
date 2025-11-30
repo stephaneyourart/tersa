@@ -44,6 +44,7 @@ import {
   ExternalLinkIcon,
   SparklesIcon,
   ZapIcon,
+  SendIcon,
 } from 'lucide-react';
 import { useEffect, useState, useMemo } from 'react';
 
@@ -489,6 +490,7 @@ export function GenerationsDashboard() {
                     Coût <SortIcon field="cost" />
                   </TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center">DVR</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -609,6 +611,34 @@ export function GenerationsDashboard() {
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
+                        )}
+                      </TableCell>
+                      
+                      {/* DVR Status */}
+                      <TableCell className="text-center">
+                        {gen.dvrTransferred ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center justify-center">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img 
+                                    src="/dvr-icon.png" 
+                                    alt="DVR" 
+                                    className="w-5 h-5 object-contain"
+                                  />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Envoyé vers DVR</p>
+                                {gen.dvrProject && <p className="text-xs text-muted-foreground">Projet: {gen.dvrProject}</p>}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted/30">
+                            <SendIcon size={12} className="text-muted-foreground/50" />
+                          </span>
                         )}
                       </TableCell>
                       

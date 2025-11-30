@@ -3,12 +3,45 @@
  * Utilise localStorage pour persister les projets
  */
 
+export interface ProjectSettings {
+  // System prompt pour l'analyse IA des médias (DVR)
+  dvrAnalysisSystemPrompt?: string;
+  // Dossier DVR par défaut pour ce projet
+  dvrDefaultFolder?: string;
+  // Raccourci clavier pour la recherche dans le Media Pool de DVR
+  // Format: "cmd+shift+f" ou "ctrl+shift+f" (Windows)
+  dvrSearchShortcut?: string;
+  // Autres settings futurs...
+}
+
+// Stats historiques du projet (persistées même si les éléments sont supprimés)
+export interface ProjectStats {
+  // Compteurs de générations (même supprimées)
+  totalGenerations: number;
+  totalDeleted: number;
+  
+  // Coûts par service/API
+  costByService: Record<string, number>; // ex: { "wavespeed": 1.23, "replicate": 0.45 }
+  totalCost: number;
+  
+  // Générations par modèle (même supprimées)
+  generationsByModel: Record<string, number>; // ex: { "kling-v2.5-turbo": 5 }
+  
+  // Générations par type
+  generationsByType: Record<string, number>; // ex: { "image": 10, "video": 3 }
+  
+  // Compteur DVR
+  totalSentToDVR: number;
+}
+
 export interface LocalProject {
   id: string;
   name: string;
   thumbnail?: string;
   createdAt: string;
   updatedAt: string;
+  settings?: ProjectSettings;
+  stats?: ProjectStats; // Stats historiques (persistées)
   data: {
     nodes: unknown[];
     edges: unknown[];
@@ -78,7 +111,7 @@ export function createLocalProject(name: string = 'Untitled'): LocalProject {
  */
 export function updateLocalProject(
   id: string, 
-  updates: Partial<Pick<LocalProject, 'name' | 'thumbnail' | 'data'>>
+  updates: Partial<Pick<LocalProject, 'name' | 'thumbnail' | 'data' | 'settings' | 'stats'>>
 ): LocalProject | null {
   const projects = getLocalProjects();
   const index = projects.findIndex(p => p.id === id);
@@ -93,6 +126,32 @@ export function updateLocalProject(
   
   saveProjects(projects);
   return projects[index];
+}
+
+/**
+ * Met à jour les settings d'un projet
+ */
+export function updateProjectSettings(
+  id: string,
+  settings: Partial<ProjectSettings>
+): LocalProject | null {
+  const project = getLocalProjectById(id);
+  if (!project) return null;
+  
+  return updateLocalProject(id, {
+    settings: {
+      ...project.settings,
+      ...settings,
+    },
+  });
+}
+
+/**
+ * Récupère les settings d'un projet
+ */
+export function getProjectSettings(id: string): ProjectSettings | null {
+  const project = getLocalProjectById(id);
+  return project?.settings || null;
 }
 
 /**
@@ -127,6 +186,8 @@ export function renameLocalProject(id: string, newName: string): LocalProject | 
 
 /**
  * Supprime un projet
+ * NOTE: Les fichiers médias ne sont PAS supprimés du disque !
+ * Ils peuvent être utilisés par d'autres projets (duplication).
  */
 export function deleteLocalProject(id: string): boolean {
   const projects = getLocalProjects();
@@ -134,6 +195,7 @@ export function deleteLocalProject(id: string): boolean {
   
   if (index === -1) return false;
   
+  // Supprimer le projet (les fichiers restent sur le disque)
   projects.splice(index, 1);
   saveProjects(projects);
   
@@ -151,6 +213,88 @@ function saveProjects(projects: LocalProject[]): void {
   } catch (error) {
     console.error('Erreur sauvegarde projets:', error);
   }
+}
+
+/**
+ * Initialise les stats vides d'un projet
+ */
+function initProjectStats(): ProjectStats {
+  return {
+    totalGenerations: 0,
+    totalDeleted: 0,
+    costByService: {},
+    totalCost: 0,
+    generationsByModel: {},
+    generationsByType: {},
+    totalSentToDVR: 0,
+  };
+}
+
+/**
+ * Récupère les stats d'un projet (avec initialisation si nécessaire)
+ */
+export function getProjectStats(id: string): ProjectStats {
+  const project = getLocalProjectById(id);
+  return project?.stats || initProjectStats();
+}
+
+/**
+ * Enregistre une nouvelle génération dans les stats du projet
+ */
+export function trackGeneration(
+  projectId: string,
+  data: {
+    type: 'image' | 'video' | 'audio';
+    model: string;
+    service: string; // 'wavespeed', 'replicate', 'fal', 'openai', etc.
+    cost: number;
+  }
+): void {
+  const project = getLocalProjectById(projectId);
+  if (!project) return;
+  
+  const stats = project.stats || initProjectStats();
+  
+  // Incrémenter les compteurs
+  stats.totalGenerations++;
+  stats.totalCost += data.cost;
+  
+  // Par service
+  stats.costByService[data.service] = (stats.costByService[data.service] || 0) + data.cost;
+  
+  // Par modèle
+  stats.generationsByModel[data.model] = (stats.generationsByModel[data.model] || 0) + 1;
+  
+  // Par type
+  stats.generationsByType[data.type] = (stats.generationsByType[data.type] || 0) + 1;
+  
+  updateLocalProject(projectId, { stats } as Partial<Pick<LocalProject, 'stats'>>);
+}
+
+/**
+ * Enregistre une suppression dans les stats du projet
+ */
+export function trackDeletion(projectId: string): void {
+  const project = getLocalProjectById(projectId);
+  if (!project) return;
+  
+  const stats = project.stats || initProjectStats();
+  stats.totalDeleted++;
+  
+  updateLocalProject(projectId, { stats } as Partial<Pick<LocalProject, 'stats'>>);
+}
+
+/**
+ * Enregistre un envoi vers DVR dans les stats du projet
+ */
+export function trackDVRTransfer(projectId: string): void {
+  const project = getLocalProjectById(projectId);
+  if (!project) return;
+  
+  const stats = project.stats || initProjectStats();
+  stats.totalSentToDVR++;
+  
+  updateLocalProject(projectId, { stats } as Partial<Pick<LocalProject, 'stats'>>);
 }
 
 /**

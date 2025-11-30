@@ -3,6 +3,7 @@ import { editImageAction } from '@/app/actions/image/edit';
 import { NodeLayout } from '@/components/nodes/layout';
 import { Button } from '@/components/ui/button';
 import { GeneratingSkeleton } from '@/components/nodes/generating-skeleton';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
@@ -101,6 +102,11 @@ export const ImageTransform = ({
   const analytics = useAnalytics();
   const selectedModel = imageModels[modelId];
   
+  // Hook pour détecter si l'image est expirée (URL WaveSpeed plus accessible)
+  const imageUrl = data.generated?.url;
+  const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(imageUrl, isLocal);
+  
   // Extraire le chemin WaveSpeed du modèle (ex: 'google/nano-banana/text-to-image')
   const modelPath = useMemo(() => {
     const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
@@ -142,8 +148,13 @@ export const ImageTransform = ({
     const imageNodes = getImagesFromImageNodes(incomers);
 
     try {
-      if (!textNodes.length && !imageNodes.length) {
-        throw new Error('No input provided');
+      // Accepter soit des connecteurs (texte/image), soit le prompt direct (instructions)
+      const hasTextInput = textNodes.length > 0;
+      const hasImageInput = imageNodes.length > 0;
+      const hasDirectPrompt = data.instructions && data.instructions.trim().length > 0;
+      
+      if (!hasTextInput && !hasImageInput && !hasDirectPrompt) {
+        throw new Error('Aucun prompt fourni');
       }
 
       setLoading(true);
@@ -156,7 +167,10 @@ export const ImageTransform = ({
         instructionsLength: data.instructions?.length ?? 0,
       });
 
-      const response = imageNodes.length
+      // Utiliser le prompt direct si pas de connecteurs texte
+      const promptText = hasTextInput ? textNodes.join('\n') : (data.instructions ?? '');
+
+      const response = hasImageInput
         ? await editImageAction({
             images: imageNodes,
             instructions: data.instructions,
@@ -166,9 +180,9 @@ export const ImageTransform = ({
             size: sizeFromSettings,
           })
         : await generateImageAction({
-            prompt: textNodes.join('\n'),
+            prompt: promptText,
             modelId,
-            instructions: data.instructions,
+            instructions: hasTextInput ? data.instructions : undefined, // Ne pas dupliquer si c'est le prompt direct
             projectId: project.id,
             nodeId: id,
             size: sizeFromSettings,
@@ -178,7 +192,8 @@ export const ImageTransform = ({
         throw new Error(response.error);
       }
 
-      updateNodeData(id, response.nodeData);
+      // Merger les nouvelles données avec les existantes
+      updateNodeData(id, { ...data, ...response.nodeData });
 
       // Calculer le temps écoulé et le coût estimé
       const duration = Math.round((Date.now() - startTime) / 1000);
@@ -271,8 +286,13 @@ export const ImageTransform = ({
     const textNodes = getTextFromTextNodes(incomers);
     const imageNodes = getImagesFromImageNodes(incomers);
 
-    if (!textNodes.length && !imageNodes.length) {
-      handleError('Error', new Error('No input provided'));
+    // Accepter soit des connecteurs (texte/image), soit le prompt direct (instructions)
+    const hasTextInput = textNodes.length > 0;
+    const hasImageInput = imageNodes.length > 0;
+    const hasDirectPrompt = data.instructions && data.instructions.trim().length > 0;
+
+    if (!hasTextInput && !hasImageInput && !hasDirectPrompt) {
+      handleError('Erreur', new Error('Aucun prompt fourni'));
       return;
     }
 
@@ -280,11 +300,13 @@ export const ImageTransform = ({
     const nodeIds: string[] = [id];
     const edges = getEdges().filter(e => e.target === id);
     
-    // Le prompt à afficher dans "Enter instructions"
-    const promptText = textNodes.join('\n');
+    // Utiliser le prompt direct si pas de connecteurs texte
+    const promptText = hasTextInput ? textNodes.join('\n') : (data.instructions ?? '');
     
-    // Mettre à jour le nœud original avec le prompt dans les instructions
-    updateNodeData(id, { instructions: promptText });
+    // Mettre à jour le nœud original avec le prompt dans les instructions (seulement si connecteurs)
+    if (hasTextInput) {
+      updateNodeData(id, { instructions: promptText });
+    }
     
     // Dupliquer le nœud N-1 fois HORIZONTALEMENT (comme Flora)
     for (let i = 1; i < count; i++) {
@@ -351,10 +373,11 @@ export const ImageTransform = ({
     console.log(`[Batch] Advanced settings:`, advancedSettings);
     
     // Les params sont directement ceux de advancedSettings (format WaveSpeed)
+    // Utiliser promptText qui contient le prompt (des connecteurs OU du textarea direct)
     const jobs = nodeIds.map((nodeId) => ({
       nodeId,
       modelPath: modelPath,
-      prompt: isEdit ? (data.instructions || textNodes.join('\n')) : textNodes.join('\n'),
+      prompt: promptText,
       images: isEdit ? imageUrls : undefined, // URLs uniquement, pas d'objets
       params: {
         aspect_ratio: advancedSettings.aspect_ratio,
@@ -398,6 +421,9 @@ export const ImageTransform = ({
               url: result.imageUrl,
               type: 'image/png',
             },
+            localPath: result.localPath,
+            smartTitle: result.smartTitle,
+            isGenerated: true,
             batchGenerating: false,
             batchStartTime: undefined,
             updatedAt: new Date().toISOString(),
@@ -444,6 +470,11 @@ export const ImageTransform = ({
       const failCount = results.filter((r: { success: boolean }) => !r.success).length;
       const totalCost = costPerImage * successCount;
 
+      // Collecter les chemins des fichiers créés
+      const savedPaths = results
+        .filter((r: { success: boolean; localPath?: string }) => r.success && r.localPath)
+        .map((r: { localPath?: string }) => r.localPath);
+
       if (failCount > 0) {
         toast.warning(`${successCount}/${count} images générées en PARALLÈLE`, {
           description: `⏱️ ${duration}s total • 💰 ~$${totalCost.toFixed(3)} • ${failCount} échec(s)`,
@@ -451,8 +482,11 @@ export const ImageTransform = ({
           closeButton: true,
         });
       } else {
-        toast.success(`✅ ${successCount} image${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} en PARALLÈLE !`, {
-          description: `⏱️ ${duration}s total • 💰 ~$${totalCost.toFixed(3)}`,
+        const pathsText = savedPaths.length === 1 
+          ? `📁 ${savedPaths[0]}`
+          : `📁 ${savedPaths.length} fichiers sauvegardés`;
+        toast.success(`✅ ${successCount} image${successCount > 1 ? 's' : ''} générée${successCount > 1 ? 's' : ''} !`, {
+          description: `⏱️ ${duration}s • 💰 ~$${totalCost.toFixed(3)}\n${pathsText}`,
           duration: Infinity,
           closeButton: true,
         });
@@ -554,34 +588,6 @@ export const ImageTransform = ({
       ),
     });
 
-    // Afficher un loader dans la toolbar si en cours de génération
-    if (loading) {
-      items.push({
-        tooltip: 'Generating...',
-        children: (
-          <Button size="icon" variant="ghost" className="rounded-full" disabled>
-            <Loader2Icon className="animate-spin" size={12} />
-          </Button>
-        ),
-      });
-    }
-
-    if (data.generated) {
-      items.push({
-        tooltip: 'Download',
-        children: (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full"
-            onClick={() => download(data.generated, id, 'png')}
-          >
-            <DownloadIcon size={12} />
-          </Button>
-        ),
-      });
-    }
-
     if (data.updatedAt) {
       items.push({
         tooltip: `Last updated: ${new Intl.DateTimeFormat('en-US', {
@@ -651,6 +657,7 @@ export const ImageTransform = ({
         originalUrl: imageUrl,
         model: settings.model,
         scale: settings.scale,
+        creativity: settings.creativity,
         startTime,
       },
     });
@@ -691,6 +698,7 @@ export const ImageTransform = ({
           upscaledUrl: result.result.url,
           model: settings.model,
           scale: settings.scale,
+          creativity: settings.creativity,
         },
       });
 
@@ -761,45 +769,59 @@ export const ImageTransform = ({
         </div>
       )}
       {!isGenerating && !isUpscaling && data.generated?.url && (
-        <div 
-          className="relative"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-        >
-          {/* Afficher le slider de comparaison si upscalé */}
-          {isUpscaled && data.upscale?.upscaledUrl ? (
-            <ImageCompareSlider
-              beforeUrl={data.upscale.originalUrl || data.generated.url}
-              afterUrl={data.upscale.upscaledUrl}
-              className="rounded-b-xl"
-              width={1000}
-              height={1000}
+        <>
+          {/* Afficher l'icône fantôme si l'image est expirée */}
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="L'image a expiré sur WaveSpeed et n'a pas été téléchargée"
             />
           ) : (
-            <Image
-              src={data.generated.url}
-              alt="Generated image"
-              width={1000}
-              height={1000}
-              className="w-full rounded-b-xl object-cover"
-            />
-          )}
-          {/* Overlay du prompt au hover (seulement si pas de slider de comparaison) */}
-          {hasPrompt && isHovered && !isUpscaled && (
-            <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 transition-opacity">
-              <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
-                {data.instructions}
-              </p>
+            <div 
+              className="relative"
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+            >
+              {/* Afficher le slider de comparaison si upscalé */}
+              {isUpscaled && data.upscale?.upscaledUrl ? (
+                <ImageCompareSlider
+                  beforeUrl={data.upscale.originalUrl || data.generated.url}
+                  afterUrl={data.upscale.upscaledUrl}
+                  className="rounded-b-xl"
+                  width={1000}
+                  height={1000}
+                  upscaleModel={data.upscale.model}
+                  upscaleScale={data.upscale.scale}
+                  upscaleCreativity={data.upscale.creativity}
+                />
+              ) : (
+                <Image
+                  src={data.generated.url}
+                  alt="Generated image"
+                  width={1000}
+                  height={1000}
+                  className="w-full rounded-b-xl object-cover"
+                  onError={() => markAsExpired()}
+                />
+              )}
+              {/* Overlay du prompt au hover (seulement si pas de slider de comparaison) */}
+              {hasPrompt && isHovered && !isUpscaled && (
+                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity">
+                  <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
+                    {data.instructions}
+                  </p>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
       {/* Textarea visible uniquement quand pas de contenu */}
       {!hasContent && (
         <Textarea
           value={data.instructions ?? ''}
           onChange={handleInstructionsChange}
-          placeholder="Enter instructions"
+          placeholder="Promptez..."
           className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
         />
       )}

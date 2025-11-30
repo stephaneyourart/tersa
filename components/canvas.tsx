@@ -27,7 +27,8 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
 } from '@xyflow/react';
-import { BoxSelectIcon, LinkIcon, PlusIcon, RefreshCwIcon } from 'lucide-react';
+import { LinkIcon, RefreshCwIcon, UploadIcon } from 'lucide-react';
+import { nodeButtons } from '@/lib/node-buttons';
 import { nanoid } from 'nanoid';
 import type { MouseEvent, MouseEventHandler } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -71,11 +72,13 @@ import { edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 import { ProximityHandles } from './proximity-handles';
 import { SelectionToolbar } from './selection-toolbar';
+import { VideoSelectionToolbar } from './video-selection-toolbar';
 import { toast } from 'sonner';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from './ui/context-menu';
 
@@ -131,6 +134,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   const [copiedNodes, setCopiedNodes] = useState<Node[]>([]);
   const [copiedEdges, setCopiedEdges] = useState<Edge[]>([]);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Historique pour undo/redo
   const historyRef = useRef<HistoryState[]>([]);
@@ -831,6 +836,55 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     );
   }, []);
 
+  // Import de fichier via input file caché
+  const handleFileImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !contextMenuPosition) return;
+
+    const { x, y } = screenToFlowPosition({
+      x: contextMenuPosition.x,
+      y: contextMenuPosition.y,
+    });
+
+    // Déterminer le type de nœud basé sur le type MIME
+    let nodeType: string;
+    if (file.type.startsWith('image/')) {
+      nodeType = 'image';
+    } else if (file.type.startsWith('video/')) {
+      nodeType = 'video';
+    } else if (file.type.startsWith('audio/')) {
+      nodeType = 'audio';
+    } else if (file.type.startsWith('text/') || file.type === 'application/json') {
+      nodeType = 'text';
+    } else {
+      nodeType = 'file';
+    }
+
+    try {
+      // Uploader le fichier
+      const { uploadFile } = await import('@/lib/upload');
+      const { url, type } = await uploadFile(file, 'files');
+
+      // Créer le nœud avec le contenu uploadé
+      addNode(nodeType, {
+        position: { x, y },
+        data: {
+          content: {
+            url,
+            type,
+            name: file.name,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'import:', error);
+      toast.error('Erreur lors de l\'import du fichier');
+    }
+
+    // Réinitialiser l'input pour permettre de re-sélectionner le même fichier
+    event.target.value = '';
+  }, [addNode, screenToFlowPosition, contextMenuPosition]);
+
   // Fonction pour copie profonde des données d'un nœud
   const deepCloneNodeData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
     return JSON.parse(JSON.stringify(data));
@@ -939,6 +993,9 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   }, [getNodes, duplicateNode]);
 
   const handleContextMenu = useCallback((event: MouseEvent) => {
+    // Stocker la position du clic droit pour créer le nœud à cet endroit
+    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    
     if (
       !(event.target instanceof HTMLElement) ||
       !event.target.classList.contains('react-flow__pane')
@@ -1017,6 +1074,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               minZoom={0.02}
               maxZoom={4}
               style={{ '--canvas-bg-color': canvasBgColor } as React.CSSProperties}
+              proOptions={{ hideAttribution: true }}
               {...rest}
             >
               <Background 
@@ -1025,7 +1083,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               />
               <ProximityHandles />
               <SelectionToolbar
-                onCreateCollection={(nodeIds) => {
+                onCreateCollection={(nodeIds, category) => {
                   // Récupérer les nœuds sélectionnés
                   const selectedNodes = getNodes().filter((n) => nodeIds.includes(n.id));
                   if (selectedNodes.length < 2) return;
@@ -1096,6 +1154,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                     data: {
                       label: 'Collection',
                       items,
+                      headerColor: category.color,
+                      categoryId: category.id,
                     },
                   };
 
@@ -1159,6 +1219,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                   toast.success(`${nodeIds.length} nœuds arrangés`);
                 }}
               />
+              <VideoSelectionToolbar />
               {children}
               
               {/* Menu flottant Replace/Connect */}
@@ -1202,16 +1263,47 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
             </ReactFlow>
           </ContextMenuTrigger>
           <ContextMenuContent>
-            <ContextMenuItem onClick={addDropNode}>
-              <PlusIcon size={12} />
-              <span>Add a new node</span>
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleSelectAll}>
-              <BoxSelectIcon size={12} />
-              <span>Select all</span>
+            {nodeButtons
+              .filter((button) => button.id !== 'file' && button.id !== 'tweet')
+              .map((button) => (
+                <ContextMenuItem
+                  key={button.id}
+                  onClick={() => {
+                    // Utiliser la position du clic droit pour créer le nœud
+                    const { x, y } = screenToFlowPosition({
+                      x: contextMenuPosition?.x ?? 0,
+                      y: contextMenuPosition?.y ?? 0,
+                    });
+                    addNode(button.id, {
+                      position: { x, y },
+                      data: button.data ?? {},
+                    });
+                  }}
+                >
+                  <button.icon size={12} />
+                  <span>{button.label}</span>
+                </ContextMenuItem>
+              ))}
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => {
+                // Déclencher le file picker
+                fileInputRef.current?.click();
+              }}
+            >
+              <UploadIcon size={12} />
+              <span>Importer un fichier</span>
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
+        {/* Input file caché pour l'import de fichiers */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,video/*,audio/*,text/*,.pdf,.json,.md,.txt"
+          onChange={handleFileImport}
+        />
       </NodeDropzoneProvider>
     </NodeOperationsProvider>
   );

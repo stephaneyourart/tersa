@@ -1,4 +1,3 @@
-import { useNodeConnections } from '@xyflow/react';
 import { VideoPrimitive } from './primitive';
 import { VideoTransform } from './transform';
 
@@ -23,11 +22,10 @@ export type VideoNodeProps = {
 };
 
 export const VideoNode = (props: VideoNodeProps) => {
-  const connections = useNodeConnections({
-    id: props.id,
-    handleType: 'target',
-  });
-  const Component = connections.length ? VideoTransform : VideoPrimitive;
+  // Utiliser Primitive UNIQUEMENT si c'est une vidéo importée (data.content existe)
+  // Sinon, utiliser Transform pour la génération
+  const hasImportedContent = Boolean(props.data.content);
+  const Component = hasImportedContent ? VideoPrimitive : VideoTransform;
 
   return <Component {...props} title="Video" />;
 };

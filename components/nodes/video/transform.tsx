@@ -2,6 +2,7 @@ import { generateVideoAction } from '@/app/actions/video/create';
 import { NodeLayout } from '@/components/nodes/layout';
 import { Button } from '@/components/ui/button';
 import { GeneratingSkeleton } from '@/components/nodes/generating-skeleton';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
@@ -80,6 +81,11 @@ export const VideoTransform = ({
       .map((img) => (typeof img === 'string' ? img : img?.url))
       .filter((url): url is string => typeof url === 'string' && url.length > 0);
   }, [id, nodes, edges]);
+  
+  // Hook pour détecter si la vidéo est expirée (URL WaveSpeed plus accessible)
+  const videoUrl = data.generated?.url;
+  const isLocal = videoUrl ? isLocalUrl(videoUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(videoUrl, isLocal);
 
   const handleGenerate = useCallback(async () => {
     if (loading || !project?.id) {
@@ -128,7 +134,8 @@ export const VideoTransform = ({
         throw new Error(response.error);
       }
 
-      updateNodeData(id, response.nodeData);
+      // Merger les nouvelles données avec les existantes (pour préserver instructions, advancedSettings, etc.)
+      updateNodeData(id, { ...data, ...response.nodeData });
 
       // Calculer le temps écoulé et le coût
       const duration = Math.round((Date.now() - startTime) / 1000);
@@ -426,35 +433,6 @@ export const VideoTransform = ({
       ),
     });
 
-    // Afficher un loader dans la toolbar si en cours de génération
-    if (loading || data.generating) {
-      items.push({
-        tooltip: 'Generating...',
-        children: (
-          <Button size="icon" variant="ghost" className="rounded-full" disabled>
-            <Loader2Icon className="animate-spin" size={12} />
-          </Button>
-        ),
-      });
-    }
-
-    // Download button
-    if (data.generated?.url) {
-      items.push({
-        tooltip: 'Download',
-        children: (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full"
-            onClick={() => download(data.generated, id, 'mp4')}
-          >
-            <DownloadIcon size={12} />
-          </Button>
-        ),
-      });
-    }
-
     // Last updated
     if (data.updatedAt) {
       items.push({
@@ -531,37 +509,48 @@ export const VideoTransform = ({
         </div>
       )}
       {data.generated?.url && !isGenerating && (
-        <div 
-          className="relative"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-        >
-          <video
-            src={data.generated.url}
-            width={data.width ?? 800}
-            height={data.height ?? 450}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full rounded-b-xl object-cover"
-          />
-          {/* Overlay du prompt au hover */}
-          {hasPrompt && isHovered && (
-            <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 transition-opacity">
-              <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
-                {data.instructions}
-              </p>
+        <>
+          {/* Afficher l'icône fantôme si la vidéo est expirée */}
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="La vidéo a expiré sur WaveSpeed et n'a pas été téléchargée"
+            />
+          ) : (
+            <div 
+              className="relative"
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+            >
+              <video
+                src={data.generated.url}
+                width={data.width ?? 800}
+                height={data.height ?? 450}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-full rounded-b-xl object-cover"
+                onError={() => markAsExpired()}
+              />
+              {/* Overlay du prompt au hover */}
+              {hasPrompt && isHovered && (
+                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity">
+                  <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
+                    {data.instructions}
+                  </p>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
       {/* Textarea visible uniquement quand pas de contenu */}
       {!hasContent && (
         <Textarea
           value={data.instructions ?? ''}
           onChange={handleInstructionsChange}
-          placeholder="Enter instructions"
+          placeholder="Promptez..."
           className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
         />
       )}

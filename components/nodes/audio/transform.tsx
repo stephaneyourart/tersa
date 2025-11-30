@@ -1,5 +1,6 @@
 import { generateSpeechAction } from '@/app/actions/speech/create';
 import { NodeLayout } from '@/components/nodes/layout';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -57,6 +58,11 @@ export const AudioTransform = ({
   const model = speechModels[modelId];
   const analytics = useAnalytics();
   const { trackGeneration } = useGenerationTracker();
+  
+  // Hook pour détecter si l'audio est expiré (URL WaveSpeed plus accessible)
+  const audioUrl = data.generated?.url;
+  const isLocal = audioUrl ? isLocalUrl(audioUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(audioUrl, isLocal);
 
   const handleGenerate = async () => {
     if (loading || !project?.id) {
@@ -178,50 +184,23 @@ export const AudioTransform = ({
     });
   }
 
-  toolbar.push(
-    loading
-      ? {
-          tooltip: 'Generating...',
-          children: (
-            <Button size="icon" className="rounded-full" disabled>
-              <Loader2Icon className="animate-spin" size={12} />
-            </Button>
-          ),
-        }
-      : {
-          tooltip: data.generated?.url ? 'Regenerate' : 'Generate',
-          children: (
-            <Button
-              size="icon"
-              className="rounded-full"
-              onClick={handleGenerate}
-              disabled={loading || !project?.id}
-            >
-              {data.generated?.url ? (
-                <RotateCcwIcon size={12} />
-              ) : (
-                <PlayIcon size={12} />
-              )}
-            </Button>
-          ),
-        }
-  );
-
-  if (data.generated) {
-    toolbar.push({
-      tooltip: 'Download',
-      children: (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="rounded-full"
-          onClick={() => download(data.generated, id, 'mp3')}
-        >
-          <DownloadIcon size={12} />
-        </Button>
-      ),
-    });
-  }
+  toolbar.push({
+    tooltip: data.generated?.url ? 'Regenerate' : 'Generate',
+    children: (
+      <Button
+        size="icon"
+        className="rounded-full"
+        onClick={handleGenerate}
+        disabled={loading || !project?.id}
+      >
+        {data.generated?.url ? (
+          <RotateCcwIcon size={12} />
+        ) : (
+          <PlayIcon size={12} />
+        )}
+      </Button>
+    ),
+  });
 
   if (data.updatedAt) {
     toolbar.push({
@@ -260,17 +239,28 @@ export const AudioTransform = ({
         </div>
       )}
       {!loading && data.generated?.url && (
-        // biome-ignore lint/a11y/useMediaCaption: <explanation>
-        <audio
-          src={data.generated.url}
-          controls
-          className="w-full rounded-none"
-        />
+        <>
+          {/* Afficher l'icône fantôme si l'audio est expiré */}
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="L'audio a expiré sur WaveSpeed et n'a pas été téléchargé"
+            />
+          ) : (
+            // biome-ignore lint/a11y/useMediaCaption: <explanation>
+            <audio
+              src={data.generated.url}
+              controls
+              className="w-full rounded-none"
+              onError={() => markAsExpired()}
+            />
+          )}
+        </>
       )}
       <Textarea
         value={data.instructions ?? ''}
         onChange={handleInstructionsChange}
-        placeholder="Enter instructions"
+        placeholder="Promptez..."
         className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
       />
     </NodeLayout>

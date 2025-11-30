@@ -1,9 +1,11 @@
 /**
  * Bouton Upscale pour les images
- * 3 états :
+ * 2 états visuels :
  * - commande : visible au hover, déclenche le menu contextuel d'upscale
- * - en cours : upscaling en cours (filler pourpre géré par le nœud parent)
- * - terminé : pastille verte toujours visible, clic annule et permet de refaire
+ * - en cours : loader pendant l'upscaling (filler pourpre géré par le nœud parent)
+ * 
+ * Après upscale, le bouton reste visible au hover pour permettre de recommencer
+ * Les infos d'upscale s'affichent dans le slider de comparaison au hover
  */
 
 'use client';
@@ -12,7 +14,6 @@ import { cn } from '@/lib/utils';
 import { upscaleModels } from '@/lib/models/upscale';
 import {
   ArrowUpRightIcon,
-  CheckIcon,
   Loader2Icon,
   SlidersHorizontalIcon,
 } from 'lucide-react';
@@ -70,7 +71,7 @@ export function UpscaleButton({
   isVisible,
   status,
   onUpscale,
-  onCancelUpscale,
+  // onCancelUpscale n'est plus utilisé car on permet de refaire sans annuler
   onHoverChange,
   className,
 }: UpscaleButtonProps) {
@@ -104,23 +105,14 @@ export function UpscaleButton({
     };
   }, []);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (status === 'completed') {
-      // Si upscale terminé, annuler et afficher le menu
-      onCancelUpscale();
-    }
-  };
-
   const handleUpscale = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsOpen(false);
     onUpscale(settings);
   };
 
-  // Conditions d'affichage
-  const shouldShow = status === 'completed' || status === 'processing' || isVisible || isHovered;
+  // Conditions d'affichage - visible au hover ou pendant le processing
+  const shouldShow = status === 'processing' || isVisible || isHovered;
 
   // Si en cours de traitement, afficher un loader
   if (status === 'processing') {
@@ -139,28 +131,8 @@ export function UpscaleButton({
     );
   }
 
-  // Si upscale terminé, afficher la pastille verte
-  if (status === 'completed') {
-    return (
-      <button
-        onClick={handleClick}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        className={cn(
-          'flex items-center justify-center',
-          'w-7 h-7 rounded-full',
-          'bg-emerald-500 shadow-lg',
-          'text-white',
-          'hover:bg-emerald-600 transition-all',
-          'cursor-pointer',
-          className
-        )}
-        title="Image upscalée - Cliquer pour annuler et refaire"
-      >
-        <CheckIcon size={12} strokeWidth={3} />
-      </button>
-    );
-  }
+  // Si upscale terminé, afficher le même bouton upscale pour pouvoir recommencer
+  // (l'info d'upscale s'affiche dans le slider de comparaison)
 
   // État par défaut : bouton commande avec popover
   return (

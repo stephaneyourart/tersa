@@ -1,4 +1,3 @@
-import { useNodeConnections } from '@xyflow/react';
 import { ImagePrimitive } from './primitive';
 import { ImageTransform } from './transform';
 
@@ -8,6 +7,7 @@ export type UpscaleData = {
   upscaledUrl?: string;    // URL de l'image après upscale
   model?: string;          // Modèle utilisé
   scale?: number;          // Facteur d'upscale
+  creativity?: number;     // Niveau de créativité (Lupa)
   startTime?: number;      // Timestamp début upscale
 };
 
@@ -42,11 +42,10 @@ export type ImageNodeProps = {
 };
 
 export const ImageNode = (props: ImageNodeProps) => {
-  const connections = useNodeConnections({
-    id: props.id,
-    handleType: 'target',
-  });
-  const Component = connections.length ? ImageTransform : ImagePrimitive;
+  // Utiliser Primitive UNIQUEMENT si c'est une image importée (data.content existe)
+  // Sinon, utiliser Transform pour la génération
+  const hasImportedContent = Boolean(props.data.content);
+  const Component = hasImportedContent ? ImagePrimitive : ImageTransform;
 
   return <Component {...props} title="Image" />;
 };

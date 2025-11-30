@@ -4,8 +4,11 @@ import { Canvas } from '@/components/canvas';
 import { Controls } from '@/components/controls';
 import { LocalCanvasHeader } from '@/components/local-canvas-header';
 import { Toolbar } from '@/components/toolbar';
+import { CleanupDialogWrapper } from '@/components/cleanup-dialog-wrapper';
 import { getLocalProjectById, updateLocalProject } from '@/lib/local-projects-store';
+import { registerProjectMediaReferences } from '@/lib/media-references';
 import { ProjectProvider } from '@/providers/project';
+import { CleanupModeProvider } from '@/providers/cleanup-mode';
 import { Loader2Icon } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -65,6 +68,10 @@ export default function LocalCanvasPage() {
       updateLocalProject(projectId, {
         data: { nodes, edges, viewport },
       });
+      
+      // Enregistrer les références aux médias
+      registerProjectMediaReferences(projectId, nodes);
+      
       lastSavedRef.current = currentState;
       console.log('[Auto-save] Project saved');
     }, 1000); // Save après 1 seconde d'inactivité
@@ -107,8 +114,9 @@ export default function LocalCanvasPage() {
 
   return (
     <ProjectProvider data={localProjectData}>
-      <div className="h-screen w-screen">
-        <LocalCanvasHeader projectId={projectId} />
+      <CleanupModeProvider>
+        <div className="h-screen w-screen">
+          <LocalCanvasHeader projectId={projectId} />
         <Canvas 
           initialNodes={initialData.nodes}
           initialEdges={initialData.edges}
@@ -117,8 +125,10 @@ export default function LocalCanvasPage() {
         >
           <Controls />
           <Toolbar />
+          <CleanupDialogWrapper />
         </Canvas>
-      </div>
+        </div>
+      </CleanupModeProvider>
     </ProjectProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { describeAction } from '@/app/actions/image/describe';
 import { NodeLayout } from '@/components/nodes/layout';
+import { ExpiredMedia, useMediaExpired, isLocalUrl } from '@/components/nodes/expired-media';
 import { DropzoneEmptyState } from '@/components/ui/kibo-ui/dropzone';
 import { DropzoneContent } from '@/components/ui/kibo-ui/dropzone';
 import { Dropzone } from '@/components/ui/kibo-ui/dropzone';
@@ -39,6 +40,10 @@ export const ImagePrimitive = ({
 
   // L'URL de l'image à afficher (avant ou après upscale)
   const imageUrl = data.content?.url;
+  
+  // Hook pour détecter si l'image est expirée
+  const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(imageUrl, isLocal);
 
   const handleDrop = async (files: File[]) => {
     if (isUploading || !project?.id) {
@@ -99,6 +104,7 @@ export const ImagePrimitive = ({
         originalUrl: imageUrl,
         model: settings.model,
         scale: settings.scale,
+        creativity: settings.creativity,
         startTime,
       },
     });
@@ -139,6 +145,7 @@ export const ImagePrimitive = ({
           upscaledUrl: result.result.url,
           model: settings.model,
           scale: settings.scale,
+          creativity: settings.creativity,
         },
       });
 
@@ -214,22 +221,36 @@ export const ImagePrimitive = ({
       {/* Image avec comparaison si upscalée */}
       {!isUploading && !isUpscaling && data.content && (
         <>
-          {isUpscaled && data.upscale?.upscaledUrl ? (
-            <ImageCompareSlider
-              beforeUrl={data.upscale.originalUrl || data.content.url}
-              afterUrl={data.upscale.upscaledUrl}
-              className="rounded-b-xl"
-              width={data.width ?? 1000}
-              height={data.height ?? 1000}
+          {/* Afficher l'icône fantôme si l'image est expirée */}
+          {isExpired ? (
+            <ExpiredMedia 
+              onRetry={retryCheck}
+              message="L'image n'est plus disponible"
             />
           ) : (
-            <Image
-              src={data.content.url}
-              alt="Image"
-              width={data.width ?? 1000}
-              height={data.height ?? 1000}
-              className="h-auto w-full rounded-b-xl"
-            />
+            <>
+              {isUpscaled && data.upscale?.upscaledUrl ? (
+                <ImageCompareSlider
+                  beforeUrl={data.upscale.originalUrl || data.content.url}
+                  afterUrl={data.upscale.upscaledUrl}
+                  className="rounded-b-xl"
+                  width={data.width ?? 1000}
+                  height={data.height ?? 1000}
+                  upscaleModel={data.upscale.model}
+                  upscaleScale={data.upscale.scale}
+                  upscaleCreativity={data.upscale.creativity}
+                />
+              ) : (
+                <Image
+                  src={data.content.url}
+                  alt="Image"
+                  width={data.width ?? 1000}
+                  height={data.height ?? 1000}
+                  className="h-auto w-full rounded-b-xl"
+                  onError={() => markAsExpired()}
+                />
+              )}
+            </>
           )}
         </>
       )}

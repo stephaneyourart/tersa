@@ -28,6 +28,11 @@ export type Generation = {
   size?: string; // Pour les images (ex: "1024x1024")
   fileSize?: number; // Taille du fichier en bytes
   videoDuration?: number; // Durée de la vidéo en secondes
+  // DaVinci Resolve
+  dvrTransferred?: boolean; // Si true, l'élément a été transféré vers DVR
+  dvrTransferDate?: string; // Date du transfert
+  dvrProject?: string; // Nom du projet DVR
+  localPath?: string; // Chemin local du fichier téléchargé
 };
 
 const STORAGE_KEY = 'tersa-generations';
@@ -100,6 +105,38 @@ export function renameGeneration(id: string, newName: string): void {
   } catch (error) {
     console.error('Error renaming generation in localStorage:', error);
   }
+}
+
+// Mettre à jour le statut DVR d'une génération
+export function updateGenerationDVRStatus(
+  nodeId: string, 
+  dvrData: { 
+    dvrTransferred: boolean; 
+    dvrTransferDate?: string;
+    dvrProject?: string;
+    localPath?: string;
+  }
+): void {
+  const generations = getGenerations();
+  const updated = generations.map(g => 
+    g.nodeId === nodeId ? { ...g, ...dvrData } : g
+  );
+  
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    // Émettre un événement pour mettre à jour le dashboard
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tersa-generation-updated'));
+    }
+  } catch (error) {
+    console.error('Error updating generation DVR status in localStorage:', error);
+  }
+}
+
+// Récupérer une génération par nodeId
+export function getGenerationByNodeId(nodeId: string): Generation | undefined {
+  const generations = getGenerations();
+  return generations.find(g => g.nodeId === nodeId);
 }
 
 // Supprimer toutes les générations

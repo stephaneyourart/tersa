@@ -11,7 +11,7 @@
  * - Items OFF = dimmés
  */
 
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Handle, Position, useReactFlow, useViewport } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
 import {
   ImageIcon,
@@ -23,12 +23,16 @@ import {
   ChevronUpIcon,
   PlusIcon,
   LayersIcon,
+  SaveIcon,
 } from 'lucide-react';
 import { nanoid } from 'nanoid';
+import { toast } from 'sonner';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { saveCollection, updateSavedCollection, getCollectionById } from '@/lib/collections-library-store';
+import { CategorySelectModal } from '@/components/collections-library-modal';
 
 // Type pour un preset (configuration de toggles)
 export type CollectionPreset = {
@@ -62,6 +66,9 @@ export type CollectionNodeData = {
   activeTab?: 'image' | 'video' | 'audio' | 'text' | 'all';
   presets?: CollectionPreset[];
   activePresetId?: string;
+  headerColor?: string; // Couleur du header (défaut: #F6C744)
+  categoryId?: string; // ID de la catégorie dans la bibliothèque
+  savedCollectionId?: string; // ID de la collection sauvegardée (si déjà enregistrée)
 };
 
 type CollectionNodeProps = NodeProps<Node<CollectionNodeData>>;
@@ -397,14 +404,22 @@ const TYPE_ICONS: Record<ItemType, typeof ImageIcon> = {
   text: FileTextIcon,
 };
 
+// Seuil de zoom en dessous duquel le tooltip apparaît
+const ZOOM_THRESHOLD = 0.6;
+
 export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
   const { updateNodeData } = useReactFlow();
+  const { zoom } = useViewport();
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [presetNameValue, setPresetNameValue] = useState('');
+  const [showCategorySelect, setShowCategorySelect] = useState(false);
   const presetInputRef = useRef<HTMLInputElement>(null);
   
   const items = data.items || [];
   const collapsed = data.collapsed ?? false;
+  
+  // Afficher le tooltip quand on est en zoom out
+  const showTooltip = collapsed && zoom < ZOOM_THRESHOLD;
   const activeTab = data.activeTab || 'all';
   const presets = data.presets || [];
   const activePresetId = data.activePresetId;
@@ -526,14 +541,65 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
     });
   }, [id, presets, activePresetId, updateNodeData]);
 
+  // Sauvegarder dans la bibliothèque
+  const handleSaveToLibrary = useCallback(() => {
+    if (data.savedCollectionId) {
+      // Mettre à jour la collection existante
+      updateSavedCollection(data.savedCollectionId, {
+        name: data.label || 'Collection',
+        items,
+        presets,
+      });
+      toast.success('Collection mise à jour');
+    } else {
+      // Nouvelle collection - demander la catégorie
+      setShowCategorySelect(true);
+    }
+  }, [data.savedCollectionId, data.label, items, presets]);
+
+  // Sauvegarder dans une catégorie
+  const handleSaveToCategory = useCallback((category: { id: string; color: string }) => {
+    const saved = saveCollection(
+      data.label || 'Collection',
+      category.id,
+      items,
+      presets
+    );
+    updateNodeData(id, { 
+      savedCollectionId: saved.id,
+      categoryId: category.id,
+      headerColor: category.color,
+    });
+    toast.success('Collection sauvegardée');
+  }, [id, data.label, items, presets, updateNodeData]);
+
   return (
-    <div
-      className={cn(
-        'rounded-xl overflow-hidden bg-card shadow-lg transition-all',
-        collapsed ? 'w-[180px]' : 'w-[380px]',
-        selected && 'ring-2 ring-primary'
+    <div className="relative">
+      {/* Tooltip automatique en zoom out (collapsed uniquement) */}
+      {collapsed && (
+        <div
+          className={cn(
+            'absolute -top-12 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-black font-semibold whitespace-nowrap pointer-events-none transition-opacity duration-300 shadow-lg',
+            showTooltip ? 'opacity-100' : 'opacity-0'
+          )}
+          style={{ 
+            backgroundColor: data.headerColor || '#F6C744',
+            // Compenser le zoom pour garder une taille lisible
+            transform: `translateX(-50%) scale(${1 / zoom})`,
+            transformOrigin: 'center bottom',
+          }}
+        >
+          {data.label || 'Collection'}
+        </div>
       )}
-    >
+      
+      <div
+        className={cn(
+          'rounded-xl overflow-hidden bg-card shadow-lg transition-all',
+          collapsed ? 'w-[180px]' : 'w-[380px]',
+          selected && 'ring-2 ring-primary'
+        )}
+      >
       {/* Handle d'entrée (gauche) - pour ajouter des items */}
       <Handle
         type="target"
@@ -544,7 +610,7 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
       {/* Header jaune */}
       <div 
         className="flex items-center gap-2 px-4 py-3 nodrag nowheel"
-        style={{ backgroundColor: '#F6C744' }}
+        style={{ backgroundColor: data.headerColor || '#F6C744' }}
         onDoubleClick={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
@@ -564,6 +630,15 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
           variant="ghost"
           size="icon"
           className="h-7 w-7 shrink-0 text-black hover:bg-black/10"
+          onClick={handleSaveToLibrary}
+          title={data.savedCollectionId ? 'Mettre à jour' : 'Sauvegarder'}
+        >
+          <SaveIcon size={14} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-black hover:bg-black/10"
           onClick={toggleCollapse}
         >
           {collapsed ? (
@@ -573,6 +648,13 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
           )}
         </Button>
       </div>
+
+      {/* Modale de sélection de catégorie */}
+      <CategorySelectModal
+        open={showCategorySelect}
+        onOpenChange={setShowCategorySelect}
+        onSelect={handleSaveToCategory}
+      />
 
       {/* Onglets par type */}
       {!collapsed && (
@@ -647,6 +729,7 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
         position={Position.Right}
         className="!w-3 !h-3 !bg-primary !border-2 !border-background"
       />
+      </div>
     </div>
   );
 };
