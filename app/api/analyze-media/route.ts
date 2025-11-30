@@ -1,17 +1,17 @@
 /**
  * API Route: /api/analyze-media
- * Analyse un média avec GPT-4.1 mini pour extraire les métadonnées DVR
+ * Analyse un média avec GPT-4o mini pour extraire les métadonnées DVR
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-// System prompt par défaut pour l'analyse
+// System prompt par défaut pour l'analyse (utilisé si pas de prompt personnalisé dans les settings du projet)
 const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse de contenu multimédia pour la post-production vidéo.
 
-Ton rôle est d'analyser le contexte de génération d'un élément (image, vidéo, audio) et d'en extraire des métadonnées structurées pour DaVinci Resolve.
+Ton rôle est d'analyser le contexte d'un élément (image, vidéo, audio) et d'en extraire des métadonnées structurées pour DaVinci Resolve.
 
-À partir du prompt de génération et des informations fournies, tu dois identifier :
+À partir des informations fournies (prompt de génération OU nom de fichier pour les imports), tu dois identifier :
 - Les personnages présents et leurs caractéristiques
 - Le décor/lieu de la scène (environnement, ambiance, éclairage)
 - Les actions en cours ou suggérées
@@ -30,14 +30,17 @@ Règles importantes :
 - Le décor doit être très court (30 chars max) : ex "Forêt enchantée", "Bureau moderne"
 - La description peut être plus longue et détaillée
 - Utilise un langage professionnel adapté à la post-production
-- Si le prompt est en anglais, réponds en français`;
+- Si le prompt est en anglais, réponds en français
+- Pour les fichiers importés sans prompt, déduis le contenu du nom de fichier
+- Transforme les noms techniques en titres lisibles (ex: "IMG_2024_beach.jpg" -> "Plage 2024")`;
 
 type AnalyzeRequest = {
   mediaType: 'image' | 'video' | 'audio';
-  prompt?: string;           // Le prompt de génération
-  mediaUrl?: string;         // URL du média (pour analyse visuelle future)
+  prompt?: string;           // Le prompt de génération (vide pour les imports)
+  mediaUrl?: string;         // URL du média
   sourceImageUrls?: string[]; // URLs des images sources
   customSystemPrompt?: string; // System prompt personnalisé du projet
+  isImported?: boolean;      // Indique si c'est un import (pas généré)
 };
 
 type AnalysisResult = {
@@ -49,7 +52,7 @@ type AnalysisResult = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as AnalyzeRequest;
-    const { mediaType, prompt, mediaUrl, sourceImageUrls, customSystemPrompt } = body;
+    const { mediaType, prompt, mediaUrl, sourceImageUrls, customSystemPrompt, isImported } = body;
 
     // Vérifier qu'on a au moins un prompt ou une URL
     if (!prompt && !mediaUrl) {
@@ -70,10 +73,18 @@ export async function POST(request: NextRequest) {
 
     const openai = new OpenAI({ apiKey });
 
-    // Construire le message utilisateur
-    let userMessage = `Analyse ce contenu ${mediaType === 'image' ? 'image' : mediaType === 'video' ? 'vidéo' : 'audio'}.`;
+    // Construire le message utilisateur selon le contexte
+    let userMessage = '';
+    const mediaTypeLabel = mediaType === 'image' ? 'image' : mediaType === 'video' ? 'vidéo' : 'audio';
     
-    if (prompt) {
+    if (isImported || !prompt) {
+      // Mode import : on analyse le nom du fichier
+      const filename = mediaUrl ? decodeURIComponent(mediaUrl.split('/').pop() || '') : '';
+      userMessage = `Analyse ce fichier ${mediaTypeLabel} importé depuis le disque.`;
+      userMessage += `\n\nNom du fichier : "${filename}"`;
+    } else {
+      // Mode généré : on analyse le prompt
+      userMessage = `Analyse ce contenu ${mediaTypeLabel} généré par IA.`;
       userMessage += `\n\nPrompt de génération utilisé :\n"${prompt}"`;
     }
     
@@ -81,13 +92,16 @@ export async function POST(request: NextRequest) {
       userMessage += `\n\nImages sources utilisées : ${sourceImageUrls.length} image(s)`;
     }
 
-    // Utiliser GPT-4.1 mini pour l'analyse
+    // Utiliser le system prompt personnalisé du projet s'il existe, sinon le défaut
+    const systemPrompt = customSystemPrompt || DEFAULT_SYSTEM_PROMPT;
+
+    // Utiliser GPT-4o mini pour l'analyse
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: customSystemPrompt || DEFAULT_SYSTEM_PROMPT,
+          content: systemPrompt,
         },
         {
           role: 'user',
@@ -110,7 +124,6 @@ export async function POST(request: NextRequest) {
     try {
       analysis = JSON.parse(responseText) as AnalysisResult;
     } catch {
-      // Si le parsing échoue, essayer d'extraire les données
       console.error('Erreur parsing JSON:', responseText);
       analysis = {
         title: 'Sans titre',
@@ -146,4 +159,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

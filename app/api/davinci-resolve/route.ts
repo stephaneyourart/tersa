@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, filePath, targetFolder, folderName, parentPath, metadata } = body;
+    const { action, filePath, targetFolder, folderName, parentPath, metadata, clipName } = body;
 
     switch (action) {
       case 'import': {
@@ -88,11 +88,20 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        // Résoudre le chemin si c'est une URL relative /api/storage/...
+        let absolutePath = filePath;
+        if (filePath.startsWith('/api/storage/')) {
+          const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+          const relativePath = filePath.replace('/api/storage/', '');
+          const path = await import('path');
+          absolutePath = path.resolve(storagePath, relativePath);
+        }
+
         // Utiliser le dossier par défaut si non spécifié
         const folder = targetFolder || getDefaultDVRFolder();
         
-        // Passer les métadonnées si fournies
-        const result = await importToDVR(filePath, folder, metadata);
+        // Passer les métadonnées et le nom du clip si fournis
+        const result = await importToDVR(absolutePath, folder, clipName, metadata);
         
         return NextResponse.json(result);
       }

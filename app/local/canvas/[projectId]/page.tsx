@@ -5,6 +5,7 @@ import { Controls } from '@/components/controls';
 import { LocalCanvasHeader } from '@/components/local-canvas-header';
 import { Toolbar } from '@/components/toolbar';
 import { CleanupDialogWrapper } from '@/components/cleanup-dialog-wrapper';
+import { MediaLibrarySidebar } from '@/components/media-library-sidebar';
 import { getLocalProjectById, updateLocalProject } from '@/lib/local-projects-store';
 import { registerProjectMediaReferences } from '@/lib/media-references';
 import { ProjectProvider } from '@/providers/project';
@@ -117,16 +118,17 @@ export default function LocalCanvasPage() {
       <CleanupModeProvider>
         <div className="h-screen w-screen">
           <LocalCanvasHeader projectId={projectId} />
-        <Canvas 
-          initialNodes={initialData.nodes}
-          initialEdges={initialData.edges}
-          initialViewport={initialData.viewport}
-          onAutoSave={handleAutoSave}
-        >
-          <Controls />
-          <Toolbar />
-          <CleanupDialogWrapper />
-        </Canvas>
+          <Canvas 
+            initialNodes={initialData.nodes}
+            initialEdges={initialData.edges}
+            initialViewport={initialData.viewport}
+            onAutoSave={handleAutoSave}
+          >
+            <Controls />
+            <Toolbar />
+            <CleanupDialogWrapper />
+          </Canvas>
+          <MediaLibrarySidebar />
         </div>
       </CleanupModeProvider>
     </ProjectProvider>

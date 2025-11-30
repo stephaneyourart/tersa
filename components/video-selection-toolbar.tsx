@@ -11,7 +11,7 @@ import { useReactFlow, useStore, type Node } from '@xyflow/react';
 import { MediaComparisonMode } from './video-comparison-mode';
 import { useProject } from '@/providers/project';
 import { removeMediaReference, addMediaReference } from '@/lib/media-references';
-import { trackDeletion, trackDVRTransfer } from '@/lib/local-projects-store';
+import { trackDeletion, trackDVRTransfer, getProjectSettings } from '@/lib/local-projects-store';
 import { toast } from 'sonner';
 
 interface MediaInfo {
@@ -287,34 +287,44 @@ export function VideoSelectionToolbar() {
       if (!filePath) continue;
 
       const isVideo = node.type === 'video' || node.type === 'video-transform';
+      const isGenerated = Boolean(data?.isGenerated);
       const extension = isVideo ? 'mp4' : 'png';
 
       let title = (data?.smartTitle || (data?.dvrMetadata as Record<string, string> | undefined)?.title || (isVideo ? 'Video' : 'Image')) as string;
       let description = (data?.instructions || '') as string;
       let decor = '';
 
-      if (!data?.dvrMetadata && data?.instructions) {
+      // Toujours analyser avec l'IA si pas de métadonnées existantes
+      if (!data?.dvrMetadata) {
         try {
+          // Récupérer le system prompt personnalisé du projet
+          const projectSettings = project?.id ? getProjectSettings(project.id) : null;
+          const customSystemPrompt = projectSettings?.dvrAnalysisSystemPrompt;
+
           const analysisResponse = await fetch('/api/analyze-media', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               mediaUrl: filePath,
-              prompt: data.instructions,
+              prompt: data?.instructions || '',
               mediaType: isVideo ? 'video' : 'image',
+              isImported: !isGenerated,
+              customSystemPrompt,
             }),
           });
 
           if (analysisResponse.ok) {
             const analysisData = await analysisResponse.json();
-            title = analysisData.title || title;
-            description = analysisData.description || description;
-            decor = analysisData.decor || '';
+            if (analysisData.success && analysisData.analysis) {
+              title = analysisData.analysis.title || title;
+              description = analysisData.analysis.description || description;
+              decor = analysisData.analysis.decor || '';
+            }
           }
         } catch (e) {
           console.error('Erreur analyse:', e);
         }
-      } else if (data?.dvrMetadata) {
+      } else {
         const metadata = data.dvrMetadata as Record<string, string>;
         title = metadata.title || title;
         description = metadata.description || description;
@@ -340,16 +350,22 @@ export function VideoSelectionToolbar() {
           }
         }
 
+        // Les imports vont dans "TersaFork/Imports from disk", les générés dans "TersaFork"
+        const targetFolder = isGenerated ? 'TersaFork' : 'TersaFork/Imports from disk';
+
         const dvrResponse = await fetch('/api/davinci-resolve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'import',
             filePath: finalPath,
+            targetFolder,
             clipName: title,
-            scene: '',
-            comments: decor,
-            description: description,
+            metadata: {
+              scene: '',
+              comments: decor,
+              description: description,
+            },
           }),
         });
 

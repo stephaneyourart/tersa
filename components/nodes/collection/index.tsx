@@ -418,8 +418,8 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
   const items = data.items || [];
   const collapsed = data.collapsed ?? false;
   
-  // Afficher le tooltip quand on est en zoom out
-  const showTooltip = collapsed && zoom < ZOOM_THRESHOLD;
+  // Tooltip désactivé
+  const showTooltip = false;
   const activeTab = data.activeTab || 'all';
   const presets = data.presets || [];
   const activePresetId = data.activePresetId;

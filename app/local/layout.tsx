@@ -117,7 +117,9 @@ const LocalLayout = ({ children }: LocalLayoutProps) => {
   return (
     <SubscriptionProvider isSubscribed={true} plan="pro">
       <GatewayProviderClient models={mockModels as never}>
-        <ReactFlowProvider>{children}</ReactFlowProvider>
+        <ReactFlowProvider>
+          {children}
+        </ReactFlowProvider>
       </GatewayProviderClient>
     </SubscriptionProvider>
   );

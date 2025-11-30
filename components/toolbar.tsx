@@ -103,7 +103,7 @@ export const ToolbarInner = () => {
         {/* Séparateur */}
         <div className="w-px h-6 bg-border mx-1" />
 
-        {/* Bouton bibliothèque */}
+        {/* Bouton bibliothèque de collections */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

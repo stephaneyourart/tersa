@@ -33,6 +33,7 @@ import { nanoid } from 'nanoid';
 import type { MouseEvent, MouseEventHandler } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { useMediaLibraryStore } from '@/lib/media-library-store';
 
 // Hook pour la couleur de fond du canvas
 const BG_STORAGE_KEY = 'tersa-canvas-bg-color';
@@ -885,12 +886,63 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     event.target.value = '';
   }, [addNode, screenToFlowPosition, contextMenuPosition]);
 
+  // Handler pour le drop depuis la Media Library
+  const handleMediaLibraryDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    
+    try {
+      const jsonData = event.dataTransfer.getData('application/json');
+      if (!jsonData) return;
+      
+      const data = JSON.parse(jsonData);
+      if (data.type !== 'media-library-item') return;
+      
+      const { media } = data;
+      if (!media || !media.url) return;
+      
+      // Position du drop
+      const { x, y } = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      
+      // Mapper le type de média vers le type de nœud
+      const nodeType = media.type === 'document' ? 'file' : media.type;
+      
+      // Créer le nœud
+      addNode(nodeType, {
+        position: { x, y },
+        data: {
+          content: {
+            url: media.url,
+            type: media.type,
+            name: media.name,
+          },
+          width: media.width,
+          height: media.height,
+          duration: media.duration,
+          // Marquer comme importé depuis la bibliothèque (pas généré)
+          isGenerated: false,
+        },
+      });
+      
+      toast.success(`${media.name || 'Média'} ajouté au canvas`);
+    } catch (error) {
+      console.error('Error handling media library drop:', error);
+    }
+  }, [addNode, screenToFlowPosition]);
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }, []);
+
   // Fonction pour copie profonde des données d'un nœud
   const deepCloneNodeData = useCallback((data: Record<string, unknown>): Record<string, unknown> => {
     return JSON.parse(JSON.stringify(data));
   }, []);
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     const selectedNodes = getNodes().filter((node) => node.selected);
     if (selectedNodes.length > 0) {
       // Copie profonde des nœuds pour préserver tous leurs attributs
@@ -913,18 +965,50 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
         data: edge.data ? deepCloneNodeData(edge.data as Record<string, unknown>) : undefined,
       }));
       setCopiedEdges(edgesToCopy);
+      
+      // Copier dans le clipboard système pour le copier-coller inter-projets
+      try {
+        const clipboardData = {
+          type: 'tersa-canvas-nodes',
+          version: 1,
+          nodes: nodesToCopy,
+          edges: edgesToCopy,
+          copiedAt: new Date().toISOString(),
+        };
+        await navigator.clipboard.writeText(JSON.stringify(clipboardData));
+      } catch (error) {
+        // Fallback silencieux - le copier-coller local fonctionne toujours
+        console.warn('Could not copy to system clipboard:', error);
+      }
     }
   }, [getNodes, getEdges, deepCloneNodeData]);
 
-  const handlePaste = useCallback(() => {
-    if (copiedNodes.length === 0) {
+  const handlePaste = useCallback(async () => {
+    // Essayer d'abord de lire depuis le clipboard système (pour le copier-coller inter-projets)
+    let nodesToPaste = copiedNodes;
+    let edgesToPaste = copiedEdges;
+    
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText) {
+        const clipboardData = JSON.parse(clipboardText);
+        if (clipboardData.type === 'tersa-canvas-nodes' && clipboardData.nodes?.length > 0) {
+          nodesToPaste = clipboardData.nodes;
+          edgesToPaste = clipboardData.edges || [];
+        }
+      }
+    } catch {
+      // Fallback vers les nœuds copiés localement
+    }
+    
+    if (nodesToPaste.length === 0) {
       return;
     }
 
     // Créer un mapping ancien ID -> nouveau ID
     const idMapping = new Map<string, string>();
     
-    const newNodes = copiedNodes.map((node) => {
+    const newNodes = nodesToPaste.map((node) => {
       const newId = nanoid();
       idMapping.set(node.id, newId);
       
@@ -951,7 +1035,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     });
 
     // Recréer les edges avec les nouveaux IDs tout en préservant leur type
-    const newEdges = copiedEdges.map((edge) => ({
+    const newEdges = edgesToPaste.map((edge) => ({
       // Spread toutes les propriétés de l'edge (incluant type: 'animated', etc.)
       ...edge,
       // Nouveau ID unique pour l'edge
@@ -982,6 +1066,9 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     }
     
     save();
+    
+    // Toast pour le feedback
+    toast.success(`${newNodes.length} élément${newNodes.length > 1 ? 's' : ''} collé${newNodes.length > 1 ? 's' : ''}`);
   }, [copiedNodes, copiedEdges, save, deepCloneNodeData]);
 
   const handleDuplicateAll = useCallback(() => {
@@ -1024,6 +1111,13 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     preventDefault: true,
   });
 
+  // Media Library toggle (Cmd+Shift+M)
+  const toggleMediaLibrary = useMediaLibraryStore((state) => state.toggleSidebar);
+  useHotkeys('meta+shift+m', toggleMediaLibrary, {
+    enableOnContentEditable: false,
+    preventDefault: true,
+  });
+
   // Labels pour les types de nœuds
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -1060,6 +1154,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               onConnectStart={handleConnectStart}
               onConnect={handleConnect}
               onConnectEnd={handleConnectEnd}
+              onDrop={handleMediaLibraryDrop}
+              onDragOver={handleDragOver}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               isValidConnection={isValidConnection}

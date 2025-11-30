@@ -128,21 +128,20 @@ export async function getDVRStatus(): Promise<DVRStatus> {
  * Importe un fichier média dans DaVinci Resolve
  * 
  * @param filePath - Chemin absolu du fichier à importer
- * @param targetFolder - Dossier cible dans le Media Pool (optionnel)
+ * @param targetFolder - Dossier cible dans le Media Pool (supporte les sous-dossiers avec "/")
+ * @param clipName - Nom du clip dans DVR (optionnel)
  * @param metadata - Métadonnées à appliquer au clip (optionnel)
  */
 export async function importToDVR(
   filePath: string,
   targetFolder?: string,
+  clipName?: string,
   metadata?: DVRMetadata
 ): Promise<DVRImportResult> {
   try {
     const args = [filePath];
-    if (targetFolder) {
-      args.push(targetFolder);
-    } else {
-      args.push(''); // Placeholder pour le dossier
-    }
+    args.push(targetFolder || '');
+    args.push(clipName || '');
     
     // Ajouter les métadonnées en JSON
     if (metadata) {

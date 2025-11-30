@@ -103,13 +103,60 @@ def get_status():
     }
 
 
-def import_media(file_path, target_folder=None, metadata=None):
+def find_or_create_folder_path(media_pool, root_folder, folder_path):
+    """
+    Trouve ou crée un chemin de dossiers imbriqués.
+    Ex: "TersaFork/Imports from disk" -> crée TersaFork, puis Imports from disk dedans
+    
+    Args:
+        media_pool: L'objet MediaPool de DaVinci Resolve
+        root_folder: Le dossier racine du Media Pool
+        folder_path: Le chemin à créer (séparé par "/")
+    
+    Returns:
+        Le dossier final, ou root_folder si erreur
+    """
+    if not folder_path:
+        return root_folder
+    
+    parts = folder_path.split('/')
+    current_folder = root_folder
+    
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        
+        # Chercher si le sous-dossier existe
+        subfolders = current_folder.GetSubFolderList()
+        found = False
+        
+        for folder in subfolders:
+            if folder.GetName() == part:
+                current_folder = folder
+                found = True
+                break
+        
+        if not found:
+            # Créer le sous-dossier
+            new_folder = media_pool.AddSubFolder(current_folder, part)
+            if new_folder:
+                current_folder = new_folder
+            else:
+                # Échec de création, retourner le dossier courant
+                return current_folder
+    
+    return current_folder
+
+
+def import_media(file_path, target_folder=None, clip_name=None, metadata=None):
     """
     Importe un fichier média dans le Media Pool de DaVinci Resolve
     
     Args:
         file_path: Chemin absolu du fichier à importer
-        target_folder: Nom du dossier cible dans le Media Pool (optionnel)
+        target_folder: Chemin du dossier cible (supporte "/" pour les sous-dossiers)
+        clip_name: Nom du clip dans DVR (optionnel)
         metadata: Dict avec les métadonnées (scene, comments, description)
     
     Returns:
@@ -150,34 +197,15 @@ def import_media(file_path, target_folder=None, metadata=None):
     
     # Obtenir le Media Pool
     media_pool = current_project.GetMediaPool()
-    
-    # Naviguer vers le dossier cible si spécifié
     root_folder = media_pool.GetRootFolder()
+    
+    # Naviguer vers le dossier cible (supporte les sous-dossiers avec "/")
     target_media_folder = root_folder
     folder_name = "Master"
     
     if target_folder:
-        # Chercher ou créer le dossier cible
-        subfolders = root_folder.GetSubFolderList()
-        found = False
-        
-        for folder in subfolders:
-            if folder.GetName() == target_folder:
-                target_media_folder = folder
-                folder_name = target_folder
-                found = True
-                break
-        
-        if not found:
-            # Créer le dossier s'il n'existe pas
-            new_folder = media_pool.AddSubFolder(root_folder, target_folder)
-            if new_folder:
-                target_media_folder = new_folder
-                folder_name = target_folder
-            else:
-                # Utiliser le dossier courant si création échoue
-                target_media_folder = media_pool.GetCurrentFolder()
-                folder_name = target_media_folder.GetName() if target_media_folder else "Master"
+        target_media_folder = find_or_create_folder_path(media_pool, root_folder, target_folder)
+        folder_name = target_media_folder.GetName()
     
     # Définir le dossier courant
     media_pool.SetCurrentFolder(target_media_folder)
@@ -187,7 +215,20 @@ def import_media(file_path, target_folder=None, metadata=None):
     
     if imported_clips and len(imported_clips) > 0:
         clip = imported_clips[0]
-        clip_name = clip.GetName() if clip else os.path.basename(file_path)
+        final_clip_name = clip.GetName() if clip else os.path.basename(file_path)
+        
+        # Renommer le clip si un nom est fourni
+        if clip and clip_name:
+            try:
+                clip.SetClipProperty("Clip Name", clip_name)
+                final_clip_name = clip_name
+            except Exception:
+                # Si SetClipProperty échoue, essayer SetName
+                try:
+                    # Note: SetName peut ne pas être disponible selon la version de Resolve
+                    pass
+                except Exception:
+                    pass
         
         # Appliquer les métadonnées si fournies
         if clip and metadata:
@@ -209,7 +250,7 @@ def import_media(file_path, target_folder=None, metadata=None):
             "error": None,
             "project": project_name,
             "folder": folder_name,
-            "clipName": clip_name
+            "clipName": final_clip_name
         }
     else:
         return {
@@ -353,17 +394,13 @@ def focus_and_search(clip_name, target_folder=None, search_shortcut=None):
     
     project_name = current_project.GetName()
     
-    # Naviguer vers le dossier cible si spécifié
+    # Naviguer vers le dossier cible si spécifié (supporte les sous-dossiers)
     if target_folder:
         media_pool = current_project.GetMediaPool()
         root_folder = media_pool.GetRootFolder()
         
-        # Chercher le dossier cible
-        subfolders = root_folder.GetSubFolderList()
-        for folder in subfolders:
-            if folder.GetName() == target_folder:
-                media_pool.SetCurrentFolder(folder)
-                break
+        target_media_folder = find_or_create_folder_path(media_pool, root_folder, target_folder)
+        media_pool.SetCurrentFolder(target_media_folder)
     
     # Mettre DaVinci Resolve au premier plan (macOS)
     if sys.platform.startswith("darwin"):
@@ -500,17 +537,18 @@ def main():
                 result = {"success": False, "error": "No file path provided"}
             else:
                 file_path = sys.argv[2]
-                target_folder = sys.argv[3] if len(sys.argv) > 3 else None
+                target_folder = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
+                clip_name = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
                 
-                # Les métadonnées sont passées en JSON dans le 4ème argument
+                # Les métadonnées sont passées en JSON dans le 5ème argument
                 metadata = None
-                if len(sys.argv) > 4:
+                if len(sys.argv) > 5:
                     try:
-                        metadata = json.loads(sys.argv[4])
+                        metadata = json.loads(sys.argv[5])
                     except json.JSONDecodeError:
                         pass
                 
-                result = import_media(file_path, target_folder, metadata)
+                result = import_media(file_path, target_folder, clip_name, metadata)
         
         elif command == "list-folders":
             result = list_folders()
@@ -544,4 +582,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -136,20 +136,48 @@ export async function saveFile(
 }
 
 /**
- * Sauvegarde un fichier depuis une URL distante
+ * Sauvegarde un fichier depuis une URL distante ou locale
  */
 export async function saveFromUrl(
   url: string,
   originalFilename?: string
 ): Promise<StoredFile> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Échec du téléchargement: ${response.statusText}`);
+  let buffer: Buffer;
+  
+  // Si c'est une URL locale (/api/storage/...), lire directement depuis le disque
+  if (url.startsWith('/api/storage/')) {
+    const storagePath = getStoragePath();
+    // Extraire le chemin relatif: /api/storage/images/file.png -> images/file.png
+    const relativePath = url.replace('/api/storage/', '');
+    const localPath = join(storagePath, relativePath);
+    
+    // Vérifier si le fichier existe
+    try {
+      await stat(localPath);
+    } catch {
+      throw new Error(`Fichier local non trouvé: ${localPath}`);
+    }
+    
+    buffer = await readFile(localPath);
+    console.log(`[LOCAL MODE] Lecture directe depuis: ${localPath}`);
+  } else {
+    // URL externe - construire URL absolue si nécessaire
+    let fetchUrl = url;
+    if (url.startsWith('/')) {
+      // URL relative - ajouter le host local
+      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      fetchUrl = `${host}${url}`;
+    }
+    
+    const response = await fetch(fetchUrl);
+    if (!response.ok) {
+      throw new Error(`Échec du téléchargement: ${response.statusText}`);
+    }
+    
+    buffer = Buffer.from(await response.arrayBuffer());
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
   const filename = originalFilename || url.split('/').pop() || 'file';
-
   return saveFile(buffer, filename);
 }
 

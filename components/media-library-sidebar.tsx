@@ -1,0 +1,1248 @@
+'use client';
+
+/**
+ * Media Library Sidebar
+ * Ouvre depuis la gauche avec un chevron toggle
+ * UI 100% noir/blanc, redimensionnable, zoom police
+ */
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  useMediaLibraryStore,
+  type MediaItem,
+  type ColumnConfig,
+  type SidebarSection,
+  DEFAULT_COLUMNS,
+} from '@/lib/media-library-store';
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  Image,
+  Video,
+  Music,
+  FileText,
+  Search,
+  Filter,
+  ArrowUp,
+  ArrowDown,
+  Settings2,
+  RefreshCw,
+  Sparkles,
+  Folder,
+  History,
+  Layers,
+  ZoomIn,
+  ZoomOut,
+  GripVertical,
+  Check,
+  Trash2,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from './ui/dropdown-menu';
+import { Checkbox } from './ui/checkbox';
+import { ScrollArea } from './ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from './ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from './ui/tooltip';
+
+// Icônes par type de média avec couleurs du dashboard
+const mediaTypeConfig: Record<string, { 
+  icon: React.ComponentType<{ className?: string; size?: number }>;
+  color: string;
+  bgColor: string;
+}> = {
+  image: { icon: Image, color: 'text-violet-400', bgColor: 'bg-violet-500/20' },
+  video: { icon: Video, color: 'text-rose-400', bgColor: 'bg-rose-500/20' },
+  audio: { icon: Music, color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
+  document: { icon: FileText, color: 'text-sky-400', bgColor: 'bg-sky-500/20' },
+};
+
+// Sections de la sidebar
+const SECTIONS: Array<{
+  id: SidebarSection;
+  label: string;
+  icon: React.ComponentType<{ className?: string; size?: number }>;
+  description: string;
+}> = [
+  { id: 'media', label: 'Médias', icon: Layers, description: 'Tous les fichiers média' },
+  { id: 'collections', label: 'Collections', icon: Folder, description: 'Collections sauvegardées' },
+  { id: 'generators', label: 'Générateurs', icon: Sparkles, description: 'Modèles et presets' },
+  { id: 'history', label: 'Historique', icon: History, description: 'Générations récentes' },
+];
+
+// Formater la taille de fichier
+function formatFileSize(bytes?: number): string {
+  if (!bytes) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Formater la durée
+function formatDuration(seconds?: number): string {
+  if (!seconds) return '-';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Formater la date
+function formatDate(dateString?: string): string {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// Formater les dimensions
+function formatDimensions(width?: number, height?: number): string {
+  if (!width || !height) return '-';
+  return `${width}×${height}`;
+}
+
+// Composant Tooltip pour textes longs
+function LongTextTooltip({ 
+  text, 
+  maxLength = 30, 
+  fontSize,
+  className,
+}: { 
+  text?: string; 
+  maxLength?: number; 
+  fontSize: number;
+  className?: string;
+}) {
+  if (!text) return <span className="text-neutral-500">-</span>;
+  
+  const needsTooltip = text.length > maxLength;
+  const displayText = needsTooltip ? text.slice(0, maxLength) + '...' : text;
+  
+  if (!needsTooltip) {
+    return <span style={{ fontSize }} className={className}>{text}</span>;
+  }
+  
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span 
+            style={{ fontSize }} 
+            className={cn("cursor-help", className)}
+          >
+            {displayText}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent 
+          side="top" 
+          className="max-w-md bg-neutral-900 border-neutral-700 text-white p-3"
+        >
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {text}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Composant cellule éditable
+function EditableCell({
+  value,
+  onChange,
+  placeholder = '-',
+  fontSize,
+}: {
+  value?: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  fontSize: number;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value || '');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSubmit = () => {
+    setIsEditing(false);
+    if (editValue !== value) {
+      onChange(editValue);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSubmit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSubmit();
+          if (e.key === 'Escape') {
+            setEditValue(value || '');
+            setIsEditing(false);
+          }
+        }}
+        className="w-full bg-white/10 border border-white/20 rounded px-1 py-0.5 text-white outline-none focus:border-white/40"
+        style={{ fontSize }}
+      />
+    );
+  }
+
+  return (
+    <LongTextTooltip 
+      text={value || placeholder}
+      fontSize={fontSize}
+      className={cn(
+        "cursor-text hover:bg-white/5 px-1 py-0.5 rounded truncate block",
+        !value && "text-neutral-500"
+      )}
+    />
+  );
+}
+
+// Composant thumbnail SANS fond gris pour voir les ratios
+function MediaThumbnail({ media, size = 50 }: { media: MediaItem; size?: number }) {
+  const typeConfig = mediaTypeConfig[media.type] || mediaTypeConfig.document;
+  const Icon = typeConfig.icon;
+  const [error, setError] = useState(false);
+
+  return (
+    <div 
+      className="rounded overflow-hidden flex items-center justify-center flex-shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {error ? (
+        <div className={cn("w-full h-full flex items-center justify-center", typeConfig.bgColor)}>
+          <Icon className={typeConfig.color} size={size * 0.4} />
+        </div>
+      ) : media.type === 'image' ? (
+        <img
+          src={media.url}
+          alt={media.name || media.filename}
+          className="max-w-full max-h-full object-contain"
+          loading="lazy"
+          onError={() => setError(true)}
+        />
+      ) : media.type === 'video' ? (
+        <video
+          src={media.url}
+          className="max-w-full max-h-full object-contain"
+          muted
+          preload="metadata"
+          onError={() => setError(true)}
+        />
+      ) : (
+        <div className={cn("w-full h-full flex items-center justify-center", typeConfig.bgColor)}>
+          <Icon className={typeConfig.color} size={size * 0.4} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Icône DVR - brillante si transféré, grise sinon
+function DvrIcon({ transferred, size = 16 }: { transferred: boolean; size?: number }) {
+  return (
+    <div 
+      className={cn(
+        "relative flex items-center justify-center",
+        transferred 
+          ? "opacity-100 drop-shadow-[0_0_4px_rgba(255,255,255,0.8)]" 
+          : "opacity-25"
+      )}
+      style={{ width: size, height: size }}
+    >
+      <img 
+        src="/dvr-icon.png" 
+        alt="DVR" 
+        className={cn(
+          "w-full h-full object-contain",
+          !transferred && "grayscale brightness-50",
+          transferred && "brightness-125 saturate-150"
+        )}
+      />
+    </div>
+  );
+}
+
+// Composant ligne média avec surbrillance au hover
+function MediaRow({
+  media,
+  columns,
+  columnWidths,
+  isSelected,
+  onSelect,
+  onSelectRange,
+  onUpdateMetadata,
+  onDragStart,
+  fontSize,
+}: {
+  media: MediaItem;
+  columns: ColumnConfig[];
+  columnWidths: Record<string, number>;
+  isSelected: boolean;
+  onSelect: (id: string, addToSelection: boolean) => void;
+  onSelectRange: (id: string) => void;
+  onUpdateMetadata: (id: string, updates: Partial<MediaItem>) => void;
+  onDragStart: (e: React.DragEvent, media: MediaItem) => void;
+  fontSize: number;
+}) {
+  const typeConfig = mediaTypeConfig[media.type] || mediaTypeConfig.document;
+  const Icon = typeConfig.icon;
+
+  const renderCell = (column: ColumnConfig) => {
+    const cellStyle = { fontSize };
+    const width = columnWidths[column.id] || column.width;
+    
+    switch (column.id) {
+      case 'preview':
+        return <MediaThumbnail media={media} size={Math.max(40, fontSize * 4)} />;
+
+      case 'name':
+        // Nom avec tooltip affichant le chemin complet
+        return (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span 
+                  style={{ fontSize }} 
+                  className="truncate block cursor-default"
+                >
+                  {media.name || media.filename}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent 
+                side="top" 
+                className="max-w-lg bg-neutral-900 border-neutral-700 text-white p-3"
+              >
+                <div className="space-y-1">
+                  <p className="font-medium">{media.name || media.filename}</p>
+                  <p className="text-xs text-neutral-400 break-all">{media.path}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+
+      case 'type':
+        return (
+          <span className={cn("flex items-center gap-1", typeConfig.color)} style={cellStyle}>
+            <Icon size={fontSize} className="flex-shrink-0" />
+            <span className="capitalize">{media.type}</span>
+          </span>
+        );
+
+      case 'format':
+        return <span style={cellStyle}>{media.format || '-'}</span>;
+
+      case 'scene':
+        return (
+          <EditableCell
+            value={media.scene}
+            onChange={(value) => onUpdateMetadata(media.id, { scene: value })}
+            fontSize={fontSize}
+          />
+        );
+
+      case 'decor':
+        return (
+          <EditableCell
+            value={media.decor}
+            onChange={(value) => onUpdateMetadata(media.id, { decor: value })}
+            fontSize={fontSize}
+          />
+        );
+
+      case 'description':
+        return (
+          <EditableCell
+            value={media.description}
+            onChange={(value) => onUpdateMetadata(media.id, { description: value })}
+            fontSize={fontSize}
+          />
+        );
+
+      case 'dimensions':
+        return (
+          <span style={cellStyle} className="font-mono">
+            {media.width && media.height ? `${media.width}×${media.height}` : '-'}
+          </span>
+        );
+
+      case 'duration':
+        return <span style={cellStyle}>{formatDuration(media.duration)}</span>;
+
+      case 'fileSize':
+        return <span style={cellStyle}>{formatFileSize(media.fileSize)}</span>;
+
+      case 'isGenerated':
+        return media.isGenerated ? (
+          <Sparkles size={fontSize} className="text-amber-400" />
+        ) : (
+          <span style={cellStyle} className="text-neutral-500">-</span>
+        );
+
+      case 'modelId':
+        return <LongTextTooltip text={media.modelId} fontSize={fontSize} maxLength={20} />;
+
+      case 'prompt':
+        return <LongTextTooltip text={media.prompt} fontSize={fontSize} maxLength={40} />;
+
+      case 'aspectRatio':
+        return <span style={cellStyle}>{media.aspectRatio || '-'}</span>;
+
+      case 'seed':
+        return <span style={cellStyle}>{media.seed || '-'}</span>;
+
+      case 'dvrTransferred':
+        return <DvrIcon transferred={media.dvrTransferred || false} size={fontSize + 4} />;
+
+      case 'dvrProject':
+        return <LongTextTooltip text={media.dvrProject} fontSize={fontSize} maxLength={20} />;
+
+      case 'tags':
+        return <LongTextTooltip text={media.tags?.join(', ')} fontSize={fontSize} maxLength={30} />;
+
+      case 'createdAt':
+        return <span style={cellStyle}>{formatDate(media.createdAt)}</span>;
+
+      case 'updatedAt':
+        return <span style={cellStyle}>{formatDate(media.updatedAt)}</span>;
+
+      case 'usedInProjects':
+        return <span style={cellStyle}>{media.usedInProjects?.length || 0}</span>;
+
+      default:
+        return <span style={cellStyle}>-</span>;
+    }
+  };
+
+  return (
+    <tr
+      draggable
+      onDragStart={(e) => onDragStart(e, media)}
+      onClick={(e) => {
+        if (e.shiftKey) {
+          // Shift+clic : sélection range
+          onSelectRange(media.id);
+        } else {
+          // CMD/Ctrl+clic ou clic simple
+          onSelect(media.id, e.metaKey || e.ctrlKey);
+        }
+      }}
+      className={cn(
+        'group border-b border-white/5 cursor-grab active:cursor-grabbing transition-colors',
+        isSelected ? 'bg-white/15' : 'hover:bg-white/8'
+      )}
+    >
+      {/* Checkbox de sélection */}
+      <td className="w-6 px-1" style={{ fontSize }}>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onSelect(media.id)}
+          className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black"
+        />
+      </td>
+
+      {/* Colonnes dynamiques */}
+      {columns.map((column) => {
+        const width = columnWidths[column.id] || column.width;
+        return (
+          <td
+            key={column.id}
+            className="px-1 py-1 text-white/80"
+            style={{ width, minWidth: width, maxWidth: width }}
+          >
+            {renderCell(column)}
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+
+// Composant header de colonne avec resize handle
+function ColumnHeader({
+  column,
+  columnWidth,
+  sortColumn,
+  sortDirection,
+  onSort,
+  onResize,
+  fontSize,
+}: {
+  column: ColumnConfig;
+  columnWidth: number;
+  sortColumn: string;
+  sortDirection: 'asc' | 'desc';
+  onSort: (column: string) => void;
+  onResize: (columnId: string, width: number) => void;
+  fontSize: number;
+}) {
+  const isSorted = sortColumn === column.id;
+  const [isResizing, setIsResizing] = useState(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    startXRef.current = e.clientX;
+    startWidthRef.current = columnWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const diff = moveEvent.clientX - startXRef.current;
+      const newWidth = Math.max(40, startWidthRef.current + diff);
+      onResize(column.id, newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  return (
+    <th
+      className={cn(
+        'px-1 py-1 text-left font-medium text-white/60 transition-colors select-none whitespace-nowrap relative group/header',
+        isSorted && 'text-white'
+      )}
+      style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, fontSize }}
+    >
+      <span 
+        className="flex items-center gap-1 cursor-pointer hover:text-white/80"
+        onClick={() => onSort(column.id)}
+      >
+        {column.label}
+        {isSorted && (
+          sortDirection === 'asc' ? (
+            <ArrowUp size={fontSize - 2} />
+          ) : (
+            <ArrowDown size={fontSize - 2} />
+          )
+        )}
+      </span>
+      
+      {/* Resize handle */}
+      <div
+        className={cn(
+          "absolute right-0 top-0 w-1 h-full cursor-col-resize transition-colors",
+          isResizing ? "bg-white/50" : "bg-transparent hover:bg-white/30"
+        )}
+        onMouseDown={handleResizeStart}
+      />
+    </th>
+  );
+}
+
+// Composant sélecteur de colonnes avec drag & drop
+function ColumnSelector({
+  columns,
+  onToggleColumn,
+  onReorderColumns,
+  onReset,
+  fontSize,
+}: {
+  columns: ColumnConfig[];
+  onToggleColumn: (columnId: string, visible: boolean) => void;
+  onReorderColumns: (columns: ColumnConfig[]) => void;
+  onReset: () => void;
+  fontSize: number;
+}) {
+  const [orderedColumns, setOrderedColumns] = useState(columns);
+
+  useEffect(() => {
+    setOrderedColumns(columns);
+  }, [columns]);
+
+  const handleReorder = (newOrder: ColumnConfig[]) => {
+    const updated = newOrder.map((col, index) => ({ ...col, order: index }));
+    setOrderedColumns(updated);
+    onReorderColumns(updated);
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0 flex-shrink-0"
+          title="Configurer les colonnes"
+        >
+          <Settings2 size={fontSize} />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="bg-neutral-900 border-neutral-700 text-white max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-white">Configuration des colonnes</DialogTitle>
+        </DialogHeader>
+        
+        <div className="text-xs text-white/50 mb-2">
+          Cochez pour afficher, glissez pour réordonner
+        </div>
+        
+        <ScrollArea className="h-[400px] pr-4">
+          <Reorder.Group 
+            axis="y" 
+            values={orderedColumns} 
+            onReorder={handleReorder}
+            className="space-y-1"
+          >
+            {orderedColumns.map((col) => (
+              <Reorder.Item
+                key={col.id}
+                value={col}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing",
+                  "bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                )}
+              >
+                <GripVertical size={14} className="text-white/40 flex-shrink-0" />
+                <Checkbox
+                  id={col.id}
+                  checked={col.visible}
+                  onCheckedChange={(checked) => onToggleColumn(col.id, !!checked)}
+                  className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black"
+                />
+                <label 
+                  htmlFor={col.id} 
+                  className="flex-1 text-sm text-white/80 cursor-pointer"
+                >
+                  {col.label}
+                </label>
+                {col.visible && (
+                  <Check size={14} className="text-green-400 flex-shrink-0" />
+                )}
+              </Reorder.Item>
+            ))}
+          </Reorder.Group>
+        </ScrollArea>
+        
+        <div className="flex justify-end pt-2 border-t border-white/10">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            className="text-white/60 hover:text-white"
+          >
+            Réinitialiser
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Composant section
+function SidebarSectionComponent({
+  section,
+  isExpanded,
+  onToggle,
+  children,
+  fontSize,
+}: {
+  section: typeof SECTIONS[0];
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  fontSize: number;
+}) {
+  const Icon = section.icon;
+
+  return (
+    <div className="border-b border-white/10">
+      <button
+        onClick={onToggle}
+        className="w-full px-3 py-2 flex items-center gap-2 hover:bg-white/5 transition-colors"
+        style={{ fontSize }}
+      >
+        <span className="text-white/60">
+          {isExpanded ? <ChevronDown size={fontSize} /> : <ChevronRight size={fontSize} />}
+        </span>
+        <Icon size={fontSize} className="text-white/60" />
+        <span className="font-medium text-white">{section.label}</span>
+        <span className="text-white/40 ml-auto" style={{ fontSize: fontSize - 2 }}>{section.description}</span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Composant principal
+export function MediaLibrarySidebar() {
+  const {
+    isOpen,
+    closeSidebar,
+    toggleSidebar,
+    expandedSections,
+    toggleSection,
+    medias,
+    isLoading,
+    fetchMedias,
+    selectedMediaIds,
+    toggleMediaSelection,
+    selectMediaRange,
+    clearSelection,
+    deleteSelectedMedias,
+    columns,
+    sort,
+    setSort,
+    filters,
+    setFilters,
+    setColumnVisibility,
+    reorderColumns,
+    setColumnWidth,
+    resetColumns,
+    updateMediaMetadata,
+    getVisibleColumns,
+    getSortedMedias,
+    sidebarWidth,
+    setSidebarWidth,
+    fontSize,
+    increaseFontSize,
+    decreaseFontSize,
+  } = useMediaLibraryStore();
+
+  const [searchValue, setSearchValue] = useState('');
+  const [isResizing, setIsResizing] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const resizeRef = useRef<HTMLDivElement>(null);
+
+  // Initialiser les largeurs de colonnes
+  useEffect(() => {
+    const widths: Record<string, number> = {};
+    columns.forEach((col) => {
+      widths[col.id] = col.width;
+    });
+    setColumnWidths(widths);
+  }, [columns]);
+
+  // Charger les médias à l'ouverture
+  useEffect(() => {
+    if (isOpen && medias.length === 0) {
+      fetchMedias();
+    }
+  }, [isOpen, medias.length, fetchMedias]);
+
+  // Mettre à jour le filtre de recherche avec debounce
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setFilters({ search: searchValue || undefined });
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchValue, setFilters]);
+
+  // Raccourcis clavier CMD+/CMD- pour zoom
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          increaseFontSize();
+        } else if (e.key === '-') {
+          e.preventDefault();
+          decreaseFontSize();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, increaseFontSize, decreaseFontSize]);
+
+  // Fermer la sidebar quand on clique en dehors (sans bloquer le scroll du canvas)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      // Vérifier si le clic est en dehors de la sidebar
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        // Ignorer les clics sur le bouton toggle
+        const toggleButton = document.querySelector('[title="Bibliothèque de médias (⌘⇧M)"]');
+        if (toggleButton && toggleButton.contains(e.target as Node)) return;
+        
+        closeSidebar();
+      }
+    };
+
+    // Délai pour éviter de fermer immédiatement à l'ouverture
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, closeSidebar]);
+
+  // Gestion du resize de la sidebar
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = e.clientX;
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, setSidebarWidth]);
+
+  // Handle column resize
+  const handleColumnResize = useCallback((columnId: string, width: number) => {
+    setColumnWidths((prev) => ({ ...prev, [columnId]: width }));
+    setColumnWidth(columnId, width);
+  }, [setColumnWidth]);
+
+  // Gérer le drag start pour le drag & drop vers le canvas
+  const handleDragStart = useCallback((e: React.DragEvent, media: MediaItem) => {
+    const dragData = {
+      type: 'media-library-item',
+      media: {
+        id: media.id,
+        url: media.url,
+        type: media.type,
+        name: media.name || media.filename,
+        width: media.width,
+        height: media.height,
+        duration: media.duration,
+      },
+    };
+    
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+    e.dataTransfer.effectAllowed = 'copy';
+  }, []);
+
+  const visibleColumns = getVisibleColumns();
+  const sortedMedias = getSortedMedias();
+
+  return (
+    <>
+      {/* Chevron toggle en haut à gauche (toujours visible) - pointer-events uniquement sur le bouton */}
+      <div className="fixed top-4 left-4 z-50 pointer-events-none">
+        <button
+          onClick={toggleSidebar}
+          className={cn(
+            'pointer-events-auto flex items-center justify-center w-8 h-8 rounded-lg transition-all',
+            isOpen 
+              ? 'bg-white text-black hover:bg-white/90' 
+              : 'bg-black/80 text-white hover:bg-black border border-white/20'
+          )}
+          title="Bibliothèque de médias (⌘⇧M)"
+        >
+          {isOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <>
+
+            {/* Sidebar depuis la gauche */}
+            <motion.div
+              ref={sidebarRef}
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed left-0 top-0 h-full bg-black z-50 flex flex-col shadow-2xl border-r border-white/10"
+              style={{ 
+                width: sidebarWidth,
+                overscrollBehavior: 'contain', // Empêche le scroll de se propager
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+                <h2 className="font-semibold text-white" style={{ fontSize: fontSize + 4 }}>Bibliothèque</h2>
+                <div className="flex items-center gap-1">
+                  {/* Zoom controls */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={decreaseFontSize}
+                    className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0"
+                    title="Réduire la police (⌘-)"
+                  >
+                    <ZoomOut size={14} />
+                  </Button>
+                  <span className="text-white/40 text-xs w-6 text-center">{fontSize}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={increaseFontSize}
+                    className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0"
+                    title="Agrandir la police (⌘+)"
+                  >
+                    <ZoomIn size={14} />
+                  </Button>
+                  <div className="w-px h-4 bg-white/20 mx-1" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fetchMedias()}
+                    disabled={isLoading}
+                    className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0"
+                  >
+                    <RefreshCw size={14} className={cn(isLoading && 'animate-spin')} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={closeSidebar}
+                    className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0"
+                  >
+                    <X size={16} />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Sections - zone scrollable simplifiée */}
+              <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+                {SECTIONS.map((section) => (
+                  <SidebarSectionComponent
+                    key={section.id}
+                    section={section}
+                    isExpanded={expandedSections[section.id]}
+                    onToggle={() => toggleSection(section.id)}
+                    fontSize={fontSize}
+                  >
+                    {section.id === 'media' && (
+                      <div className="flex flex-col">
+                        {/* Barre de filtres et recherche */}
+                        <div className="bg-black px-2 py-2 border-b border-white/10">
+                          <div className="flex items-center gap-1 flex-nowrap">
+                            {/* Bouton Trash - visible seulement si sélection */}
+                            {selectedMediaIds.size > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  if (confirm(`Supprimer ${selectedMediaIds.size} média(s) ? Cette action est irréversible.`)) {
+                                    const result = await deleteSelectedMedias();
+                                    if (result.deleted > 0) {
+                                      // Rafraîchir la liste
+                                      fetchMedias();
+                                    }
+                                  }
+                                }}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/20 h-7 w-7 p-0 flex-shrink-0"
+                                title={`Supprimer ${selectedMediaIds.size} média(s)`}
+                              >
+                                <Trash2 size={fontSize} />
+                              </Button>
+                            )}
+
+                            {/* Filtres de type */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-white/60 hover:text-white hover:bg-white/10 h-7 w-7 p-0 flex-shrink-0"
+                                >
+                                  <Filter size={fontSize} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="bg-neutral-900 border-white/10">
+                                <DropdownMenuLabel className="text-white/60" style={{ fontSize }}>
+                                  Type de média
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator className="bg-white/10" />
+                                {(['image', 'video', 'audio', 'document'] as const).map((type) => {
+                                  const config = mediaTypeConfig[type];
+                                  const TypeIcon = config.icon;
+                                  const isActive = filters.type?.includes(type);
+                                  return (
+                                    <DropdownMenuCheckboxItem
+                                      key={type}
+                                      checked={isActive}
+                                      onCheckedChange={(checked) => {
+                                        const currentTypes = filters.type || [];
+                                        if (checked) {
+                                          setFilters({ type: [...currentTypes, type] });
+                                        } else {
+                                          setFilters({
+                                            type: currentTypes.filter((t) => t !== type),
+                                          });
+                                        }
+                                      }}
+                                      className="text-white/80 focus:bg-white/10"
+                                      style={{ fontSize }}
+                                    >
+                                      <TypeIcon size={fontSize} className={cn("mr-2", config.color)} />
+                                      <span className="capitalize">{type}</span>
+                                    </DropdownMenuCheckboxItem>
+                                  );
+                                })}
+                                <DropdownMenuSeparator className="bg-white/10" />
+                                <DropdownMenuCheckboxItem
+                                  checked={filters.isGenerated === true}
+                                  onCheckedChange={(checked) => {
+                                    setFilters({ isGenerated: checked ? true : undefined });
+                                  }}
+                                  className="text-white/80 focus:bg-white/10"
+                                  style={{ fontSize }}
+                                >
+                                  <Sparkles size={fontSize} className="mr-2 text-amber-400" />
+                                  Générés uniquement
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={filters.dvrTransferred === true}
+                                  onCheckedChange={(checked) => {
+                                    setFilters({ dvrTransferred: checked ? true : undefined });
+                                  }}
+                                  className="text-white/80 focus:bg-white/10"
+                                  style={{ fontSize }}
+                                >
+                                  <span className="mr-2 w-4 h-4 flex items-center justify-center">
+                                    <DvrIcon transferred={true} size={fontSize} />
+                                  </span>
+                                  Dans DVR uniquement
+                                </DropdownMenuCheckboxItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* Configuration colonnes */}
+                            <ColumnSelector
+                              columns={columns}
+                              onToggleColumn={setColumnVisibility}
+                              onReorderColumns={reorderColumns}
+                              onReset={resetColumns}
+                              fontSize={fontSize}
+                            />
+
+                            {/* Barre de recherche - à droite */}
+                            <div className="relative flex-1 min-w-[80px]">
+                              <Search
+                                size={fontSize}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 text-white/40"
+                              />
+                              <Input
+                                value={searchValue}
+                                onChange={(e) => setSearchValue(e.target.value)}
+                                placeholder="Rechercher..."
+                                className="pl-7 bg-white/5 border-white/10 text-white placeholder:text-white/40 h-7"
+                                style={{ fontSize }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Compteur et sélection */}
+                          <div className="flex items-center justify-between pt-2 text-white/40" style={{ fontSize: fontSize - 1 }}>
+                            <span>
+                              {sortedMedias.length} média{sortedMedias.length > 1 ? 's' : ''}
+                              {selectedMediaIds.size > 0 && (
+                                <span className="ml-2 text-white/60">
+                                  ({selectedMediaIds.size} sélectionné{selectedMediaIds.size > 1 ? 's' : ''})
+                                </span>
+                              )}
+                            </span>
+                            {selectedMediaIds.size > 0 && (
+                              <button
+                                onClick={clearSelection}
+                                className="text-white/60 hover:text-white"
+                              >
+                                Désélectionner
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Zone de la table avec scroll vertical uniquement */}
+                        <div 
+                          className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3"
+                          style={{ 
+                            maxHeight: 'calc(100vh - 280px)',
+                            overscrollBehavior: 'contain' // Empêche le scroll de se propager au canvas
+                          }}
+                        >
+                          <div>
+                            <table className="w-full table-fixed border-collapse">
+                              <thead className="sticky top-0 z-10 bg-black">
+                                <tr className="border-b border-white/10">
+                                  <th className="w-6 px-1 bg-black" />
+                                  {visibleColumns.map((column) => (
+                                    <ColumnHeader
+                                      key={column.id}
+                                      column={column}
+                                      columnWidth={columnWidths[column.id] || column.width}
+                                      sortColumn={sort.column}
+                                      sortDirection={sort.direction}
+                                      onSort={setSort}
+                                      onResize={handleColumnResize}
+                                      fontSize={fontSize}
+                                    />
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {isLoading ? (
+                                  <tr>
+                                    <td
+                                      colSpan={visibleColumns.length + 1}
+                                      className="text-center py-8 text-white/40"
+                                      style={{ fontSize }}
+                                    >
+                                      <RefreshCw size={fontSize + 4} className="animate-spin mx-auto mb-2" />
+                                      Chargement...
+                                    </td>
+                                  </tr>
+                                ) : sortedMedias.length === 0 ? (
+                                  <tr>
+                                    <td
+                                      colSpan={visibleColumns.length + 1}
+                                      className="text-center py-8 text-white/40"
+                                      style={{ fontSize }}
+                                    >
+                                      Aucun média trouvé
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  sortedMedias.map((media) => (
+                                    <MediaRow
+                                      key={media.id}
+                                      media={media}
+                                      columns={visibleColumns}
+                                      columnWidths={columnWidths}
+                                      isSelected={selectedMediaIds.has(media.id)}
+                                      onSelect={(id, addToSelection) => {
+                                        if (addToSelection) {
+                                          // CMD/Ctrl+clic : toggle dans la sélection
+                                          toggleMediaSelection(id);
+                                        } else {
+                                          // Clic simple : remplace la sélection
+                                          clearSelection();
+                                          toggleMediaSelection(id);
+                                        }
+                                        setLastSelectedId(id);
+                                      }}
+                                      onSelectRange={(id) => {
+                                        if (lastSelectedId) {
+                                          selectMediaRange(lastSelectedId, id);
+                                        } else {
+                                          toggleMediaSelection(id);
+                                        }
+                                        setLastSelectedId(id);
+                                      }}
+                                      onUpdateMetadata={updateMediaMetadata}
+                                      onDragStart={handleDragStart}
+                                      fontSize={fontSize}
+                                    />
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {section.id === 'collections' && (
+                      <div className="px-3 py-3 text-white/40" style={{ fontSize }}>
+                        Collections sauvegardées (à venir)
+                      </div>
+                    )}
+
+                    {section.id === 'generators' && (
+                      <div className="px-3 py-3 text-white/40" style={{ fontSize }}>
+                        Presets et modèles favoris (à venir)
+                      </div>
+                    )}
+
+                    {section.id === 'history' && (
+                      <div className="px-3 py-3 text-white/40" style={{ fontSize }}>
+                        Historique des générations (à venir)
+                      </div>
+                    )}
+                  </SidebarSectionComponent>
+                ))}
+              </div>
+
+              {/* Footer avec infos */}
+              <div className="px-3 py-2 border-t border-white/10 text-white/40" style={{ fontSize: fontSize - 1 }}>
+                <span>Glisser un média vers le canvas • ⌘+/⌘- pour zoomer</span>
+              </div>
+
+              {/* Handle de resize sur le bord droit */}
+              <div
+                ref={resizeRef}
+                className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-white/20 transition-colors"
+                onMouseDown={() => setIsResizing(true)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}

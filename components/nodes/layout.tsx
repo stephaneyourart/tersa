@@ -29,7 +29,7 @@ import { updateGenerationDVRStatus } from '@/lib/generations-store';
 import { useNodeOperations } from '@/providers/node-operations';
 import { useProject } from '@/providers/project';
 import { useCleanupMode } from '@/providers/cleanup-mode';
-import { Handle, Position, useReactFlow, useViewport } from '@xyflow/react';
+import { Handle, Position, useReactFlow, useStore } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
 import { type ReactNode, useState, useRef, useEffect, useCallback } from 'react';
 import { NodeToolbar } from './toolbar';
@@ -116,7 +116,8 @@ export const NodeLayout = ({
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges, updateNodeData } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const project = useProject();
-  const { zoom } = useViewport();
+  // Utiliser useStore avec un sélecteur stable pour éviter les re-renders pendant le pan
+  const zoom = useStore((state) => Math.round(state.transform[2] * 100) / 100);
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
@@ -159,7 +160,9 @@ export const NodeLayout = ({
   const supportsDVR = DVR_SUPPORTED_TYPES.includes(type) && hasMediaContent;
   
   // Vérifie si l'élément a été généré (pas importé)
-  const isGenerated = Boolean(data?.isGenerated || data?.generated?.url);
+  // On se fie UNIQUEMENT à data.isGenerated qui est explicitement défini lors de la génération
+  // Ne pas utiliser data.generated?.url car les imports peuvent aussi avoir cette propriété
+  const isGenerated = Boolean(data?.isGenerated);
   
   // Vérifie si l'élément a déjà été transféré vers DVR
   const isTransferredToDVR = Boolean(data?.dvrTransferred);
@@ -264,55 +267,55 @@ export const NodeLayout = ({
       return;
     }
     
-    // Si l'élément est généré et pas encore analysé, lancer l'analyse IA
-    if (isGenerated && data?.instructions) {
-      setIsAnalyzing(true);
-      
-      try {
-        // Récupérer le system prompt personnalisé du projet si disponible
-        let customSystemPrompt: string | undefined;
-        if (project?.id) {
-          const projectSettings = getProjectSettings(project.id);
-          customSystemPrompt = projectSettings?.dvrAnalysisSystemPrompt;
-        }
-        
-        const response = await fetch('/api/analyze-media', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mediaType: type as 'image' | 'video' | 'audio',
-            prompt: data.instructions,
-            mediaUrl: mediaUrl,
-            customSystemPrompt,
-          }),
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.analysis) {
-            // Stocker les métadonnées dans le nœud pour ne pas les recalculer
-            updateNodeData(id, {
-              dvrMetadata: {
-                title: result.analysis.title,
-                decor: result.analysis.decor,
-                description: result.analysis.description,
-                analyzedAt: new Date().toISOString(),
-              },
-            });
-            
-            // Émettre un événement pour mettre à jour les champs de la modale (première analyse)
-            window.dispatchEvent(
-              new CustomEvent('dvr-ai-analysis-complete', {
-                detail: result.analysis,
-              })
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Erreur analyse IA:', error);
-      } finally {
-        setIsAnalyzing(false);
+    // Lancer l'analyse IA pour TOUS les éléments (générés ET importés)
+    // Pour les importés, on analyse visuellement l'image/vidéo
+    setIsAnalyzing(true);
+    
+    try {
+      // Récupérer le system prompt personnalisé du projet si disponible
+      let customSystemPrompt: string | undefined;
+      if (project?.id) {
+        const projectSettings = getProjectSettings(project.id);
+        customSystemPrompt = projectSettings?.dvrAnalysisSystemPrompt;
       }
+      
+      const response = await fetch('/api/analyze-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mediaType: type as 'image' | 'video' | 'audio',
+          prompt: data?.instructions || '', // Peut être vide pour les imports
+          mediaUrl: mediaUrl,
+          customSystemPrompt,
+          isImported: !isGenerated, // Indiquer si c'est un import pour l'analyse
+        }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.analysis) {
+          // Stocker les métadonnées dans le nœud pour ne pas les recalculer
+          updateNodeData(id, {
+            dvrMetadata: {
+              title: result.analysis.title,
+              decor: result.analysis.decor,
+              description: result.analysis.description,
+              analyzedAt: new Date().toISOString(),
+            },
+          });
+          
+          // Émettre un événement pour mettre à jour les champs de la modale (première analyse)
+          window.dispatchEvent(
+            new CustomEvent('dvr-ai-analysis-complete', {
+              detail: result.analysis,
+            })
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Erreur analyse IA:', error);
+    } finally {
+      setIsAnalyzing(false);
     }
   }, [isGenerated, data?.instructions, data?.dvrMetadata, type, mediaUrl, project?.id, id, updateNodeData]);
 
@@ -349,13 +352,17 @@ export const NodeLayout = ({
       }
       
       // 2. Importer dans DVR avec les métadonnées
+      // Les imports vont dans "TersaFork/Imports from disk", les générés dans "TersaFork"
+      const targetFolder = isGenerated ? 'TersaFork' : 'TersaFork/Imports from disk';
+      
       const dvrResponse = await fetch('/api/davinci-resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'import',
           filePath: localFilePath,
-          targetFolder: 'TersaFork',
+          targetFolder,
+          clipName: metadata.title,
           metadata: {
             scene: metadata.scene,
             comments: metadata.decor,
@@ -402,7 +409,7 @@ export const NodeLayout = ({
     } finally {
       setIsSending(false);
     }
-  }, [id, mediaUrl, data?.localPath, type, updateNodeData]);
+  }, [id, mediaUrl, data?.localPath, type, updateNodeData, isGenerated]);
 
   const handleFocus = () => {
     const node = getNode(id);
@@ -573,8 +580,8 @@ export const NodeLayout = ({
               </div>
             )}
             
-            {/* Badge DVR si transféré - au-dessus du nœud avec taille constante et espacement */}
-            {isTransferredToDVR && (
+            {/* Badge DVR si transféré - visible seulement si zoom suffisant (> 0.4) */}
+            {isTransferredToDVR && zoom > 0.2 && (
               <div 
                 className="absolute -top-4 left-1/2 z-50"
                 style={{
@@ -585,10 +592,11 @@ export const NodeLayout = ({
                 <button
                   onClick={async (e) => {
                     e.stopPropagation();
-                    // Récupérer le nom du fichier depuis localPath ou générer depuis le titre
-                    const clipName = data?.localPath 
+                    // Utiliser le titre DVR stocké lors de l'import (c'est le nom du clip dans DVR)
+                    const dvrTitle = (data?.dvrMetadata as { title?: string } | undefined)?.title;
+                    const clipName = dvrTitle || (data?.localPath 
                       ? (data.localPath as string).split('/').pop() 
-                      : `clip-${id}`;
+                      : `clip-${id}`);
                     
                     // Récupérer le raccourci configuré dans les settings du projet
                     let searchShortcut: string | undefined;
@@ -642,8 +650,8 @@ export const NodeLayout = ({
               </div>
             )}
             
-            {/* Bouton SEND vers DVR - centré au-dessus du nœud avec taille constante et espacement */}
-            {supportsDVR && !isTransferredToDVR && (
+            {/* Bouton SEND vers DVR - visible seulement si zoom suffisant (> 0.4) */}
+            {supportsDVR && !isTransferredToDVR && zoom > 0.2 && (
               <div 
                 className="absolute -top-4 left-1/2 z-50"
                 style={{
@@ -655,7 +663,6 @@ export const NodeLayout = ({
                   isVisible={showControls}
                   onClick={handleOpenDVRModal}
                   onHoverChange={setIsSendHovered}
-                  isImported={!isGenerated}
                 />
               </div>
             )}
