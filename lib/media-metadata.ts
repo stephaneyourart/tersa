@@ -40,6 +40,8 @@ export interface MediaMetadata {
   description?: string;
   decor?: string;
   scene?: string;
+  tags?: string[];
+  favorites?: number; // 0-5 étoiles
   
   // Dates
   createdAt?: string;

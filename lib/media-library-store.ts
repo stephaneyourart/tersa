@@ -30,6 +30,7 @@ export interface MediaItem {
   scene?: string;
   decor?: string;
   tags?: string[];
+  favorites?: number; // 0-5 étoiles
   
   // Génération
   isGenerated?: boolean;
@@ -62,29 +63,31 @@ export interface ColumnConfig {
 // Configuration des colonnes par défaut - TOUTES les colonnes possibles
 // Colonnes visibles par défaut optimisées pour une vue compacte
 // Note: "name" affiche le nom avec tooltip pour chemin complet (pas de colonne filename séparée)
+// Les 3 premières colonnes (type, preview, name) sont figées lors du scroll horizontal
 export const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: 'preview', label: 'Aperçu', visible: true, width: 60, order: 0 },
-  { id: 'name', label: 'Nom', visible: true, width: 200, order: 1 },
-  { id: 'type', label: 'Type', visible: true, width: 80, order: 2 },
-  { id: 'dimensions', label: 'Dimensions', visible: true, width: 100, order: 3 },
-  { id: 'duration', label: 'Durée', visible: true, width: 60, order: 4 },
-  { id: 'fps', label: 'FPS', visible: true, width: 50, order: 5 },
-  { id: 'dvrTransferred', label: 'DVR', visible: true, width: 40, order: 5 },
-  { id: 'isGenerated', label: 'IA', visible: true, width: 40, order: 6 },
-  { id: 'fileSize', label: 'Taille', visible: true, width: 80, order: 7 },
-  { id: 'scene', label: 'Scène', visible: false, width: 100, order: 8 },
-  { id: 'decor', label: 'Décor', visible: false, width: 100, order: 9 },
-  { id: 'description', label: 'Description', visible: false, width: 180, order: 10 },
-  { id: 'format', label: 'Format', visible: false, width: 70, order: 11 },
-  { id: 'modelId', label: 'Modèle', visible: false, width: 140, order: 12 },
-  { id: 'prompt', label: 'Prompt', visible: false, width: 200, order: 13 },
-  { id: 'aspectRatio', label: 'Ratio', visible: false, width: 70, order: 14 },
-  { id: 'seed', label: 'Seed', visible: false, width: 90, order: 15 },
-  { id: 'dvrProject', label: 'Projet DVR', visible: false, width: 120, order: 16 },
-  { id: 'tags', label: 'Tags', visible: false, width: 120, order: 17 },
-  { id: 'createdAt', label: 'Créé le', visible: false, width: 100, order: 18 },
-  { id: 'updatedAt', label: 'Modifié le', visible: false, width: 100, order: 19 },
-  { id: 'usedInProjects', label: 'Projets', visible: false, width: 80, order: 20 },
+  { id: 'type', label: 'Type', visible: true, width: 40, order: 0 },
+  { id: 'preview', label: 'Aperçu', visible: true, width: 60, order: 1 },
+  { id: 'name', label: 'Nom', visible: true, width: 200, order: 2 },
+  { id: 'favorites', label: '★', visible: true, width: 70, order: 3 },
+  { id: 'dimensions', label: 'Dimensions', visible: true, width: 100, order: 4 },
+  { id: 'duration', label: 'Durée', visible: true, width: 60, order: 5 },
+  { id: 'fps', label: 'FPS', visible: true, width: 50, order: 6 },
+  { id: 'dvrTransferred', label: 'DVR', visible: true, width: 40, order: 7 },
+  { id: 'isGenerated', label: 'IA', visible: true, width: 40, order: 8 },
+  { id: 'fileSize', label: 'Taille', visible: true, width: 80, order: 9 },
+  { id: 'scene', label: 'Scène', visible: false, width: 100, order: 10 },
+  { id: 'decor', label: 'Décor', visible: false, width: 100, order: 11 },
+  { id: 'description', label: 'Description', visible: false, width: 180, order: 12 },
+  { id: 'format', label: 'Format', visible: false, width: 70, order: 13 },
+  { id: 'modelId', label: 'Modèle', visible: false, width: 140, order: 14 },
+  { id: 'prompt', label: 'Prompt', visible: false, width: 200, order: 15 },
+  { id: 'aspectRatio', label: 'Ratio', visible: false, width: 70, order: 16 },
+  { id: 'seed', label: 'Seed', visible: false, width: 90, order: 17 },
+  { id: 'dvrProject', label: 'Projet DVR', visible: false, width: 120, order: 18 },
+  { id: 'tags', label: 'Tags', visible: false, width: 120, order: 19 },
+  { id: 'createdAt', label: 'Créé le', visible: false, width: 100, order: 20 },
+  { id: 'updatedAt', label: 'Modifié le', visible: false, width: 100, order: 21 },
+  { id: 'usedInProjects', label: 'Projets', visible: false, width: 80, order: 22 },
 ];
 
 // Sections de la sidebar
@@ -125,6 +128,7 @@ interface MediaLibraryState {
   columns: ColumnConfig[];
   sort: SortConfig;
   filters: MediaFilters;
+  lockedOrder: string[] | null; // Ordre verrouillé (IDs) pour éviter le re-tri
   
   // Actions sidebar
   openSidebar: () => void;
@@ -156,6 +160,7 @@ interface MediaLibraryState {
   setSort: (column: string, direction?: SortDirection) => void;
   setFilters: (filters: MediaFilters) => void;
   clearFilters: () => void;
+  lockCurrentOrder: () => void; // Verrouille l'ordre actuel pour éviter le re-tri
   
   // Utilitaires
   getFilteredMedias: () => MediaItem[];
@@ -244,6 +249,7 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
   columns: loadFromStorage(STORAGE_KEYS.columns, DEFAULT_COLUMNS),
   sort: loadFromStorage(STORAGE_KEYS.sort, { column: 'createdAt', direction: 'desc' as SortDirection }),
   filters: loadFromStorage(STORAGE_KEYS.filters, {}),
+  lockedOrder: null,
 
   // Actions sidebar
   openSidebar: () => set({ isOpen: true }),
@@ -392,14 +398,22 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
   
   updateMediaMetadata: async (id, updates) => {
     try {
+      // Trouver le média pour obtenir son path
+      const media = get().medias.find(m => m.id === id);
+      if (!media) {
+        console.error('Media not found locally:', id);
+        return false;
+      }
+      
       const response = await fetch('/api/media-library', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, updates }),
+        body: JSON.stringify({ id, path: media.path, updates }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to update media metadata');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update media metadata');
       }
       
       // Mettre à jour localement
@@ -445,12 +459,23 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
 
   // Actions tri/filtres
   setSort: (column, direction) => set((state) => {
-    const newDirection = direction || (
-      state.sort.column === column && state.sort.direction === 'asc' ? 'desc' : 'asc'
-    );
+    let newDirection: SortDirection;
+    
+    if (direction) {
+      // Direction explicitement fournie
+      newDirection = direction;
+    } else if (state.lockedOrder) {
+      // Si l'ordre était verrouillé, on commence TOUJOURS par décroissant
+      newDirection = 'desc';
+    } else {
+      // Toggle normal : décroissant par défaut, croissant si déjà décroissant sur cette colonne
+      newDirection = (state.sort.column === column && state.sort.direction === 'desc') ? 'asc' : 'desc';
+    }
+    
     const newSort = { column, direction: newDirection };
     saveToStorage(STORAGE_KEYS.sort, newSort);
-    return { sort: newSort };
+    // Déverrouiller l'ordre quand on change le tri manuellement
+    return { sort: newSort, lockedOrder: null };
   }),
   
   setFilters: (filters) => set((state) => {
@@ -462,6 +487,12 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
   clearFilters: () => {
     saveToStorage(STORAGE_KEYS.filters, {});
     set({ filters: {} });
+  },
+  
+  lockCurrentOrder: () => {
+    // Capturer l'ordre actuel des médias triés
+    const currentOrder = get().getSortedMedias().map(m => m.id);
+    set({ lockedOrder: currentOrder });
   },
 
   // Utilitaires
@@ -513,7 +544,22 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
   
   getSortedMedias: () => {
     const filteredMedias = get().getFilteredMedias();
-    const { sort } = get();
+    const { sort, lockedOrder } = get();
+    
+    // Si l'ordre est verrouillé, utiliser cet ordre
+    if (lockedOrder && lockedOrder.length > 0) {
+      const orderMap = new Map(lockedOrder.map((id, index) => [id, index]));
+      return [...filteredMedias].sort((a, b) => {
+        const aIndex = orderMap.get(a.id) ?? Infinity;
+        const bIndex = orderMap.get(b.id) ?? Infinity;
+        return aIndex - bIndex;
+      });
+    }
+    
+    // Si pas de colonne de tri, retourner l'ordre actuel (pas de tri)
+    if (!sort.column) {
+      return filteredMedias;
+    }
     
     return [...filteredMedias].sort((a, b) => {
       let aVal: unknown = a[sort.column as keyof MediaItem];

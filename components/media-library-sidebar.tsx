@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import {
   useMediaLibraryStore,
   type MediaItem,
@@ -27,6 +28,7 @@ import {
   Filter,
   ArrowUp,
   ArrowDown,
+  ArrowUpRight,
   Settings2,
   RefreshCw,
   Sparkles,
@@ -38,6 +40,7 @@ import {
   GripVertical,
   Check,
   Trash2,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
@@ -124,14 +127,14 @@ function formatDate(dateString?: string): string {
 
 // Formater les dimensions
 function formatDimensions(width?: number, height?: number): string {
-  if (!width || !height) return '-';
-  return `${width}×${height}`;
+  if (!width || !height) return '';
+  return `${width} × ${height}`;
 }
 
 // Composant Tooltip pour textes longs
 function LongTextTooltip({ 
   text, 
-  maxLength = 30, 
+  maxLength = 30,
   fontSize,
   className,
 }: { 
@@ -140,7 +143,7 @@ function LongTextTooltip({
   fontSize: number;
   className?: string;
 }) {
-  if (!text) return <span className="text-neutral-500">-</span>;
+  if (!text) return null;
   
   const needsTooltip = text.length > maxLength;
   const displayText = needsTooltip ? text.slice(0, maxLength) + '...' : text;
@@ -150,7 +153,7 @@ function LongTextTooltip({
   }
   
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delayDuration={0} skipDelayDuration={30000}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span 
@@ -173,11 +176,112 @@ function LongTextTooltip({
   );
 }
 
+// Composant nom éditable avec tooltip chemin complet
+function EditableName({
+  media,
+  fontSize,
+  onRename,
+}: {
+  media: MediaItem;
+  fontSize: number;
+  onRename: (newName: string) => Promise<void>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(media.name || media.filename.replace(/\.[^/.]+$/, '').replace(/-\d{13,}-[a-zA-Z0-9_-]+$/, ''));
+  const [isLoading, setIsLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSubmit = async () => {
+    setIsEditing(false);
+    const trimmedValue = editValue.trim();
+    const currentName = media.name || media.filename.replace(/\.[^/.]+$/, '').replace(/-\d{13,}-[a-zA-Z0-9_-]+$/, '');
+    
+    if (trimmedValue && trimmedValue !== currentName) {
+      setIsLoading(true);
+      try {
+        await onRename(trimmedValue);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditValue(media.name || media.filename.replace(/\.[^/.]+$/, '').replace(/-\d{13,}-[a-zA-Z0-9_-]+$/, ''));
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSubmit}
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full bg-white/10 border border-white/30 rounded px-1 py-0.5 text-white outline-none focus:border-white/50"
+        style={{ fontSize }}
+        disabled={isLoading}
+      />
+    );
+  }
+
+  const displayName = media.name || media.filename.replace(/\.[^/.]+$/, '').replace(/-\d{13,}-[a-zA-Z0-9_-]+$/, '');
+
+  return (
+    <TooltipProvider delayDuration={0} skipDelayDuration={30000}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span 
+            style={{ fontSize }} 
+            className={cn(
+              "truncate block cursor-text hover:bg-white/10 rounded px-1 -mx-1 transition-colors",
+              isLoading && "opacity-50"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isLoading) {
+                setIsEditing(true);
+              }
+            }}
+          >
+            {displayName}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent 
+          side="top" 
+          className="max-w-lg bg-neutral-900 border-neutral-700 text-white p-3"
+        >
+          <div className="space-y-1">
+            <p className="font-medium">{displayName}</p>
+            <p className="text-xs text-neutral-400 break-all">{media.path}</p>
+            <p className="text-xs text-neutral-500 italic">Cliquez pour renommer</p>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 // Composant cellule éditable
 function EditableCell({
   value,
   onChange,
-  placeholder = '-',
+  placeholder = '',
   fontSize,
 }: {
   value?: string;
@@ -242,7 +346,7 @@ function MediaThumbnail({ media, size = 50 }: { media: MediaItem; size?: number 
   const Icon = typeConfig.icon;
   const [error, setError] = useState(false);
 
-  return (
+  const thumbnailContent = (
     <div 
       className="rounded overflow-hidden flex items-center justify-center flex-shrink-0"
       style={{ width: size, height: size }}
@@ -273,6 +377,44 @@ function MediaThumbnail({ media, size = 50 }: { media: MediaItem; size?: number 
         </div>
       )}
     </div>
+  );
+
+  // Pas de preview pour les non-visuels
+  if (media.type !== 'image' && media.type !== 'video') {
+    return thumbnailContent;
+  }
+
+  return (
+    <TooltipProvider delayDuration={300} skipDelayDuration={30000}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {thumbnailContent}
+        </TooltipTrigger>
+        <TooltipContent 
+          side="right" 
+          className="p-1 bg-black border border-white/20"
+          sideOffset={10}
+        >
+          {media.type === 'image' ? (
+            <img
+              src={media.url}
+              alt={media.name || media.filename}
+              className="max-w-[300px] max-h-[300px] object-contain rounded"
+              loading="lazy"
+            />
+          ) : (
+            <video
+              src={media.url}
+              className="max-w-[300px] max-h-[300px] object-contain rounded"
+              muted
+              autoPlay
+              loop
+              preload="metadata"
+            />
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -311,6 +453,8 @@ function MediaRow({
   onSelectRange,
   onUpdateMetadata,
   onDragStart,
+  onSendToDVR,
+  onClearFavoritesSort,
   fontSize,
 }: {
   media: MediaItem;
@@ -321,8 +465,14 @@ function MediaRow({
   onSelectRange: (id: string) => void;
   onUpdateMetadata: (id: string, updates: Partial<MediaItem>) => void;
   onDragStart: (e: React.DragEvent, media: MediaItem) => void;
+  onSendToDVR: (media: MediaItem) => void;
+  onClearFavoritesSort: () => void;
   fontSize: number;
 }) {
+  
+  const handleSendToDVR = useCallback((mediaItem: MediaItem) => {
+    onSendToDVR(mediaItem);
+  }, [onSendToDVR]);
   const typeConfig = mediaTypeConfig[media.type] || mediaTypeConfig.document;
   const Icon = typeConfig.icon;
 
@@ -335,41 +485,62 @@ function MediaRow({
         return <MediaThumbnail media={media} size={Math.max(40, fontSize * 4)} />;
 
       case 'name':
-        // Nom avec tooltip affichant le chemin complet
+        // Nom éditable avec tooltip affichant le chemin complet
         return (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span 
-                  style={{ fontSize }} 
-                  className="truncate block cursor-default"
-                >
-                  {media.name || media.filename}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent 
-                side="top" 
-                className="max-w-lg bg-neutral-900 border-neutral-700 text-white p-3"
-              >
-                <div className="space-y-1">
-                  <p className="font-medium">{media.name || media.filename}</p>
-                  <p className="text-xs text-neutral-400 break-all">{media.path}</p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <EditableName
+            media={media}
+            fontSize={fontSize}
+            onRename={async (newName) => {
+              // Appeler l'API de renommage
+              try {
+                const response = await fetch('/api/storage/rename', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    filePath: media.path,
+                    newName,
+                  }),
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                  // Mettre à jour les métadonnées locales
+                  onUpdateMetadata(media.id, { 
+                    name: result.newName,
+                    path: result.newPath,
+                    url: result.newUrl,
+                    filename: result.newFilename,
+                  });
+                  
+                  // Si transféré dans DVR, notifier l'utilisateur qu'il faut renommer manuellement
+                  if (media.dvrTransferred) {
+                    toast.info(`Clip renommé`, {
+                      duration: 30000,
+                      description: 'Pensez à renommer aussi dans DaVinci Resolve.',
+                    });
+                  } else {
+                    toast.success(`Clip renommé en "${result.newName}"`, { duration: 5000 });
+                  }
+                } else {
+                  throw new Error(result.error);
+                }
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'Erreur lors du renommage', { duration: 30000 });
+              }
+            }}
+          />
         );
 
       case 'type':
         return (
-          <span className={cn("flex items-center gap-1", typeConfig.color)} style={cellStyle}>
-            <Icon size={fontSize} className="flex-shrink-0" />
-            <span className="capitalize">{media.type}</span>
+          <span className={cn("flex items-center justify-center", typeConfig.color)}>
+            <Icon size={Math.max(fontSize + 4, 18)} className="flex-shrink-0" />
           </span>
         );
 
       case 'format':
-        return <span style={cellStyle}>{media.format || '-'}</span>;
+        return <span style={cellStyle}>{media.format || ''}</span>;
 
       case 'scene':
         return (
@@ -400,8 +571,8 @@ function MediaRow({
 
       case 'dimensions':
         return (
-          <span style={cellStyle} className="font-mono">
-            {media.width && media.height ? `${media.width}×${media.height}` : '-'}
+          <span style={cellStyle}>
+            {media.width && media.height ? `${media.width} × ${media.height}` : ''}
           </span>
         );
 
@@ -428,16 +599,68 @@ function MediaRow({
         return <LongTextTooltip text={media.prompt} fontSize={fontSize} maxLength={40} />;
 
       case 'aspectRatio':
-        return <span style={cellStyle}>{media.aspectRatio || '-'}</span>;
+        // Calculer le ratio depuis les dimensions si disponibles
+        const ratio = media.width && media.height 
+          ? (media.width / media.height).toFixed(2) 
+          : media.aspectRatio || '';
+        return <span style={cellStyle}>{ratio}</span>;
 
       case 'seed':
-        return <span style={cellStyle}>{media.seed || '-'}</span>;
+        return <span style={cellStyle}>{media.seed || ''}</span>;
 
       case 'dvrTransferred':
-        return <DvrIcon transferred={media.dvrTransferred || false} size={fontSize + 4} />;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // Appeler l'API DVR pour envoyer le média
+              handleSendToDVR(media);
+            }}
+            className="p-1 rounded hover:bg-white/10 transition-colors text-white/60 hover:text-white"
+            title="Ouvrir dans DaVinci Resolve"
+          >
+            <ArrowUpRight size={fontSize} />
+          </button>
+        );
 
       case 'dvrProject':
         return <LongTextTooltip text={media.dvrProject} fontSize={fontSize} maxLength={20} />;
+
+      case 'favorites':
+        // Affichage des étoiles de 0 à 5
+        const currentStars = media.favorites || 0;
+        return (
+          <div 
+            data-favorites="true"
+            className="flex items-center gap-1"
+          >
+            {[1, 2, 3, 4, 5].map((starValue) => (
+              <button
+                key={starValue}
+                type="button"
+                data-favorites="true"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  // Verrouiller l'ordre actuel pour éviter le re-tri
+                  onClearFavoritesSort();
+                  const newValue = starValue === currentStars ? starValue - 1 : starValue;
+                  onUpdateMetadata(media.id, { favorites: newValue });
+                }}
+                className="p-0.5 hover:scale-125 transition-transform cursor-pointer"
+              >
+                <Star 
+                  size={fontSize + 2} 
+                  style={starValue <= currentStars ? { fill: '#d4a054', color: '#d4a054' } : undefined}
+                  className={cn(
+                    "pointer-events-none transition-colors",
+                    starValue > currentStars && "text-white/25 hover:text-amber-200/40"
+                  )}
+                />
+              </button>
+            ))}
+          </div>
+        );
 
       case 'tags':
         return <LongTextTooltip text={media.tags?.join(', ')} fontSize={fontSize} maxLength={30} />;
@@ -465,67 +688,117 @@ function MediaRow({
     }
   };
 
-  // Calculer les positions sticky pour les colonnes fixes
+  // Calculer les positions sticky pour les colonnes fixes (type, preview, name après checkbox)
+  // Checkbox est à left:0, puis type, preview, name sont sticky
+  const checkboxWidth = 40; // w-10 = 40px
+  const typeCol = columns.find(c => c.id === 'type');
+  const typeWidth = typeCol ? (columnWidths['type'] || typeCol.width) : 40;
+  const previewCol = columns.find(c => c.id === 'preview');
+  const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
+  
+  const [isHovering, setIsHovering] = useState(false);
+  
+  // Couleurs opaques pour les colonnes sticky (évite la transparence au scroll)
+  const hoverBg = '#1a1a1a'; // ~équivalent à black + white/8
+  const selectedBg = '#2a2a2a'; // ~équivalent à black + white/15
+  const baseBg = 'black';
+  
+  // Background uniforme pour toutes les cellules
+  const rowBg = isSelected ? selectedBg : (isHovering ? hoverBg : baseBg);
+  
   const getStickyStyle = (columnId: string): React.CSSProperties => {
     if (columnId === 'checkbox') {
-      return { position: 'sticky', left: 0, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+      return { position: 'sticky', left: 0, zIndex: 2 };
+    }
+    if (columnId === 'type') {
+      return { position: 'sticky', left: checkboxWidth, zIndex: 2 };
     }
     if (columnId === 'preview') {
-      return { position: 'sticky', left: 24, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+      return { position: 'sticky', left: checkboxWidth + typeWidth, zIndex: 2 };
     }
     if (columnId === 'name') {
-      const previewCol = columns.find(c => c.id === 'preview');
-      const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
-      return { position: 'sticky', left: 24 + previewWidth, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+      return { position: 'sticky', left: checkboxWidth + typeWidth + previewWidth, zIndex: 2 };
     }
     return {};
   };
-
+  
+  // Les colonnes sticky
+  const stickyColumnIds = ['type', 'preview', 'name'];
+  
   return (
     <tr
       draggable
-      onDragStart={(e) => onDragStart(e, media)}
+      onDragStart={(e) => {
+        // Ne pas démarrer le drag si on clique sur les étoiles
+        const target = e.target as HTMLElement;
+        if (target.closest('[data-favorites]')) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart(e, media);
+      }}
       onClick={handleSelect}
-      className={cn(
-        'group border-b border-white/5 cursor-pointer transition-colors',
-        isSelected ? 'bg-white/15' : 'hover:bg-white/8'
-      )}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      className="group border-b border-white/5 cursor-pointer"
     >
-      {/* Checkbox de sélection - sticky */}
+      {/* Checkbox de sélection - sticky avec padding gauche */}
       <td 
-        className="w-6 px-1" 
-        style={{ fontSize, ...getStickyStyle('checkbox') }}
+        className="w-10 pl-3 pr-1 align-middle" 
+        style={{ fontSize, backgroundColor: rowBg, ...getStickyStyle('checkbox') }}
       >
-        <Checkbox
-          checked={isSelected}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSelect(e);
-          }}
-          className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black cursor-pointer"
-        />
+        <div className="flex items-center justify-center h-full pt-0.5">
+          <Checkbox
+            checked={isSelected}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSelect(e);
+            }}
+            className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black cursor-pointer"
+          />
+        </div>
       </td>
 
       {/* Colonnes dynamiques */}
       {columns.map((column) => {
         const width = columnWidths[column.id] || column.width;
-        const stickyStyle = getStickyStyle(column.id);
-        const isSticky = column.id === 'preview' || column.id === 'name';
+        const isSticky = stickyColumnIds.includes(column.id);
+        const stickyStyle = isSticky ? getStickyStyle(column.id) : {};
+        const needsCenter = column.id === 'type';
+        const isFavorites = column.id === 'favorites';
+        
+        if (isFavorites) {
+          return (
+            <td
+              key={column.id}
+              data-favorites="true"
+              onClick={(e) => e.stopPropagation()}
+              className="px-1 py-1 text-white/80"
+              style={{ 
+                width, 
+                minWidth: width, 
+                maxWidth: width,
+                backgroundColor: rowBg,
+              }}
+            >
+              {renderCell(column)}
+            </td>
+          );
+        }
         
         return (
           <td
             key={column.id}
             className={cn(
               "px-1 py-1 text-white/80",
-              isSticky && "group-hover:bg-white/8"
+              needsCenter && "text-center"
             )}
             style={{ 
               width, 
               minWidth: width, 
               maxWidth: width,
+              backgroundColor: rowBg,
               ...stickyStyle,
-              // Override bg sur hover pour les colonnes sticky
-              ...(isSticky && !isSelected ? { backgroundColor: 'black' } : {})
             }}
           >
             {renderCell(column)}
@@ -584,16 +857,22 @@ function ColumnHeader({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  const needsCenter = column.id === 'type';
+  
   return (
     <th
       className={cn(
-        'px-1 py-1 text-left font-medium text-white/60 transition-colors select-none whitespace-nowrap relative group/header bg-black',
+        'px-1 py-1 font-medium text-white/60 transition-colors select-none whitespace-nowrap relative group/header bg-black',
+        needsCenter ? 'text-center' : 'text-left',
         isSorted && 'text-white'
       )}
       style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, fontSize, ...stickyStyle }}
     >
       <span 
-        className="flex items-center gap-1 cursor-pointer hover:text-white/80"
+        className={cn(
+          "flex items-center gap-1 cursor-pointer hover:text-white/80",
+          needsCenter && "justify-center"
+        )}
         onClick={() => onSort(column.id)}
       >
         {column.label}
@@ -784,6 +1063,7 @@ export function MediaLibrarySidebar() {
     columns,
     sort,
     setSort,
+    lockCurrentOrder,
     filters,
     setFilters,
     setColumnVisibility,
@@ -974,6 +1254,137 @@ export function MediaLibrarySidebar() {
     e.dataTransfer.setData('application/json', JSON.stringify(dragData));
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
+
+  // Ouvrir DVR dans le bon dossier et copier le nom du clip
+  // Vérifie d'abord si le clip existe dans DVR
+  const handleSendMediaToDVR = useCallback(async (media: MediaItem) => {
+    try {
+      const clipName = media.name || media.filename;
+      
+      // Déterminer le dossier cible attendu
+      const expectedFolder = media.isGenerated ? 'TersaFork' : 'TersaFork/Imports from disk';
+      
+      // D'abord, vérifier si le clip existe encore dans DVR
+      const checkResponse = await fetch('/api/davinci-resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'check-clip',
+          clipName,
+          targetFolder: expectedFolder,
+          searchBothFolders: true, // Chercher aussi dans l'autre dossier
+        }),
+      });
+
+      const checkResult = await checkResponse.json();
+      
+      if (!checkResult.success) {
+        // DVR non accessible
+        throw new Error(checkResult.error || 'DaVinci Resolve non accessible');
+      }
+      
+      if (!checkResult.found) {
+        // Clip non trouvé dans DVR
+        toast.error(`Clip introuvable dans DVR`, {
+          duration: 30000,
+          description: `"${clipName}" n'existe plus dans DaVinci Resolve. Il a peut-être été supprimé ou déplacé.`,
+          action: {
+            label: 'Re-transférer',
+            onClick: async () => {
+              // Déclencher un nouveau transfert vers DVR puis ouvrir DVR
+              try {
+                const importResponse = await fetch('/api/davinci-resolve', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'import',
+                    filePath: media.path,
+                    targetFolder: expectedFolder,
+                    clipName,
+                    metadata: {
+                      scene: media.scene,
+                      description: media.description,
+                    },
+                  }),
+                });
+                
+                const importResult = await importResponse.json();
+                
+                if (importResult.success) {
+                  // Mettre à jour le statut dvrTransferred
+                  updateMediaMetadata(media.id, { dvrTransferred: true });
+                  
+                  // Copier le nom dans le presse-papier et ouvrir DVR
+                  await navigator.clipboard.writeText(clipName);
+                  
+                  await fetch('/api/davinci-resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'focus-search',
+                      clipName,
+                      targetFolder: expectedFolder,
+                    }),
+                  });
+                  
+                  toast.success(`"${clipName}" re-transféré et copié`, { 
+                    duration: 30000,
+                    description: 'DVR ouvert. Collez dans la recherche.',
+                  });
+                } else {
+                  throw new Error(importResult.error);
+                }
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : 'Erreur lors du re-transfert', { duration: 30000 });
+              }
+            },
+          },
+        });
+        return;
+      }
+      
+      // Clip trouvé ! Vérifier s'il est dans un dossier différent
+      const actualFolder = checkResult.clip_info?.folder;
+      
+      // Copier le nom dans le presse-papier
+      await navigator.clipboard.writeText(clipName);
+      
+      // Utiliser le dossier où le clip a été trouvé (pas le dossier attendu)
+      const targetFolder = actualFolder || expectedFolder;
+      
+      const response = await fetch('/api/davinci-resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'focus-search',
+          clipName,
+          targetFolder,
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Informer si le clip était dans un dossier différent
+        if (actualFolder && actualFolder !== expectedFolder) {
+          toast.success(`"${clipName}" trouvé dans ${actualFolder}`, {
+            duration: 30000,
+            description: 'Nom copié dans le presse-papier. Collez dans la recherche DVR.',
+          });
+        } else {
+          toast.success(`"${clipName}" copié dans le presse-papier`, {
+            duration: 30000,
+            description: 'Collez dans la barre de recherche DVR',
+          });
+        }
+      } else {
+        throw new Error(result.error || 'Erreur DVR');
+      }
+    } catch (error) {
+      console.error('[MediaLibrary] Erreur DVR:', error);
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'ouverture DVR', { duration: 30000 });
+    }
+  }, [updateMediaMetadata]);
 
   const visibleColumns = getVisibleColumns();
   const sortedMedias = getSortedMedias();
@@ -1243,7 +1654,7 @@ export function MediaLibrarySidebar() {
                         {/* Zone de la table avec scroll vertical et horizontal */}
                         <div 
                           ref={tableContainerRef}
-                          className="flex-1 overflow-auto px-2 pb-3"
+                          className="flex-1 overflow-auto pb-3 pr-2 bg-black"
                           style={{ 
                             maxHeight: 'calc(100vh - 280px)',
                             overscrollBehavior: 'contain' // Empêche le scroll de se propager au canvas
@@ -1252,20 +1663,26 @@ export function MediaLibrarySidebar() {
                           <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                               <thead className="sticky top-0 z-10 bg-black">
                                 <tr className="border-b border-white/10">
-                                  {/* Checkbox header - sticky */}
+                                  {/* Checkbox header - sticky avec padding gauche */}
                                   <th 
-                                    className="w-6 px-1 bg-black" 
+                                    className="w-10 pl-3 pr-1 bg-black" 
                                     style={{ position: 'sticky', left: 0, zIndex: 20 }}
                                   />
                                   {visibleColumns.map((column) => {
-                                    // Calculer la position sticky pour preview et name
+                                    // Calculer la position sticky pour type, preview et name
+                                    const checkboxWidth = 40;
+                                    const typeCol = visibleColumns.find(c => c.id === 'type');
+                                    const typeWidth = typeCol ? (columnWidths['type'] || typeCol.width) : 40;
+                                    const previewCol = visibleColumns.find(c => c.id === 'preview');
+                                    const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
+                                    
                                     let stickyStyle: React.CSSProperties = {};
-                                    if (column.id === 'preview') {
-                                      stickyStyle = { position: 'sticky', left: 24, zIndex: 20, backgroundColor: 'black' };
+                                    if (column.id === 'type') {
+                                      stickyStyle = { position: 'sticky', left: checkboxWidth, zIndex: 20, backgroundColor: 'black' };
+                                    } else if (column.id === 'preview') {
+                                      stickyStyle = { position: 'sticky', left: checkboxWidth + typeWidth, zIndex: 20, backgroundColor: 'black' };
                                     } else if (column.id === 'name') {
-                                      const previewCol = visibleColumns.find(c => c.id === 'preview');
-                                      const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
-                                      stickyStyle = { position: 'sticky', left: 24 + previewWidth, zIndex: 20, backgroundColor: 'black' };
+                                      stickyStyle = { position: 'sticky', left: checkboxWidth + typeWidth + previewWidth, zIndex: 20, backgroundColor: 'black' };
                                     }
                                     
                                     return (
@@ -1289,11 +1706,13 @@ export function MediaLibrarySidebar() {
                                   <tr>
                                     <td
                                       colSpan={visibleColumns.length + 1}
-                                      className="text-center py-8 text-white/40"
+                                      className="text-left py-8 text-white/40 pl-4"
                                       style={{ fontSize }}
                                     >
-                                      <RefreshCw size={fontSize + 4} className="animate-spin mx-auto mb-2" />
-                                      Chargement...
+                                      <div className="flex items-center gap-2">
+                                        <RefreshCw size={fontSize + 4} className="animate-spin" />
+                                        <span>Chargement...</span>
+                                      </div>
                                     </td>
                                   </tr>
                                 ) : sortedMedias.length === 0 ? (
@@ -1326,6 +1745,11 @@ export function MediaLibrarySidebar() {
                                       }}
                                       onUpdateMetadata={updateMediaMetadata}
                                       onDragStart={handleDragStart}
+                                      onSendToDVR={handleSendMediaToDVR}
+                                      onClearFavoritesSort={() => {
+                                        // Verrouiller l'ordre actuel pour éviter le re-tri
+                                        lockCurrentOrder();
+                                      }}
                                       fontSize={fontSize}
                                     />
                                   ))
@@ -1365,7 +1789,7 @@ export function MediaLibrarySidebar() {
               {/* Handle de resize sur le bord droit */}
               <div
                 ref={resizeRef}
-                className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-white/20 transition-colors"
+                className="absolute right-0 top-0 w-2 h-full cursor-ew-resize hover:bg-white/20 transition-colors"
                 onMouseDown={() => setIsResizing(true)}
               />
             </motion.div>

@@ -493,6 +493,8 @@ export async function GET() {
         dvrTransferred: media.metadata?.dvrTransferred ?? projectInfo.dvrTransferred ?? false,
         dvrProject: media.metadata?.dvrProject || projectInfo.dvrProject,
         updatedAt: media.metadata?.updatedAt,
+        favorites: media.metadata?.favorites || 0,
+        tags: media.metadata?.tags || [],
         
         // Projets qui utilisent ce média
         usedInProjects: projectInfo.usedInProjects,
@@ -572,6 +574,8 @@ export async function PATCH(request: NextRequest) {
     if (updates.description !== undefined) updatedMetadata.description = updates.description;
     if (updates.scene !== undefined) updatedMetadata.scene = updates.scene;
     if (updates.decor !== undefined) updatedMetadata.decor = updates.decor;
+    if (updates.favorites !== undefined) updatedMetadata.favorites = updates.favorites;
+    if (updates.tags !== undefined) updatedMetadata.tags = updates.tags;
 
     saveMediaMetadata(mediaPath, updatedMetadata);
 
