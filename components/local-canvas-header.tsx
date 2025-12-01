@@ -7,7 +7,7 @@ import { getLocalProjectById } from '@/lib/local-projects-store';
 import { useCleanupMode } from '@/providers/cleanup-mode';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { SettingsIcon, Trash2Icon, XIcon, CheckIcon } from 'lucide-react';
+import { SettingsIcon, Trash2Icon, XIcon, CheckIcon, BrainCircuitIcon } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -123,6 +123,26 @@ export function LocalCanvasHeader({ projectId }: LocalCanvasHeaderProps) {
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Settings du projet</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Bouton Global Models */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/settings/models">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 rounded-lg bg-background/80 backdrop-blur hover:bg-background"
+                    >
+                      <BrainCircuitIcon size={18} />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Gérer les modèles IA</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

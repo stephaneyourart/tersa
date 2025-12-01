@@ -244,9 +244,15 @@ export const ImagePrimitive = ({
                 <Image
                   src={data.content.url}
                   alt="Image"
-                  width={data.width ?? 1000}
-                  height={data.height ?? 1000}
-                  className="h-auto w-full rounded-b-xl"
+                  width={data.width ?? 1024}
+                  height={data.height ?? 1024}
+                  className="w-full rounded-b-xl"
+                  style={{ 
+                    aspectRatio: data.width && data.height 
+                      ? `${data.width} / ${data.height}` 
+                      : 'auto',
+                    height: 'auto'
+                  }}
                   onError={() => markAsExpired()}
                 />
               )}

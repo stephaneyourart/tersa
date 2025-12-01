@@ -10,6 +10,7 @@ import {
   listDVRFolders,
   createDVRFolder,
   focusAndSearchDVR,
+  checkClipInDVR,
   isDVREnabled,
   getDefaultDVRFolder,
 } from '@/lib/davinci-resolve';
@@ -129,6 +130,20 @@ export async function POST(request: NextRequest) {
 
         const folder = targetFolder || getDefaultDVRFolder();
         const result = await focusAndSearchDVR(clipName, folder, searchShortcut);
+        return NextResponse.json(result);
+      }
+
+      case 'check-clip': {
+        const { clipName, searchBothFolders } = body;
+        if (!clipName) {
+          return NextResponse.json(
+            { error: 'clipName is required' },
+            { status: 400 }
+          );
+        }
+
+        const folder = targetFolder || getDefaultDVRFolder();
+        const result = await checkClipInDVR(clipName, folder, searchBothFolders ?? true);
         return NextResponse.json(result);
       }
 

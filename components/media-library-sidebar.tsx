@@ -1426,7 +1426,19 @@ export function MediaLibrarySidebar() {
             >
               {/* Header */}
               <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                <h2 className="font-semibold text-white" style={{ fontSize: fontSize + 4 }}>Bibliothèque</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-semibold text-white" style={{ fontSize: fontSize + 4 }}>Médias</h2>
+                  <div className="flex items-center gap-3 text-white/60 pt-0.5" style={{ fontSize: fontSize }}>
+                    <span className="flex items-center gap-1">
+                      <Image size={fontSize} className="text-violet-400" />
+                      {medias.filter(m => m.type === 'image').length}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Video size={fontSize} className="text-blue-400" />
+                      {medias.filter(m => m.type === 'video').length}
+                    </span>
+                  </div>
+                </div>
                 <div className="flex items-center gap-1">
                   {/* Zoom controls */}
                   <Button
@@ -1438,7 +1450,6 @@ export function MediaLibrarySidebar() {
                   >
                     <ZoomOut size={14} />
                   </Button>
-                  <span className="text-white/40 text-xs w-6 text-center">{fontSize}</span>
                   <Button
                     variant="ghost"
                     size="sm"

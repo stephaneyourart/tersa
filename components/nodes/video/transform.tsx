@@ -524,13 +524,17 @@ export const VideoTransform = ({
             >
               <video
                 src={data.generated.url}
-                width={data.width ?? 800}
-                height={data.height ?? 450}
                 autoPlay
                 muted
                 loop
                 playsInline
-                className="w-full rounded-b-xl object-cover"
+                className="w-full rounded-b-xl"
+                style={{ 
+                  aspectRatio: data.width && data.height 
+                    ? `${data.width} / ${data.height}` 
+                    : '16 / 9',
+                  height: 'auto'
+                }}
                 onError={() => markAsExpired()}
               />
               {/* Overlay du prompt au hover */}

@@ -16,6 +16,7 @@ import {
   type SubscriptionContextType,
   useSubscription,
 } from '@/providers/subscription';
+import { useModelPreferences } from '@/hooks/use-model-preferences';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -139,6 +140,7 @@ export const ModelSelector = ({
 }: ModelSelectorProps) => {
   const [open, setOpen] = useState(false);
   const { plan } = useSubscription();
+  const { isModelEnabled, loaded } = useModelPreferences();
   const activeModel = options[value];
   
   // Détecter le mode local (initialisation synchrone)
@@ -163,7 +165,18 @@ export const ModelSelector = ({
         acc[chef] = {};
       }
 
-      acc[chef][id] = model;
+      // Filter based on preferences (WaveSpeed models only)
+      // We check if the model has a WaveSpeed provider and if its ID is enabled
+      // If the model is NOT WaveSpeed (e.g. OpenAI direct), we keep it enabled by default or handle logic elsewhere
+      // For now, we only filter if we find a matching preference key
+      
+      const providerModelId = model.providers?.[0]?.model?.modelId;
+      const shouldShow = !loaded || (providerModelId ? isModelEnabled(providerModelId) : true);
+
+      if (shouldShow) {
+        acc[chef][id] = model;
+      }
+      
       return acc;
     },
     {} as Record<string, Record<string, TersaModel>>

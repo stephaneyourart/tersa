@@ -55,6 +55,23 @@ export type DVRFocusSearchResult = {
   searchedClip?: string;
 };
 
+export type DVRClipInfo = {
+  name: string;
+  folder: string;
+  exact_match: boolean;
+  matched_base_name?: boolean;
+};
+
+export type DVRCheckClipResult = {
+  success: boolean;
+  error?: string | null;
+  found: boolean;
+  project?: string;
+  clip_info?: DVRClipInfo;
+  searched_folders?: string[];
+  message?: string;
+};
+
 // Chemin vers le script Python bridge
 const BRIDGE_SCRIPT_PATH = join(process.cwd(), 'scripts', 'davinci-resolve-bridge.py');
 
@@ -227,6 +244,34 @@ export async function focusAndSearchDVR(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Vérifie si un clip existe dans DaVinci Resolve
+ * 
+ * @param clipName - Nom du clip à rechercher
+ * @param targetFolder - Dossier où chercher (optionnel, cherche dans les deux dossiers TersaFork par défaut)
+ * @param searchBothFolders - Si true, cherche aussi dans l'autre dossier TersaFork
+ */
+export async function checkClipInDVR(
+  clipName: string,
+  targetFolder?: string,
+  searchBothFolders: boolean = true
+): Promise<DVRCheckClipResult> {
+  try {
+    const args = [clipName];
+    args.push(targetFolder || '');
+    args.push(searchBothFolders ? 'true' : 'false');
+    
+    const response = await executeBridgeCommand('check-clip', args);
+    return parseResponse<DVRCheckClipResult>(response);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      found: false,
     };
   }
 }

@@ -3,7 +3,7 @@
  * Remplace Supabase Storage - stocke les fichiers dans le système de fichiers local
  */
 
-import { mkdir, writeFile, readFile, unlink, stat, readdir } from 'fs/promises';
+import { mkdir, writeFile, readFile, unlink, stat, readdir, rename } from 'fs/promises';
 import { join, dirname, extname, basename } from 'path';
 import { existsSync } from 'fs';
 import { nanoid } from 'nanoid';
@@ -209,6 +209,67 @@ export async function deleteFile(filePath: string): Promise<void> {
   if (existsSync(filePath)) {
     await unlink(filePath);
   }
+}
+
+/**
+ * Renomme un fichier en gardant le suffixe unique (timestamp-id)
+ * Le format du fichier est: {nom}-{timestamp}-{uniqueId}.{ext}
+ * 
+ * @param filePath - Chemin absolu du fichier actuel
+ * @param newName - Nouveau nom (sans suffixe ni extension)
+ * @returns Le nouveau chemin du fichier
+ */
+export async function renameFile(filePath: string, newName: string): Promise<{ newPath: string; newFilename: string }> {
+  if (!existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const dir = dirname(filePath);
+  const currentFilename = basename(filePath);
+  const ext = extname(currentFilename);
+  const nameWithoutExt = basename(currentFilename, ext);
+  
+  // Extraire le suffixe (timestamp-uniqueId) depuis le nom actuel
+  // Format: nom-1234567890123-AbCdEfGh.ext
+  const match = nameWithoutExt.match(/-(\d{13,})-([a-zA-Z0-9_-]{6,})$/);
+  
+  let newFilename: string;
+  if (match) {
+    // Garder le même suffixe
+    const timestamp = match[1];
+    const uniqueId = match[2];
+    newFilename = `${newName}-${timestamp}-${uniqueId}${ext}`;
+  } else {
+    // Pas de suffixe standard, ajouter un nouveau
+    const timestamp = Date.now();
+    const uniqueId = nanoid(8);
+    newFilename = `${newName}-${timestamp}-${uniqueId}${ext}`;
+  }
+  
+  const newPath = join(dir, newFilename);
+  
+  // Renommer le fichier principal
+  await rename(filePath, newPath);
+  
+  // Renommer le fichier .meta.json si existant
+  const metaPath = `${filePath}.meta.json`;
+  const newMetaPath = `${newPath}.meta.json`;
+  if (existsSync(metaPath)) {
+    await rename(metaPath, newMetaPath);
+    
+    // Mettre à jour le nom dans le fichier meta
+    try {
+      const metaContent = await readFile(newMetaPath, 'utf-8');
+      const meta = JSON.parse(metaContent);
+      meta.name = newName;
+      meta.filename = newFilename;
+      await writeFile(newMetaPath, JSON.stringify(meta, null, 2));
+    } catch {
+      // Ignorer les erreurs de mise à jour du meta
+    }
+  }
+  
+  return { newPath, newFilename };
 }
 
 /**

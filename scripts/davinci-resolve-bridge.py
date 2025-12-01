@@ -520,6 +520,143 @@ def focus_and_search(clip_name, target_folder=None, search_shortcut=None):
         }
 
 
+def check_clip_in_dvr(clip_name, target_folder=None, search_both_folders=False):
+    """
+    Vérifie si un clip existe dans DaVinci Resolve
+    
+    Args:
+        clip_name: Nom du clip à rechercher
+        target_folder: Dossier où chercher (optionnel)
+        search_both_folders: Si True, cherche aussi dans l'autre dossier TersaFork
+    
+    Returns:
+        dict avec:
+        - found: bool
+        - folder: dossier où le clip a été trouvé (si found)
+        - clip_info: infos sur le clip (si found)
+        - searched_folders: liste des dossiers parcourus
+    """
+    resolve, error = initialize_resolve()
+    
+    if error:
+        return {
+            "success": False,
+            "error": error,
+            "found": False
+        }
+    
+    # Obtenir le projet courant
+    project_manager = resolve.GetProjectManager()
+    current_project = project_manager.GetCurrentProject()
+    
+    if current_project is None:
+        return {
+            "success": False,
+            "error": "No active project in DaVinci Resolve",
+            "found": False
+        }
+    
+    project_name = current_project.GetName()
+    media_pool = current_project.GetMediaPool()
+    root_folder = media_pool.GetRootFolder()
+    
+    # Définir les dossiers à chercher
+    folders_to_search = []
+    
+    if target_folder:
+        folders_to_search.append(target_folder)
+        # Si search_both_folders, ajouter l'autre dossier TersaFork
+        if search_both_folders:
+            if target_folder == "TersaFork":
+                folders_to_search.append("TersaFork/Imports from disk")
+            elif target_folder == "TersaFork/Imports from disk":
+                folders_to_search.append("TersaFork")
+    else:
+        # Chercher dans les deux dossiers TersaFork par défaut
+        folders_to_search = ["TersaFork", "TersaFork/Imports from disk"]
+    
+    searched_folders = []
+    
+    def search_in_folder(folder_path):
+        """Cherche un clip dans un dossier spécifique"""
+        try:
+            # Naviguer vers le dossier
+            parts = folder_path.split("/")
+            current_folder = root_folder
+            
+            for part in parts:
+                found_subfolder = None
+                subfolders = current_folder.GetSubFolderList()
+                
+                if subfolders:
+                    for subfolder in subfolders:
+                        if subfolder.GetName() == part:
+                            found_subfolder = subfolder
+                            break
+                
+                if found_subfolder is None:
+                    # Dossier n'existe pas
+                    return None
+                
+                current_folder = found_subfolder
+            
+            # Lister les clips dans ce dossier
+            clips = current_folder.GetClipList()
+            
+            if clips:
+                for clip in clips:
+                    clip_name_in_dvr = clip.GetName()
+                    
+                    # Vérification exacte d'abord
+                    if clip_name_in_dvr == clip_name:
+                        return {
+                            "name": clip_name_in_dvr,
+                            "folder": folder_path,
+                            "exact_match": True
+                        }
+                    
+                    # Vérification partielle (le nom commence par clip_name ou contient)
+                    # Utile si l'extension ou un suffixe a été ajouté
+                    base_name = os.path.splitext(clip_name)[0]
+                    base_name_in_dvr = os.path.splitext(clip_name_in_dvr)[0]
+                    
+                    if base_name_in_dvr == base_name:
+                        return {
+                            "name": clip_name_in_dvr,
+                            "folder": folder_path,
+                            "exact_match": False,
+                            "matched_base_name": True
+                        }
+            
+            return None
+            
+        except Exception as e:
+            return None
+    
+    # Chercher dans chaque dossier
+    for folder_path in folders_to_search:
+        searched_folders.append(folder_path)
+        result = search_in_folder(folder_path)
+        
+        if result:
+            return {
+                "success": True,
+                "found": True,
+                "project": project_name,
+                "clip_info": result,
+                "searched_folders": searched_folders
+            }
+    
+    # Clip non trouvé
+    return {
+        "success": True,
+        "found": False,
+        "project": project_name,
+        "searched_folders": searched_folders,
+        "message": f"Clip '{clip_name}' not found in DaVinci Resolve"
+    }
+
+
 def main():
     """Point d'entrée principal - lit les commandes depuis stdin"""
     if len(sys.argv) < 2:
@@ -569,6 +706,15 @@ def main():
                 target_folder = sys.argv[3] if len(sys.argv) > 3 else None
                 search_shortcut = sys.argv[4] if len(sys.argv) > 4 else None
                 result = focus_and_search(clip_name, target_folder, search_shortcut)
+        
+        elif command == "check-clip":
+            if len(sys.argv) < 3:
+                result = {"success": False, "error": "No clip name provided"}
+            else:
+                clip_name = sys.argv[2]
+                target_folder = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
+                search_both = sys.argv[4].lower() == "true" if len(sys.argv) > 4 else True
+                result = check_clip_in_dvr(clip_name, target_folder, search_both)
         
         else:
             result = {"error": f"Unknown command: {command}"}

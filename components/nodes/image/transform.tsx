@@ -798,9 +798,15 @@ export const ImageTransform = ({
                 <Image
                   src={data.generated.url}
                   alt="Generated image"
-                  width={1000}
-                  height={1000}
-                  className="w-full rounded-b-xl object-cover"
+                  width={data.width || 1024}
+                  height={data.height || 1024}
+                  className="w-full rounded-b-xl"
+                  style={{ 
+                    aspectRatio: data.width && data.height 
+                      ? `${data.width} / ${data.height}` 
+                      : 'auto',
+                    height: 'auto'
+                  }}
                   onError={() => markAsExpired()}
                 />
               )}
