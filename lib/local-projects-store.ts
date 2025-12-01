@@ -1,6 +1,7 @@
 /**
  * Store pour les projets locaux
  * Utilise localStorage pour persister les projets
+ * + Synchronise vers un fichier serveur pour l'API media-library
  */
 
 export interface ProjectSettings {
@@ -67,7 +68,12 @@ export function getLocalProjects(): LocalProject[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
-    return JSON.parse(stored) as LocalProject[];
+    const projects = JSON.parse(stored) as LocalProject[];
+    
+    // Synchroniser vers le serveur en arrière-plan (pour l'API media-library)
+    syncProjectsToServer(projects);
+    
+    return projects;
   } catch {
     console.error('Erreur lecture projets locaux');
     return [];
@@ -203,15 +209,34 @@ export function deleteLocalProject(id: string): boolean {
 }
 
 /**
- * Sauvegarde les projets dans localStorage
+ * Sauvegarde les projets dans localStorage ET synchronise vers le serveur
  */
 function saveProjects(projects: LocalProject[]): void {
   if (typeof window === 'undefined') return;
   
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    
+    // Synchroniser vers le serveur (async, fire-and-forget)
+    syncProjectsToServer(projects);
   } catch (error) {
     console.error('Erreur sauvegarde projets:', error);
+  }
+}
+
+/**
+ * Synchronise les projets vers le serveur pour l'API media-library
+ */
+async function syncProjectsToServer(projects: LocalProject[]): Promise<void> {
+  try {
+    await fetch('/api/projects-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projects }),
+    });
+  } catch (error) {
+    // Silencieux - la synchronisation est optionnelle
+    console.debug('Sync projets vers serveur:', error);
   }
 }
 

@@ -4,12 +4,114 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { readdir, stat, open } from 'fs/promises';
+import { readdir, stat, open, readFile } from 'fs/promises';
 import { join, extname, basename } from 'path';
 import { existsSync } from 'fs';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { loadMediaMetadata, saveMediaMetadata, type MediaMetadata } from '@/lib/media-metadata';
-import { getLocalProjects } from '@/lib/local-projects-store';
 import { nanoid } from 'nanoid';
+
+// Lire les projets depuis le cache serveur (synchronisé depuis le client)
+interface CachedProject {
+  id: string;
+  name: string;
+  data?: {
+    nodes?: unknown[];
+    edges?: unknown[];
+  };
+}
+
+async function getLocalProjectsFromCache(): Promise<CachedProject[]> {
+  try {
+    const storagePath = process.env.LOCAL_STORAGE_PATH;
+    if (!storagePath) return [];
+    
+    const cachePath = join(storagePath, '.cache', 'projects.json');
+    
+    if (!existsSync(cachePath)) {
+      console.log('[MediaLibrary] Pas de cache projets trouvé - synchronisez en ouvrant un projet');
+      return [];
+    }
+    
+    const content = await readFile(cachePath, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    console.error('[MediaLibrary] Erreur lecture cache projets:', error);
+    return [];
+  }
+}
+
+const execAsync = promisify(exec);
+
+// Cache pour les métadonnées ffprobe
+const ffprobeCache = new Map<string, { width?: number; height?: number; duration?: number; fps?: number }>();
+
+// Extraire les métadonnées vidéo/audio avec ffprobe
+async function getMediaMetadataWithFFprobe(filePath: string): Promise<{
+  width?: number;
+  height?: number;
+  duration?: number;
+  fps?: number;
+} | null> {
+  // Vérifier le cache
+  if (ffprobeCache.has(filePath)) {
+    return ffprobeCache.get(filePath) || null;
+  }
+
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`,
+      { timeout: 5000 }
+    );
+    
+    const data = JSON.parse(stdout);
+    const result: { width?: number; height?: number; duration?: number; fps?: number } = {};
+    
+    // Durée depuis format
+    if (data.format?.duration) {
+      result.duration = parseFloat(data.format.duration);
+    }
+    
+    // Chercher le stream vidéo
+    const videoStream = data.streams?.find((s: { codec_type: string }) => s.codec_type === 'video');
+    if (videoStream) {
+      if (videoStream.width) result.width = videoStream.width;
+      if (videoStream.height) result.height = videoStream.height;
+      
+      // Durée depuis le stream si pas dans format
+      if (!result.duration && videoStream.duration) {
+        result.duration = parseFloat(videoStream.duration);
+      }
+      
+      // FPS - peut être dans r_frame_rate ou avg_frame_rate (format "30/1" ou "30000/1001")
+      const fpsString = videoStream.r_frame_rate || videoStream.avg_frame_rate;
+      if (fpsString && fpsString !== '0/0') {
+        const [num, den] = fpsString.split('/').map(Number);
+        if (den && den !== 0) {
+          result.fps = Math.round((num / den) * 100) / 100; // Arrondi à 2 décimales
+        }
+      }
+    }
+    
+    // Durée depuis le stream audio si pas encore trouvée
+    if (!result.duration) {
+      const audioStream = data.streams?.find((s: { codec_type: string }) => s.codec_type === 'audio');
+      if (audioStream?.duration) {
+        result.duration = parseFloat(audioStream.duration);
+      }
+    }
+    
+    // Mettre en cache
+    ffprobeCache.set(filePath, result);
+    
+    return result;
+  } catch {
+    // ffprobe non disponible ou erreur - on ignore silencieusement
+    ffprobeCache.set(filePath, {}); // Cache vide pour éviter de réessayer
+    return null;
+  }
+}
 
 // Lire les dimensions d'une image depuis les headers du fichier
 async function getImageDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
@@ -152,6 +254,8 @@ async function scanFolder(
   createdAt: string;
   metadata: MediaMetadata | null;
   dimensions: { width: number; height: number } | null;
+  duration: number | null;
+  fps: number | null;
 }>> {
   if (!existsSync(folderPath)) {
     return [];
@@ -175,10 +279,28 @@ async function scanFolder(
     // Charger les métadonnées existantes
     const metadata = loadMediaMetadata(filePath);
 
-    // Extraire les dimensions pour les images
+    // Extraire les métadonnées selon le type
     let dimensions: { width: number; height: number } | null = null;
+    let duration: number | null = null;
+    let fps: number | null = null;
+
     if (mediaType === 'image') {
+      // Pour les images, lire directement les headers
       dimensions = await getImageDimensions(filePath);
+    } else if (mediaType === 'video' || mediaType === 'audio') {
+      // Pour les vidéos/audio, utiliser ffprobe
+      const ffprobeData = await getMediaMetadataWithFFprobe(filePath);
+      if (ffprobeData) {
+        if (ffprobeData.width && ffprobeData.height) {
+          dimensions = { width: ffprobeData.width, height: ffprobeData.height };
+        }
+        if (ffprobeData.duration) {
+          duration = ffprobeData.duration;
+        }
+        if (ffprobeData.fps) {
+          fps = ffprobeData.fps;
+        }
+      }
     }
 
     results.push({
@@ -191,6 +313,8 @@ async function scanFolder(
       createdAt: metadata?.createdAt || stats.birthtime.toISOString(),
       metadata,
       dimensions,
+      duration,
+      fps,
     });
   }
 
@@ -217,11 +341,12 @@ interface MediaProjectInfo {
   dvrProject?: string;
   smartTitle?: string;
   description?: string;
+  scene?: string;
+  decor?: string;
 }
 
 // Trouver les projets qui utilisent chaque média et extraire les infos
-function findMediaInProjects(mediaUrl: string): MediaProjectInfo {
-  const projects = getLocalProjects();
+async function findMediaInProjects(mediaUrl: string, projects: CachedProject[]): Promise<MediaProjectInfo> {
   const info: MediaProjectInfo = { usedInProjects: [] };
 
   for (const project of projects) {
@@ -278,6 +403,8 @@ function findMediaInProjects(mediaUrl: string): MediaProjectInfo {
         if (!info.smartTitle && data.smartTitle) {
           info.smartTitle = String(data.smartTitle);
         }
+        
+        // Extraire scene et decor depuis les métadonnées DVR ou directement du node
         const dvrMeta = data.dvrMetadata as Record<string, unknown> | undefined;
         if (dvrMeta) {
           if (!info.smartTitle && dvrMeta.title) {
@@ -286,6 +413,21 @@ function findMediaInProjects(mediaUrl: string): MediaProjectInfo {
           if (!info.description && dvrMeta.description) {
             info.description = String(dvrMeta.description);
           }
+          // Scene et decor peuvent être dans dvrMetadata
+          if (!info.scene && dvrMeta.scene) {
+            info.scene = String(dvrMeta.scene);
+          }
+          if (!info.decor && dvrMeta.decor) {
+            info.decor = String(dvrMeta.decor);
+          }
+        }
+        
+        // Scene et decor directement sur le node (si pas dans dvrMetadata)
+        if (!info.scene && data.scene) {
+          info.scene = String(data.scene);
+        }
+        if (!info.decor && data.decor) {
+          info.decor = String(data.decor);
         }
         
         break; // Un seul match par projet suffit
@@ -311,9 +453,13 @@ export async function GET() {
     // Combiner et enrichir les résultats
     const allMedias = [...images, ...videos, ...audio, ...documents];
     
-    const enrichedMedias = allMedias.map((media) => {
+    // Charger les projets une fois pour toutes les recherches
+    const projects = await getLocalProjectsFromCache();
+    console.log(`[MediaLibrary] ${projects.length} projets chargés depuis le cache`);
+    
+    const enrichedMedias = await Promise.all(allMedias.map(async (media) => {
       // Chercher les infos dans les projets
-      const projectInfo = findMediaInProjects(media.url);
+      const projectInfo = await findMediaInProjects(media.url, projects);
       
       // Calculer le format depuis l'extension si pas dans les métadonnées
       const ext = extname(media.filename).toLowerCase().replace('.', '').toUpperCase();
@@ -330,12 +476,14 @@ export async function GET() {
         // Métadonnées fusionnées (fichier > meta.json > projet > défaut)
         name: media.metadata?.smartTitle || projectInfo.smartTitle || basename(media.filename, extname(media.filename)),
         description: media.metadata?.description || projectInfo.description,
-        scene: media.metadata?.scene,
-        decor: media.metadata?.decor,
-        // Dimensions: priorité au fichier, puis metadata, puis projet
+        scene: media.metadata?.scene || projectInfo.scene,
+        decor: media.metadata?.decor || projectInfo.decor,
+        // Dimensions: priorité au fichier extrait (ffprobe/headers), puis metadata, puis projet
         width: media.dimensions?.width || media.metadata?.width || projectInfo.width,
         height: media.dimensions?.height || media.metadata?.height || projectInfo.height,
-        duration: media.metadata?.duration || projectInfo.duration,
+        // Durée et FPS: priorité au fichier extrait (ffprobe), puis metadata, puis projet
+        duration: media.duration || media.metadata?.duration || projectInfo.duration,
+        fps: media.fps || undefined, // Uniquement pour les vidéos
         format: media.metadata?.format || ext,
         isGenerated: media.metadata?.isGenerated ?? projectInfo.isGenerated ?? false,
         modelId: media.metadata?.modelId || projectInfo.modelId,
@@ -349,7 +497,7 @@ export async function GET() {
         // Projets qui utilisent ce média
         usedInProjects: projectInfo.usedInProjects,
       };
-    });
+    }));
 
     return NextResponse.json({
       success: true,

@@ -317,7 +317,7 @@ function MediaRow({
   columns: ColumnConfig[];
   columnWidths: Record<string, number>;
   isSelected: boolean;
-  onSelect: (id: string, addToSelection: boolean) => void;
+  onSelect: (id: string) => void;
   onSelectRange: (id: string) => void;
   onUpdateMetadata: (id: string, updates: Partial<MediaItem>) => void;
   onDragStart: (e: React.DragEvent, media: MediaItem) => void;
@@ -408,6 +408,9 @@ function MediaRow({
       case 'duration':
         return <span style={cellStyle}>{formatDuration(media.duration)}</span>;
 
+      case 'fps':
+        return <span style={cellStyle}>{media.fps ? `${media.fps}` : '-'}</span>;
+
       case 'fileSize':
         return <span style={cellStyle}>{formatFileSize(media.fileSize)}</span>;
 
@@ -453,41 +456,77 @@ function MediaRow({
     }
   };
 
+  const handleSelect = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    const shiftKey = e && 'shiftKey' in e ? e.shiftKey : false;
+    if (shiftKey) {
+      onSelectRange(media.id);
+    } else {
+      onSelect(media.id);
+    }
+  };
+
+  // Calculer les positions sticky pour les colonnes fixes
+  const getStickyStyle = (columnId: string): React.CSSProperties => {
+    if (columnId === 'checkbox') {
+      return { position: 'sticky', left: 0, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+    }
+    if (columnId === 'preview') {
+      return { position: 'sticky', left: 24, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+    }
+    if (columnId === 'name') {
+      const previewCol = columns.find(c => c.id === 'preview');
+      const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
+      return { position: 'sticky', left: 24 + previewWidth, zIndex: 2, backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : 'black' };
+    }
+    return {};
+  };
+
   return (
     <tr
       draggable
       onDragStart={(e) => onDragStart(e, media)}
-      onClick={(e) => {
-        if (e.shiftKey) {
-          // Shift+clic : sélection range
-          onSelectRange(media.id);
-        } else {
-          // CMD/Ctrl+clic ou clic simple
-          onSelect(media.id, e.metaKey || e.ctrlKey);
-        }
-      }}
+      onClick={handleSelect}
       className={cn(
-        'group border-b border-white/5 cursor-grab active:cursor-grabbing transition-colors',
+        'group border-b border-white/5 cursor-pointer transition-colors',
         isSelected ? 'bg-white/15' : 'hover:bg-white/8'
       )}
     >
-      {/* Checkbox de sélection */}
-      <td className="w-6 px-1" style={{ fontSize }}>
+      {/* Checkbox de sélection - sticky */}
+      <td 
+        className="w-6 px-1" 
+        style={{ fontSize, ...getStickyStyle('checkbox') }}
+      >
         <Checkbox
           checked={isSelected}
-          onCheckedChange={() => onSelect(media.id)}
-          className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleSelect(e);
+          }}
+          className="border-white/30 data-[state=checked]:bg-white data-[state=checked]:text-black cursor-pointer"
         />
       </td>
 
       {/* Colonnes dynamiques */}
       {columns.map((column) => {
         const width = columnWidths[column.id] || column.width;
+        const stickyStyle = getStickyStyle(column.id);
+        const isSticky = column.id === 'preview' || column.id === 'name';
+        
         return (
           <td
             key={column.id}
-            className="px-1 py-1 text-white/80"
-            style={{ width, minWidth: width, maxWidth: width }}
+            className={cn(
+              "px-1 py-1 text-white/80",
+              isSticky && "group-hover:bg-white/8"
+            )}
+            style={{ 
+              width, 
+              minWidth: width, 
+              maxWidth: width,
+              ...stickyStyle,
+              // Override bg sur hover pour les colonnes sticky
+              ...(isSticky && !isSelected ? { backgroundColor: 'black' } : {})
+            }}
           >
             {renderCell(column)}
           </td>
@@ -506,6 +545,7 @@ function ColumnHeader({
   onSort,
   onResize,
   fontSize,
+  stickyStyle = {},
 }: {
   column: ColumnConfig;
   columnWidth: number;
@@ -514,6 +554,7 @@ function ColumnHeader({
   onSort: (column: string) => void;
   onResize: (columnId: string, width: number) => void;
   fontSize: number;
+  stickyStyle?: React.CSSProperties;
 }) {
   const isSorted = sortColumn === column.id;
   const [isResizing, setIsResizing] = useState(false);
@@ -546,10 +587,10 @@ function ColumnHeader({
   return (
     <th
       className={cn(
-        'px-1 py-1 text-left font-medium text-white/60 transition-colors select-none whitespace-nowrap relative group/header',
+        'px-1 py-1 text-left font-medium text-white/60 transition-colors select-none whitespace-nowrap relative group/header bg-black',
         isSorted && 'text-white'
       )}
-      style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, fontSize }}
+      style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, fontSize, ...stickyStyle }}
     >
       <span 
         className="flex items-center gap-1 cursor-pointer hover:text-white/80"
@@ -762,9 +803,11 @@ export function MediaLibrarySidebar() {
   const [searchValue, setSearchValue] = useState('');
   const [isResizing, setIsResizing] = useState(false);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
-  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  // lastSelectedId est maintenant géré dans le store
   const sidebarRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ canScrollLeft: false, canScrollRight: false });
 
   // Initialiser les largeurs de colonnes
   useEffect(() => {
@@ -781,6 +824,49 @@ export function MediaLibrarySidebar() {
       fetchMedias();
     }
   }, [isOpen, medias.length, fetchMedias]);
+
+  // Mettre à jour l'état des flèches de scroll horizontal
+  const updateScrollState = useCallback(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setScrollState({
+      canScrollLeft: scrollLeft > 0,
+      canScrollRight: scrollLeft + clientWidth < scrollWidth - 1,
+    });
+  }, []);
+
+  // Observer les changements de scroll et de taille
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    updateScrollState();
+    container.addEventListener('scroll', updateScrollState);
+    
+    // Observer le redimensionnement
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(container);
+
+    return () => {
+      container.removeEventListener('scroll', updateScrollState);
+      resizeObserver.disconnect();
+    };
+  }, [updateScrollState, isOpen, sidebarWidth]);
+
+  // Fonctions de navigation horizontale
+  const scrollLeft = useCallback(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    container.scrollBy({ left: -200, behavior: 'smooth' });
+  }, []);
+
+  const scrollRight = useCallback(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    container.scrollBy({ left: 200, behavior: 'smooth' });
+  }, []);
 
   // Mettre à jour le filtre de recherche avec debounce
   useEffect(() => {
@@ -815,14 +901,20 @@ export function MediaLibrarySidebar() {
     if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      // Vérifier si le clic est en dehors de la sidebar
-      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-        // Ignorer les clics sur le bouton toggle
-        const toggleButton = document.querySelector('[title="Bibliothèque de médias (⌘⇧M)"]');
-        if (toggleButton && toggleButton.contains(e.target as Node)) return;
-        
-        closeSidebar();
-      }
+      const target = e.target as Node;
+      
+      // Vérifier si le clic est dans la sidebar
+      if (sidebarRef.current && sidebarRef.current.contains(target)) return;
+      
+      // Ignorer les clics sur le bouton toggle
+      const toggleButton = document.querySelector('[title="Bibliothèque de médias (⌘⇧M)"]');
+      if (toggleButton && toggleButton.contains(target)) return;
+      
+      // Ignorer les clics sur les portails Radix (dropdowns, dialogs, etc.)
+      const radixPortal = (target as HTMLElement).closest?.('[data-radix-popper-content-wrapper], [data-radix-portal], [role="dialog"], [role="menu"]');
+      if (radixPortal) return;
+      
+      closeSidebar();
     };
 
     // Délai pour éviter de fermer immédiatement à l'ouverture
@@ -1081,6 +1173,36 @@ export function MediaLibrarySidebar() {
                               fontSize={fontSize}
                             />
 
+                            {/* Flèches de navigation horizontale */}
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                onClick={scrollLeft}
+                                disabled={!scrollState.canScrollLeft}
+                                className={cn(
+                                  "p-1 rounded transition-colors",
+                                  scrollState.canScrollLeft 
+                                    ? "text-white/60 hover:text-white hover:bg-white/10" 
+                                    : "text-white/20 cursor-default"
+                                )}
+                                title="Défiler à gauche"
+                              >
+                                <ChevronLeft size={14} />
+                              </button>
+                              <button
+                                onClick={scrollRight}
+                                disabled={!scrollState.canScrollRight}
+                                className={cn(
+                                  "p-1 rounded transition-colors",
+                                  scrollState.canScrollRight 
+                                    ? "text-white/60 hover:text-white hover:bg-white/10" 
+                                    : "text-white/20 cursor-default"
+                                )}
+                                title="Défiler à droite"
+                              >
+                                <ChevronRight size={14} />
+                              </button>
+                            </div>
+
                             {/* Barre de recherche - à droite */}
                             <div className="relative flex-1 min-w-[80px]">
                               <Search
@@ -1118,31 +1240,48 @@ export function MediaLibrarySidebar() {
                           </div>
                         </div>
 
-                        {/* Zone de la table avec scroll vertical uniquement */}
+                        {/* Zone de la table avec scroll vertical et horizontal */}
                         <div 
-                          className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-3"
+                          ref={tableContainerRef}
+                          className="flex-1 overflow-auto px-2 pb-3"
                           style={{ 
                             maxHeight: 'calc(100vh - 280px)',
                             overscrollBehavior: 'contain' // Empêche le scroll de se propager au canvas
                           }}
                         >
-                          <div>
-                            <table className="w-full table-fixed border-collapse">
+                          <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                               <thead className="sticky top-0 z-10 bg-black">
                                 <tr className="border-b border-white/10">
-                                  <th className="w-6 px-1 bg-black" />
-                                  {visibleColumns.map((column) => (
-                                    <ColumnHeader
-                                      key={column.id}
-                                      column={column}
-                                      columnWidth={columnWidths[column.id] || column.width}
-                                      sortColumn={sort.column}
-                                      sortDirection={sort.direction}
-                                      onSort={setSort}
-                                      onResize={handleColumnResize}
-                                      fontSize={fontSize}
-                                    />
-                                  ))}
+                                  {/* Checkbox header - sticky */}
+                                  <th 
+                                    className="w-6 px-1 bg-black" 
+                                    style={{ position: 'sticky', left: 0, zIndex: 20 }}
+                                  />
+                                  {visibleColumns.map((column) => {
+                                    // Calculer la position sticky pour preview et name
+                                    let stickyStyle: React.CSSProperties = {};
+                                    if (column.id === 'preview') {
+                                      stickyStyle = { position: 'sticky', left: 24, zIndex: 20, backgroundColor: 'black' };
+                                    } else if (column.id === 'name') {
+                                      const previewCol = visibleColumns.find(c => c.id === 'preview');
+                                      const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
+                                      stickyStyle = { position: 'sticky', left: 24 + previewWidth, zIndex: 20, backgroundColor: 'black' };
+                                    }
+                                    
+                                    return (
+                                      <ColumnHeader
+                                        key={column.id}
+                                        column={column}
+                                        columnWidth={columnWidths[column.id] || column.width}
+                                        sortColumn={sort.column}
+                                        sortDirection={sort.direction}
+                                        onSort={setSort}
+                                        onResize={handleColumnResize}
+                                        fontSize={fontSize}
+                                        stickyStyle={stickyStyle}
+                                      />
+                                    );
+                                  })}
                                 </tr>
                               </thead>
                               <tbody>
@@ -1175,24 +1314,15 @@ export function MediaLibrarySidebar() {
                                       columns={visibleColumns}
                                       columnWidths={columnWidths}
                                       isSelected={selectedMediaIds.has(media.id)}
-                                      onSelect={(id, addToSelection) => {
-                                        if (addToSelection) {
-                                          // CMD/Ctrl+clic : toggle dans la sélection
-                                          toggleMediaSelection(id);
-                                        } else {
-                                          // Clic simple : remplace la sélection
-                                          clearSelection();
-                                          toggleMediaSelection(id);
-                                        }
-                                        setLastSelectedId(id);
+                                      onSelect={(id) => {
+                                        // Clic simple : toggle la sélection (lastSelectedId géré dans le store)
+                                        console.log('[MediaLibrary] Select:', id);
+                                        toggleMediaSelection(id);
                                       }}
                                       onSelectRange={(id) => {
-                                        if (lastSelectedId) {
-                                          selectMediaRange(lastSelectedId, id);
-                                        } else {
-                                          toggleMediaSelection(id);
-                                        }
-                                        setLastSelectedId(id);
+                                        // Shift+clic : sélection de plage (lastSelectedId géré dans le store)
+                                        console.log('[MediaLibrary] SelectRange:', id);
+                                        selectMediaRange(id);
                                       }}
                                       onUpdateMetadata={updateMediaMetadata}
                                       onDragStart={handleDragStart}
@@ -1202,7 +1332,6 @@ export function MediaLibrarySidebar() {
                                 )}
                               </tbody>
                             </table>
-                          </div>
                         </div>
                       </div>
                     )}

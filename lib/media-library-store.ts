@@ -20,6 +20,7 @@ export interface MediaItem {
   width?: number;
   height?: number;
   duration?: number;
+  fps?: number; // frames per second (vidéos uniquement)
   fileSize?: number;
   format?: string;
   
@@ -67,6 +68,7 @@ export const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'type', label: 'Type', visible: true, width: 80, order: 2 },
   { id: 'dimensions', label: 'Dimensions', visible: true, width: 100, order: 3 },
   { id: 'duration', label: 'Durée', visible: true, width: 60, order: 4 },
+  { id: 'fps', label: 'FPS', visible: true, width: 50, order: 5 },
   { id: 'dvrTransferred', label: 'DVR', visible: true, width: 40, order: 5 },
   { id: 'isGenerated', label: 'IA', visible: true, width: 40, order: 6 },
   { id: 'fileSize', label: 'Taille', visible: true, width: 80, order: 7 },
@@ -172,11 +174,40 @@ const STORAGE_KEYS = {
 };
 
 // Charger depuis localStorage
+// Colonnes obsolètes à supprimer automatiquement
+const OBSOLETE_COLUMNS = ['filename', 'path', 'width', 'height', 'Fichier'];
+
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
   try {
     const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
+    if (!stored) return defaultValue;
+    
+    let parsed = JSON.parse(stored);
+    
+    // Migration automatique des colonnes : supprimer les colonnes obsolètes
+    if (key === STORAGE_KEYS.columns && Array.isArray(parsed)) {
+      const originalLength = parsed.length;
+      parsed = parsed.filter((col: ColumnConfig) => 
+        !OBSOLETE_COLUMNS.includes(col.id) && !OBSOLETE_COLUMNS.includes(col.label)
+      );
+      
+      // Ajouter les nouvelles colonnes manquantes
+      const existingIds = new Set(parsed.map((c: ColumnConfig) => c.id));
+      for (const defaultCol of DEFAULT_COLUMNS) {
+        if (!existingIds.has(defaultCol.id)) {
+          parsed.push(defaultCol);
+        }
+      }
+      
+      // Si des changements ont été faits, sauvegarder
+      if (parsed.length !== originalLength) {
+        console.log('[MediaLibrary] Migration des colonnes: colonnes obsolètes supprimées');
+        localStorage.setItem(key, JSON.stringify(parsed));
+      }
+    }
+    
+    return parsed;
   } catch {
     return defaultValue;
   }
@@ -293,11 +324,17 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
   }),
   
   selectMediaRange: (fromId, toId) => set((state) => {
-    const sortedMedias = state.getFilteredMedias();
+    // Utiliser getSortedMedias pour avoir le même ordre que l'affichage
+    const sortedMedias = state.getSortedMedias();
     const fromIndex = sortedMedias.findIndex(m => m.id === fromId);
     const toIndex = sortedMedias.findIndex(m => m.id === toId);
     
-    if (fromIndex === -1 || toIndex === -1) return state;
+    console.log('[MediaLibrary Store] selectMediaRange:', { fromId, toId, fromIndex, toIndex, totalMedias: sortedMedias.length });
+    
+    if (fromIndex === -1 || toIndex === -1) {
+      console.log('[MediaLibrary Store] Invalid indices, returning');
+      return state;
+    }
     
     const start = Math.min(fromIndex, toIndex);
     const end = Math.max(fromIndex, toIndex);
@@ -306,6 +343,8 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
     for (let i = start; i <= end; i++) {
       newSet.add(sortedMedias[i].id);
     }
+    
+    console.log('[MediaLibrary Store] Selected range:', { start, end, count: end - start + 1 });
     
     return { selectedMediaIds: newSet };
   }),
