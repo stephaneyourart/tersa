@@ -6,14 +6,21 @@ import { Panel, useReactFlow } from '@xyflow/react';
 import { memo, useState, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { LibraryIcon, SquareIcon, TypeIcon } from 'lucide-react';
+import { LibraryIcon, SquareIcon, TypeIcon, Trash2Icon, SettingsIcon, BrainCircuitIcon } from 'lucide-react';
 import { CollectionsLibraryModal } from './collections-library-modal';
 import type { SavedCollection, CollectionCategory } from '@/lib/collections-library-store';
+import { useCleanupMode } from '@/providers/cleanup-mode';
+import { ProjectSettingsDialog } from './project-settings';
+import { useProject } from '@/providers/project';
+import Link from 'next/link';
 
 export const ToolbarInner = () => {
   const { getViewport, getNodes, setNodes } = useReactFlow();
   const { addNode } = useNodeOperations();
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const { startCleanupMode } = useCleanupMode();
+  const project = useProject();
 
   const handleAddNode = (type: string, options?: Record<string, unknown>) => {
     // Get the current viewport
@@ -169,6 +176,55 @@ export const ToolbarInner = () => {
           </TooltipTrigger>
           <TooltipContent>Bibliothèque de collections</TooltipContent>
         </Tooltip>
+
+        {/* Séparateur */}
+        <div className="w-px h-6 bg-border mx-1" />
+
+        {/* Bouton Poubelle (Cleanup Mode) */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-11 w-11 hover:bg-red-600 hover:text-white"
+              onClick={startCleanupMode}
+            >
+              <Trash2Icon size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Nettoyer (supprimer plusieurs éléments)</TooltipContent>
+        </Tooltip>
+
+        {/* Bouton Settings */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-11 w-11"
+              onClick={() => setShowSettings(true)}
+            >
+              <SettingsIcon size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Settings du projet</TooltipContent>
+        </Tooltip>
+
+        {/* Bouton Modèles IA */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/settings/models">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full h-11 w-11"
+              >
+                <BrainCircuitIcon size={20} />
+              </Button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>Gérer les modèles IA</TooltipContent>
+        </Tooltip>
       </Panel>
 
       <CollectionsLibraryModal
@@ -177,6 +233,15 @@ export const ToolbarInner = () => {
         onSelectCollection={handleSelectCollection}
         onCategoryChange={handleCategoryChange}
       />
+
+      {/* Dialog Settings du projet */}
+      {project && (
+        <ProjectSettingsDialog
+          projectId={project.id}
+          open={showSettings}
+          onOpenChange={setShowSettings}
+        />
+      )}
     </>
   );
 };

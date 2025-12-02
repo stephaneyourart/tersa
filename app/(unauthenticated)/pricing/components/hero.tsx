@@ -206,7 +206,7 @@ export const Hero = ({ currentPlan, authenticated }: HeroProps) => {
           </h1>
 
           <p className="max-w-3xl text-center text-muted-foreground tracking-[-0.01rem] sm:text-lg">
-            Tersa uses a flat fee and overage pricing model. This means you pay
+            Media Conductor uses a flat fee and overage pricing model. This means you pay
             a flat monthly cost which includes a certain amount of credits. If
             you exceed your credits, you just pay for the extra usage.
           </p>

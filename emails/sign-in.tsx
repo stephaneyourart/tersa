@@ -12,20 +12,20 @@ export const LoginEmailTemplate = ({
 }: LoginEmailTemplateProps) => (
   <Html>
     <Head />
-    <Preview>Your magic link to login to Tersa</Preview>
+    <Preview>Your magic link to login to Media Conductor</Preview>
     <EmailLayout>
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        Hello there! Someone (hopefully you) requested to login to Tersa.
+        Hello there! Someone (hopefully you) requested to login to Media Conductor.
       </Text>
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        Click the button below to securely login to your Tersa account. No
+        Click the button below to securely login to your Media Conductor account. No
         password needed!
       </Text>
       <Link
         className="block w-full rounded-md bg-[#009869] py-2.5 text-center font-bold text-base text-white no-underline"
         href={magicLink}
       >
-        Login to Tersa
+        Login to Media Conductor
       </Link>
       <Hr className="my-5 border-[#e6ebf1]" />
       <Text className="text-left text-[#525f7f] text-base leading-6">
@@ -46,7 +46,7 @@ export const LoginEmailTemplate = ({
         reach out to our support team.
       </Text>
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        — The Tersa Team
+        — The Media Conductor Team
       </Text>
       <Hr className="my-5 border-[#e6ebf1]" />
       <Text className="text-[#8898aa] text-xs leading-4">

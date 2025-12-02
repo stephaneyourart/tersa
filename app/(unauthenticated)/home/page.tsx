@@ -7,9 +7,9 @@ import { Providers } from './components/providers';
 import { Tweets } from './components/tweets';
 
 export const metadata: Metadata = {
-  title: 'A visual AI playground | Tersa',
+  title: 'Media Conductor - Visual AI Playground',
   description:
-    'Tersa is an open source canvas for building AI workflows. Drag, drop connect and run nodes to build your own workflows powered by various industry-leading AI models.',
+    'Media Conductor is an open source canvas for building AI workflows. Drag, drop connect and run nodes to build your own workflows powered by various industry-leading AI models.',
 };
 
 const buttons = [
@@ -27,7 +27,7 @@ const Home = () => (
   <GatewayProvider>
     <Hero
       announcement={{
-        title: 'Tersa is now open source!',
+        title: 'Media Conductor is now open source!',
         link: 'https://x.com/haydenbleasel/status/1923061663437291832',
       }}
       buttons={buttons}

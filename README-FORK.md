@@ -1,8 +1,8 @@
-# TersaFork - Canvas IA Local
+# Media Conductor - Canvas IA Local
 
 Fork de [Tersa](https://www.tersa.ai/) optimisé pour une utilisation **100% locale** avec des fonctionnalités avancées de génération multimédia.
 
-![TersaFork](./app/opengraph-image.png)
+![Media Conductor](./app/opengraph-image.png)
 
 ## ✨ Nouvelles fonctionnalités
 
@@ -46,8 +46,8 @@ Fork de [Tersa](https://www.tersa.ai/) optimisé pour une utilisation **100% loc
 
 ```bash
 # 1. Cloner le repo
-git clone https://github.com/VOTRE_USER/tersafork.git
-cd tersafork
+git clone https://github.com/VOTRE_USER/media-conductor.git
+cd media-conductor
 
 # 2. Installer les dépendances
 pnpm install
@@ -56,7 +56,7 @@ pnpm install
 pnpm init:local
 
 # 4. Créer la base de données
-createdb tersafork
+createdb mediaconductor
 
 # 5. Lancer les migrations
 pnpm migrate:local
@@ -77,7 +77,7 @@ LOCAL_MODE=true
 LOCAL_USER_ID=local-user-001
 
 # Base de données PostgreSQL locale
-POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/tersafork
+POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/mediaconductor
 
 # Stockage local
 LOCAL_STORAGE_PATH=/chemin/vers/votre/dossier/storage
@@ -95,7 +95,7 @@ OPENAI_API_KEY=sk-your_key       # DALL-E, GPT
 ## 📁 Structure du projet
 
 ```
-tersafork/
+media-conductor/
 ├── app/                    # Routes Next.js App Router
 │   └── api/
 │       ├── batch/          # API Batch Processing
@@ -234,4 +234,3 @@ MIT - Basé sur [Tersa](https://github.com/haydenbleasel/tersa) par Hayden Bleas
 - [React Flow](https://reactflow.dev/) - Bibliothèque canvas
 - [Fal.ai](https://fal.ai/) - API de génération IA
 - [WaveSpeed](https://wavespeed.ai/) - API de génération IA
-

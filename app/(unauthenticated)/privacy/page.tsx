@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 const title = 'Privacy Policy';
 const description =
-  "Your privacy is important to us. It is Tersa's policy to respect your privacy and comply with any applicable law and regulation regarding any personal information we may collect about you, including across our website and other sites we own and operate.";
+  "Your privacy is important to us. It is Media Conductor's policy to respect your privacy and comply with any applicable law and regulation regarding any personal information we may collect about you, including across our website and other sites we own and operate.";
 
 export const metadata: Metadata = {
   title,
@@ -267,8 +267,8 @@ const Privacy = () => (
           </li>
         </ul>
         <p>
-          The Tersa Subprocessor List identifies subprocessors authorized to
-          subprocess customer or personal data on behalf of Tersa to provide
+          The Media Conductor Subprocessor List identifies subprocessors authorized to
+          subprocess customer or personal data on behalf of Media Conductor to provide
           services to our customers.
         </p>
         <table>
@@ -448,7 +448,7 @@ const Privacy = () => (
           The GDPR distinguishes between organisations that process personal
           information for their own purposes (known as “data controllers”) and
           organizations that process personal information on behalf of other
-          organizations (known as “data processors”). We, Tersa, located at the
+          organizations (known as "data processors"). We, Media Conductor, located at the
           address provided in our Contact Us section, are a Data Controller with
           respect to the personal information you provide to us.
         </p>

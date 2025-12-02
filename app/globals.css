@@ -285,3 +285,84 @@
 nextjs-portal {
   @apply hidden;
 }
+
+/* Help System - Force black text on white background */
+.help-article-content * {
+  background: transparent !important;
+  color: #000 !important;
+}
+
+.help-article-content h1,
+.help-article-content h2,
+.help-article-content h3,
+.help-article-content h4,
+.help-article-content h5,
+.help-article-content h6 {
+  color: #000 !important;
+  font-weight: 600 !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content h1 { font-size: 1.875rem !important; }
+.help-article-content h2 { font-size: 1.5rem !important; }
+.help-article-content h3 { font-size: 1.25rem !important; }
+
+.help-article-content p {
+  color: #000 !important;
+  margin-bottom: 1em !important;
+  background: transparent !important;
+}
+
+.help-article-content ul,
+.help-article-content ol {
+  color: #000 !important;
+  padding-left: 1.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content li {
+  color: #000 !important;
+  margin-bottom: 0.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content strong {
+  color: #000 !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+}
+
+.help-article-content code {
+  background: #f3f4f6 !important;
+  color: #000 !important;
+  padding: 0.125rem 0.25rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.875em !important;
+}
+
+.help-article-content pre {
+  background: #f3f4f6 !important;
+  color: #000 !important;
+  padding: 1rem !important;
+  border-radius: 0.5rem !important;
+  overflow-x: auto !important;
+}
+
+.help-article-content pre code {
+  background: transparent !important;
+}
+
+.help-article-content a {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+  background: transparent !important;
+}
+
+.help-article-content blockquote {
+  color: #000 !important;
+  background: transparent !important;
+  border-left: 4px solid #d1d5db !important;
+  padding-left: 1rem !important;
+}

@@ -334,7 +334,7 @@ export default function LocalProjectsPage() {
       <header className="sticky top-0 z-50 border-b border-white/5 bg-zinc-950/80 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between px-6">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-            TersaFork
+            Media Conductor
           </h1>
           <div className="flex items-center gap-3">
             <Link href="/local/dashboard">

@@ -7,175 +7,246 @@ export type HelpArticle = {
 };
 
 export const HELP_CONTENT: HelpArticle[] = [
-  // --- Section: Premiers Pas ---
+  // ==================== 🚀 DÉMARRER ====================
   {
-    id: "getting-started",
-    title: "Premiers Pas",
-    category: "Général",
-    tags: ["intro", "débuter", "bienvenue", "interface"],
+    id: "create-project",
+    title: "Comment créer un projet ?",
+    category: "🚀 Démarrer",
+    tags: ["nouveau", "projet", "création", "vide"],
     content: `
-# Bienvenue sur Tersa
+# Créer un nouveau projet
 
-Tersa est une plateforme de création visuelle assistée par IA. Elle combine la puissance des modèles génératifs avec une interface intuitive basée sur des nœuds.
+1. Cliquez sur le sélecteur de projet en **haut à gauche** (là où le nom du projet actuel est affiché).
+2. Sélectionnez **"Nouveau Projet"** dans le menu déroulant.
+3. Donnez un nom à votre projet.
+4. Validez.
 
-## L'Interface Principale
-
-L'interface se compose de trois zones principales :
-1. **Le Canvas (Centre)** : C'est votre espace de travail infini où vous déposez et connectez vos nœuds.
-2. **La Barre d'Outils (Bas)** : Accès rapide aux outils de sélection, de création de nœuds et aux paramètres.
-3. **Les Panneaux Latéraux** : Pour gérer vos projets, vos médias et les paramètres détaillés des nœuds.
-
-## Concept de Base
-
-Tout fonctionne par **Flux (Flow)**. Vous créez une chaîne d'opérations :
-- Une source (ex: un texte, une image).
-- Un traitement (ex: un modèle IA, un filtre).
-- Une sortie (ex: image générée, vidéo).
-
-Connectez ces éléments entre eux pour créer votre pipeline de création.
+Un nouveau canvas vide s'ouvre immédiatement.
     `
   },
   {
-    id: "projects-management",
-    title: "Gestion des Projets",
-    category: "Général",
-    tags: ["sauvegarde", "nouveau", "projet", "dossier"],
+    id: "auto-save",
+    title: "Dois-je sauvegarder manuellement ?",
+    category: "🚀 Démarrer",
+    tags: ["sauvegarde", "save", "automatique"],
     content: `
-# Gérer vos Projets
+# Sauvegarde Automatique
 
-Tous vos travaux sont organisés en projets.
+Non, vous n'avez rien à faire. Media Conductor sauvegarde **chaque action** en temps réel.
 
-## Créer un nouveau projet
-Cliquez sur le sélecteur de projet en haut à gauche et choisissez "Nouveau Projet".
-
-## Sauvegarde
-La sauvegarde est **automatique** pour les projets stockés localement. Vous verrez un indicateur "Sauvegardé" en haut de l'écran.
-
-## Organisation
-Vous pouvez renseigner des métadonnées pour vos projets afin de les retrouver plus facilement.
+- Un indicateur "Sauvegardé" apparaît en haut à droite.
+- Si vous quittez brutalement, vous retrouverez votre projet exactement dans le même état.
     `
   },
 
-  // --- Section: Le Canvas ---
+  // ==================== 🎨 CANVAS & NŒUDS ====================
   {
-    id: "canvas-navigation",
-    title: "Naviguer dans le Canvas",
-    category: "Interface",
-    tags: ["zoom", "pan", "déplacement", "vue"],
+    id: "add-node",
+    title: "Comment ajouter un nœud ?",
+    category: "🎨 Canvas",
+    tags: ["ajouter", "nœud", "node", "créer"],
     content: `
-# Navigation
+# 3 Méthodes pour ajouter un nœud
 
-Se déplacer dans l'espace infini est simple :
-
-- **Pan (Déplacement)** : Maintenez \`Espace\` + Clic Gauche et glissez, ou utilisez le Clic Molette.
-- **Zoom** : Utilisez la molette de la souris ou les raccourcis \`Cmd/Ctrl +\` et \`Cmd/Ctrl -\`.
-- **Centrer** : Double-cliquez sur le fond pour réinitialiser la vue, ou sélectionnez un nœud et appuyez sur \`F\` pour faire le focus dessus.
+1. **Double-clic** sur le fond du canvas : Ouvre la recherche rapide.
+2. **Clic Droit** sur le fond : Ouvre le menu contextuel complet.
+3. **Barre d'outils** (bas de l'écran) : Glissez-déposez ou cliquez sur les icônes.
     `
   },
   {
-    id: "nodes-interaction",
-    title: "Utiliser les Nœuds",
-    category: "Interface",
-    tags: ["connecter", "créer", "lien", "supprimer"],
+    id: "view-project-assets",
+    title: "Où voir tous les éléments de mon projet ?",
+    category: "🎨 Canvas",
+    tags: ["assets", "médias", "fichiers", "liste"],
     content: `
-# Les Nœuds (Nodes)
+# Voir tous les éléments
 
-Les nœuds sont les briques de base de Tersa.
+1. Ouvrez le panneau latéral **gauche**.
+2. Cliquez sur l'onglet **"Médias"** (icône dossier).
+3. Vous verrez la liste de tous les fichiers importés et générés dans ce projet.
 
-## Ajouter un Nœud
-Faites un Clic Droit n'importe où sur le canvas pour ouvrir le menu contextuel et choisir un nœud à ajouter.
-
-## Connecter des Nœuds
-Tirez un câble depuis la poignée (le petit rond coloré) d'un nœud vers la poignée d'entrée d'un autre nœud.
-- **Vert** : Image
-- **Bleu** : Vidéo
-- **Jaune** : Texte / Prompt
-
-Si les couleurs correspondent, la connexion est valide.
-
-## Supprimer
-Sélectionnez un nœud ou un câble et appuyez sur \`Suppr\` ou \`Backspace\`.
+💡 **Astuce** : Utilisez le raccourci \`Cmd + Shift + M\` pour ouvrir/fermer ce panneau rapidement.
     `
   },
-
-  // --- Section: Génération ---
   {
-    id: "image-generation",
-    title: "Générer des Images",
-    category: "Fonctionnalités",
-    tags: ["flux", "schnell", "pro", "prompt"],
+    id: "connect-nodes",
+    title: "Comment fonctionnent les liens (connexions) ?",
+    category: "🎨 Canvas",
+    tags: ["lien", "connecter", "câble", "flux"],
     content: `
-# Génération d'Images
+# Connecter des nœuds
 
-Tersa intègre les derniers modèles Flux (Schnell, Dev, Pro).
+Les connexions définissent le flux de données.
 
-1. Ajoutez un nœud **"Text to Image"**.
-2. Entrez votre description dans le champ "Prompt".
-3. Connectez éventuellement une image de référence si vous utilisez un mode "Image to Image".
-4. Cliquez sur le bouton "Play" ou "Générer" sur le nœud.
+1. **Tirez un câble** depuis une poignée de sortie (cercle à droite d'un nœud).
+2. **Relâchez** sur une poignée d'entrée compatible (cercle à gauche).
 
-## Paramètres Avancés
-Sélectionnez le nœud pour voir apparaître le panneau de droite. Vous pourrez y régler :
-- La résolution (Largeur / Hauteur)
-- Le nombre d'étapes (Steps)
-- Le Guidance Scale
-- La Seed (Graine aléatoire)
+### Code Couleur
+- 🟢 **Vert** : Image
+- 🔵 **Bleu** : Vidéo
+- 🟡 **Jaune** : Texte
+- 🟣 **Violet** : Audio
+
+⚠️ Vous ne pouvez pas connecter des types incompatibles (ex: Texte vers Entrée Image).
     `
   },
-    {
+  {
+    id: "group-nodes",
+    title: "Comment grouper des éléments ?",
+    category: "🎨 Canvas",
+    tags: ["groupe", "organiser", "cadre"],
+    content: `
+# Créer un Groupe
+
+1. Sélectionnez plusieurs nœuds (rectangle de sélection ou Shift+Clic).
+2. Faites un **Clic Droit** sur la sélection.
+3. Choisissez **"Créer un groupe"**.
+
+Un cadre coloré apparaît. Vous pouvez :
+- Renommer le groupe (double-clic sur le titre).
+- Changer sa couleur.
+- Déplacer tout le groupe d'un coup.
+    `
+  },
+
+  // ==================== 🤖 GÉNÉRATION & MODÈLES ====================
+  {
+    id: "change-model",
+    title: "Comment changer de modèle de génération ?",
+    category: "🤖 Génération",
+    tags: ["modèle", "ia", "changer", "flux", "luma"],
+    content: `
+# Changer le Modèle IA
+
+1. Sélectionnez le nœud de génération (ex: "Text to Image").
+2. Dans le panneau de droite (Propriétés), localisez le menu déroulant tout en haut.
+3. Cliquez pour voir la liste des modèles disponibles (Flux Schnell, Dev, Pro, etc.).
+
+**Lequel choisir ?**
+- **Schnell** : Pour itérer rapidement (3s).
+- **Dev** : Le meilleur rapport qualité/vitesse (standard).
+- **Pro** : Pour le rendu final haute définition.
+    `
+  },
+  {
+    id: "batch-generation",
+    title: "Comment lancer un Batch (plusieurs images) ?",
+    category: "🤖 Génération",
+    tags: ["batch", "masse", "parallèle", "dupliquer"],
+    content: `
+# Mode Batch Manuel
+
+1. Configurez un nœud de génération comme vous le souhaitez.
+2. Dupliquez-le (\`Cmd+D\`) autant de fois que nécessaire.
+3. (Optionnel) Modifiez le prompt ou la seed de chaque copie.
+4. Sélectionnez TOUS les nœuds.
+5. Cliquez sur le bouton **"Générer"** qui apparaît dans la toolbar flottante.
+
+Tous les nœuds se lanceront en parallèle ! 🚀
+    `
+  },
+  {
     id: "video-generation",
-    title: "Générer des Vidéos",
-    category: "Fonctionnalités",
-    tags: ["luma", "runway", "kling", "motion"],
+    title: "Comment générer une vidéo ?",
+    category: "🤖 Génération",
+    tags: ["video", "animation", "luma", "runway"],
     content: `
 # Génération Vidéo
 
-Vous pouvez animer des images existantes ou créer des vidéos à partir de texte.
+1. Ajoutez un nœud **"Image to Video"** (si vous partez d'une image) ou **"Text to Video"**.
+2. Connectez votre source (Image ou Texte).
+3. Sélectionnez le modèle (Luma Ray, Runway Gen-3...).
+4. Cliquez sur **Générer**.
 
-1. Utilisez un nœud **"Image to Video"**.
-2. Connectez une image en entrée.
-3. Réglez les paramètres de mouvement dans le panneau latéral.
-4. Lancez la génération.
-
-Note : La génération vidéo peut prendre plus de temps que les images.
-    `
-  },
-    {
-    id: "upscaling",
-    title: "Upscaling & Amélioration",
-    category: "Fonctionnalités",
-    tags: ["hd", "résolution", "agrandir", "détails"],
-    content: `
-# Upscaling
-
-Pour améliorer la qualité d'une image générée :
-1. Connectez la sortie de votre image à un nœud **"Upscale"**.
-2. Choisissez le facteur d'agrandissement (x2, x4).
-3. Le modèle va halluciner des détails pour rendre l'image nette à haute résolution.
+⏳ **Note** : La vidéo est beaucoup plus longue à générer (1-3 minutes).
     `
   },
 
-  // --- Section: Workflow Avancé ---
+  // ==================== 📦 COLLECTIONS (AVANCÉ) ====================
   {
-    id: "keyboard-shortcuts",
-    title: "Raccourcis Clavier",
-    category: "Avancé",
-    tags: ["clavier", "raccourcis", "hotkeys", "vitesse"],
+    id: "collections-usage",
+    title: "Comment utiliser les Collections ?",
+    category: "📦 Collections",
+    tags: ["collection", "preset", "bibliothèque", "template"],
+    content: `
+# Les Collections
+
+Les Collections sont des "super-groupes" sauvegardables.
+
+### Créer une Collection
+1. Sélectionnez un ensemble de nœuds.
+2. Clic droit -> **"Créer une Collection"**.
+3. Elle est sauvegardée dans votre bibliothèque.
+
+### Utiliser une Collection
+1. Ouvrez la bibliothèque (Barre d'outils -> Icône Bibliothèque).
+2. Cliquez sur une collection pour l'importer dans votre canvas.
+
+### Presets de Collection
+Dans un nœud Collection, vous pouvez définir des **Presets** :
+- Ce sont des configurations de "Quels items sont actifs/inactifs".
+- Utile pour switcher rapidement entre plusieurs versions d'un même set d'assets.
+    `
+  },
+
+  // ==================== 🎬 DAVINCI RESOLVE (PRO) ====================
+  {
+    id: "davinci-setup",
+    title: "Comment configurer le pont DaVinci Resolve ?",
+    category: "🎬 DaVinci",
+    tags: ["davinci", "resolve", "bridge", "python"],
+    content: `
+# Intégration DaVinci Resolve
+
+Media Conductor peut envoyer des médias directement dans votre projet Resolve ouvert.
+
+### Pré-requis
+1. DaVinci Resolve Studio doit être installé et **ouvert**.
+2. Le scripting externe doit être activé dans Resolve (Preferences -> System -> General -> External Scripting -> Local).
+
+### Utilisation
+1. Dans Media Conductor, sélectionnez une image ou vidéo.
+2. Clic droit -> **"Envoyer vers DaVinci"**.
+3. Le média apparaîtra dans le Media Pool de votre projet actif.
+
+💡 **Note Technique** : Media Conductor utilise un script Python bridge local. Si cela ne fonctionne pas, vérifiez que votre installation Python est accessible.
+    `
+  },
+
+  // ==================== ⌨️ RACCOURCIS & ASTUCES ====================
+  {
+    id: "shortcuts-list",
+    title: "Liste des Raccourcis Clavier",
+    category: "⌨️ Raccourcis",
+    tags: ["clavier", "hotkeys", "vitesse"],
     content: `
 # Raccourcis Essentiels
 
-| Action | Raccourci (Mac) | Raccourci (Win/Linux) |
-|--------|-----------------|-----------------------|
-| Copier | Cmd + C | Ctrl + C |
-| Coller | Cmd + V | Ctrl + V |
-| Dupliquer | Cmd + D | Ctrl + D |
-| Supprimer | Backspace | Suppr |
-| Tout sélectionner | Cmd + A | Ctrl + A |
-| Annuler | Cmd + Z | Ctrl + Z |
-| Rétablir | Cmd + Shift + Z | Ctrl + Y |
-| Recherche | Cmd + K | Ctrl + K |
-| Aide | ? | ? |
+| Action | Mac | Windows |
+|--------|-----|---------|
+| **Tout sélectionner** | Cmd + A | Ctrl + A |
+| **Dupliquer** | Cmd + D | Ctrl + D |
+| **Copier** | Cmd + C | Ctrl + C |
+| **Coller** | Cmd + V | Ctrl + V |
+| **Supprimer** | Backspace | Suppr |
+| **Zoom 100%** | Double-clic fond | Double-clic fond |
+| **Focus sur sélection** | F | F |
+| **Toggle Media Library** | Cmd + Shift + M | Ctrl + Shift + M |
+| **Aide** | ? | ? |
+    `
+  },
+  {
+    id: "missing-nodes",
+    title: "Je ne trouve pas mes nœuds (Écran noir)",
+    category: "🆘 Dépannage",
+    tags: ["perdu", "vide", "noir", "zoom"],
+    content: `
+# Retrouver ses nœuds
+
+Si vous êtes perdu dans le canvas infini :
+
+1. Appuyez sur la touche **F** (Focus). Cela vous ramènera immédiatement sur vos nœuds.
+2. Sinon, **double-cliquez** sur le fond pour réinitialiser la vue au centre (0,0).
     `
   }
 ];
-

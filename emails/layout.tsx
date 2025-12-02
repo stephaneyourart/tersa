@@ -25,7 +25,7 @@ export const EmailLayout = ({ children }: EmailLayoutProps) => (
             src={new URL('/tersa.png', returnUrl).toString()}
             width="85"
             height="21.5"
-            alt="Tersa"
+            alt="Media Conductor"
           />
           <Hr className="my-5 border-[#e6ebf1]" />
           {children}

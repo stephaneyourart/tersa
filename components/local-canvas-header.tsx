@@ -25,7 +25,7 @@ export function LocalCanvasHeader({ projectId }: LocalCanvasHeaderProps) {
   
   const { 
     isCleanupMode, 
-    startCleanupMode, 
+    startCleanupMode,
     exitCleanupMode, 
     getSelectedCount,
   } = useCleanupMode();
@@ -79,83 +79,17 @@ export function LocalCanvasHeader({ projectId }: LocalCanvasHeaderProps) {
             </Button>
           </div>
         ) : (
-          /* Mode normal */
-          <div className="pointer-events-auto flex items-center gap-2">
-            <Link 
-              href="/local/projects" 
-              className="flex items-center gap-3 rounded-lg bg-background/80 px-4 py-2 backdrop-blur transition-colors hover:bg-background"
-            >
-              <Logo className="h-6 w-6" />
-              <span className="font-semibold">{projectName || 'Untitled'}</span>
-            </Link>
-            
-            {/* Bouton Clean up */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={startCleanupMode}
-                    className="h-9 w-9 rounded-lg bg-background/80 backdrop-blur hover:bg-red-600 hover:text-white"
-                  >
-                    <Trash2Icon size={18} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Nettoyer (supprimer plusieurs éléments)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            
-            {/* Bouton Settings */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowSettings(true)}
-                    className="h-9 w-9 rounded-lg bg-background/80 backdrop-blur hover:bg-background"
-                  >
-                    <SettingsIcon size={18} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Settings du projet</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Bouton Global Models */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link href="/settings/models">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 rounded-lg bg-background/80 backdrop-blur hover:bg-background"
-                    >
-                      <BrainCircuitIcon size={18} />
-                    </Button>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Gérer les modèles IA</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          /* Mode normal - logo + nom du projet */
+          <Link 
+            href="/local/projects" 
+            className="pointer-events-auto flex items-center gap-3 rounded-lg bg-background/80 px-4 py-2 backdrop-blur transition-colors hover:bg-background"
+          >
+            <Logo className="h-6 w-6" />
+            <span className="font-semibold">{projectName || 'Untitled'}</span>
+          </Link>
         )}
       </div>
 
-      {/* Modale Settings */}
-      <ProjectSettingsDialog
-        projectId={projectId}
-        open={showSettings}
-        onOpenChange={setShowSettings}
-      />
     </>
   );
 }

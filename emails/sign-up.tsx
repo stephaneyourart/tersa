@@ -12,10 +12,10 @@ export const SignupEmailTemplate = ({
 }: SignupEmailTemplateProps) => (
   <Html>
     <Head />
-    <Preview>Confirm your email address to get started with Tersa</Preview>
+    <Preview>Confirm your email address to get started with Media Conductor</Preview>
     <EmailLayout>
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        Thanks for signing up for Tersa! To complete your registration, please
+        Thanks for signing up for Media Conductor! To complete your registration, please
         confirm your email address.
       </Text>
       <Text className="text-left text-[#525f7f] text-base leading-6">
@@ -30,7 +30,7 @@ export const SignupEmailTemplate = ({
       </Link>
       <Hr className="my-5 border-[#e6ebf1]" />
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        This link will expire in 10 minutes. If you didn't sign up for Tersa,
+        This link will expire in 10 minutes. If you didn't sign up for Media Conductor,
         you can safely ignore this email.
       </Text>
       <Text className="text-left text-[#525f7f] text-base leading-6">
@@ -47,7 +47,7 @@ export const SignupEmailTemplate = ({
         reach out to our support team.
       </Text>
       <Text className="text-left text-[#525f7f] text-base leading-6">
-        — The Tersa Team
+        — The Media Conductor Team
       </Text>
       <Hr className="my-5 border-[#e6ebf1]" />
       <Text className="text-[#8898aa] text-xs leading-4">

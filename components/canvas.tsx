@@ -153,7 +153,22 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     getNodes,
     getNode,
     updateNode,
+    setViewport,
   } = useReactFlow();
+  
+  // Appliquer le viewport initial après le montage
+  const viewportAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialViewport && !viewportAppliedRef.current) {
+      // Petit délai pour s'assurer que React Flow est prêt
+      const timer = setTimeout(() => {
+        setViewport(initialViewport, { duration: 0 });
+        viewportAppliedRef.current = true;
+        console.log('[Canvas] Viewport restored:', initialViewport);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialViewport, setViewport]);
   const analytics = useAnalytics();
   const [saveState, setSaveState] = useSaveProject();
 

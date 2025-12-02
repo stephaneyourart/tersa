@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { PostHogProvider } from '@/providers/posthog-provider';
 import { ThemeProvider } from '@/providers/theme';
 import { Analytics } from '@vercel/analytics/next';
+import { HelpSystem } from '@/components/help/help-system';
 import type { ReactNode } from 'react';
 
 type RootLayoutProps = {
@@ -31,7 +32,7 @@ const RootLayout = ({ children }: RootLayoutProps) => (
         >
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster className="z-[99999999]" />
-          {/* <HelpSystem /> */}
+          <HelpSystem />
         </ThemeProvider>
         <Analytics />
       </PostHogProvider>
