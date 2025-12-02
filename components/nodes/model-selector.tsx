@@ -42,6 +42,7 @@ type ModelSelectorProps = {
   width?: number | string;
   className?: string;
   onChange?: (value: string) => void;
+  onModelSelected?: (modelId: string) => void; // Callback appelé après sélection pour ouvrir la sidebar
   disabled?: boolean;
 };
 
@@ -108,7 +109,7 @@ const getModelDisabled = (
 
 const CommandGroupHeading = ({ data }: { data: TersaProvider }) => (
   <div className="flex items-center gap-2">
-    <data.icon className="size-4 shrink-0" />
+    {data.icon && <data.icon className="size-4 shrink-0" />}
     <span className="block truncate">{data.name}</span>
   </div>
 );
@@ -136,6 +137,7 @@ export const ModelSelector = ({
   width = 175,
   className,
   onChange,
+  onModelSelected,
   disabled,
 }: ModelSelectorProps) => {
   const [open, setOpen] = useState(false);
@@ -221,17 +223,16 @@ export const ModelSelector = ({
           </div>
           <CommandList>
             <CommandEmpty />
-            {sortedChefs.map((chef) => (
+            {sortedChefs.map((chef) => {
+              // Récupérer le premier modèle du groupe pour avoir les infos du chef
+              const firstModel = Object.values(groupedOptions[chef])[0];
+              const chefData = firstModel?.chef || (chef in providers ? providers[chef as keyof typeof providers] : providers.unknown);
+              
+              return (
               <CommandGroup
                 key={chef}
                 heading={
-                  <CommandGroupHeading
-                    data={
-                      chef in providers
-                        ? providers[chef as keyof typeof providers]
-                        : providers.unknown
-                    }
-                  />
+                  <CommandGroupHeading data={chefData} />
                 }
               >
                 {Object.entries(groupedOptions[chef]).map(([id, model]) => (
@@ -241,6 +242,10 @@ export const ModelSelector = ({
                     onSelect={() => {
                       onChange?.(id);
                       setOpen(false);
+                      // Ouvrir la sidebar après un court délai pour laisser le dialog se fermer
+                      setTimeout(() => {
+                        onModelSelected?.(id);
+                      }, 100);
                     }}
                     disabled={false}
                     className={cn(
@@ -251,11 +256,7 @@ export const ModelSelector = ({
                     <div className="flex flex-1 items-center gap-2 overflow-hidden">
                       <ModelIcon
                         data={model}
-                        chef={
-                          chef in providers
-                            ? providers[chef as keyof typeof providers]
-                            : providers.unknown
-                        }
+                        chef={model.chef}
                         className={
                           value === id ? 'text-primary-foreground' : ''
                         }
@@ -304,7 +305,8 @@ export const ModelSelector = ({
                   </CommandItem>
                 ))}
               </CommandGroup>
-            ))}
+            );
+            })}
           </CommandList>
         </Command>
       </DialogContent>

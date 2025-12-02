@@ -246,13 +246,7 @@ export const ImagePrimitive = ({
                   alt="Image"
                   width={data.width ?? 1024}
                   height={data.height ?? 1024}
-                  className="w-full rounded-b-xl"
-                  style={{ 
-                    aspectRatio: data.width && data.height 
-                      ? `${data.width} / ${data.height}` 
-                      : 'auto',
-                    height: 'auto'
-                  }}
+                  className="w-full h-auto rounded-b-xl block"
                   onError={() => markAsExpired()}
                 />
               )}

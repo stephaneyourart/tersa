@@ -31,6 +31,7 @@ const RootLayout = ({ children }: RootLayoutProps) => (
         >
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster className="z-[99999999]" />
+          {/* <HelpSystem /> */}
         </ThemeProvider>
         <Analytics />
       </PostHogProvider>

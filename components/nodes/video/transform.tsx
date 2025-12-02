@@ -8,39 +8,33 @@ import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
-import { videoModels } from '@/lib/models/video';
+import { useAvailableModels } from '@/hooks/use-available-models';
+import { useModelParamsSidebar } from '@/components/model-params-sidebar';
 import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
+import { ClockIcon } from 'lucide-react';
 import {
-  ClockIcon,
-  DownloadIcon,
-  Loader2Icon,
-  PlayIcon,
-  RotateCcwIcon,
-} from 'lucide-react';
-import { type ChangeEventHandler, type ComponentProps, useCallback, useMemo, useState } from 'react';
+  type ChangeEventHandler,
+  type ComponentProps,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import { mutate } from 'swr';
 import type { VideoNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
-import { VideoAdvancedSettingsPanel, DEFAULT_VIDEO_SETTINGS, type VideoAdvancedSettings } from './advanced-settings';
+import { DurationBadge } from './video-indicators';
 
 type VideoTransformProps = VideoNodeProps & {
   title: string;
 };
 
-const getDefaultModel = (models: typeof videoModels) => {
-  const defaultModel = Object.entries(models).find(
-    ([_, model]) => model.default
-  );
-
-  if (!defaultModel) {
-    throw new Error('No default model found');
-  }
-
-  return defaultModel[0];
+// Helper pour trouver un défaut si le modèle actuel n'est plus dispo
+const getFallbackModel = (models: Record<string, any>) => {
+  return Object.keys(models)[0];
 };
 
 export const VideoTransform = ({
@@ -51,16 +45,20 @@ export const VideoTransform = ({
 }: VideoTransformProps) => {
   const { updateNodeData, getNodes, getEdges, getNode, addNodes, addEdges } = useReactFlow();
   const [loading, setLoading] = useState(false);
-  const [advancedSettings, setAdvancedSettings] = useState<VideoAdvancedSettings>(
-    data.advancedSettings || DEFAULT_VIDEO_SETTINGS
+  const [advancedSettings, setAdvancedSettings] = useState<Record<string, any>>(
+    data.advancedSettings || {}
   );
   const project = useProject();
   const { trackGeneration } = useGenerationTracker();
-  const modelId = data.model ?? getDefaultModel(videoModels);
+  
+  // Utiliser les modèles dynamiques filtrés
+  const availableModels = useAvailableModels('video');
+  const modelId = data.model && availableModels[data.model] ? data.model : getFallbackModel(availableModels);
+  
   const analytics = useAnalytics();
 
-  // Récupérer le modèle sélectionné et son path
-  const selectedModel = videoModels[modelId];
+  // Récupérer le modèle sélectionné
+  const selectedModel = availableModels[modelId];
   const modelPath = useMemo(() => {
     if (!selectedModel) return '';
     const provider = selectedModel.providers[0];
@@ -185,7 +183,7 @@ export const VideoTransform = ({
     } finally {
       setLoading(false);
     }
-  }, [loading, project?.id, id, getNodes, getEdges, analytics, type, modelId, data.instructions, updateNodeData, selectedModel, advancedSettings.duration, trackGeneration]);
+  }, [loading, project?.id, id, getNodes, getEdges, analytics, type, modelId, data, updateNodeData, selectedModel, advancedSettings.duration, trackGeneration]);
 
   // Handler pour le batch : duplique le nœud N-1 fois et lance N générations en parallèle
   const handleBatchRun = useCallback(async (count: number) => {
@@ -400,7 +398,18 @@ export const VideoTransform = ({
     }
     
     setTimeout(() => mutate('credits'), 5000);
-  }, [loading, project?.id, id, getNode, getNodes, getEdges, addNodes, addEdges, updateNodeData, modelId, data.instructions, selectedModel, advancedSettings.duration, trackGeneration]);
+  }, [loading, project?.id, id, getNode, getNodes, getEdges, addNodes, addEdges, updateNodeData, modelId, data, selectedModel, advancedSettings.duration, trackGeneration]);
+
+  // Hook pour la sidebar des paramètres
+  const { openSidebar } = useModelParamsSidebar();
+  
+  // Callback appelé quand un modèle est sélectionné - ouvre automatiquement la sidebar
+  const handleModelSelected = useCallback((selectedModelId: string) => {
+    openSidebar(selectedModelId, id, advancedSettings, (settings) => {
+      setAdvancedSettings(settings);
+      updateNodeData(id, { advancedSettings: settings });
+    });
+  }, [id, advancedSettings, openSidebar, updateNodeData]);
 
   const toolbar: ComponentProps<typeof NodeLayout>['toolbar'] = useMemo(() => {
     const items: ComponentProps<typeof NodeLayout>['toolbar'] = [
@@ -408,30 +417,15 @@ export const VideoTransform = ({
         children: (
           <ModelSelector
             value={modelId}
-            options={videoModels}
+            options={availableModels}
             key={id}
             className="w-[200px] rounded-full"
             onChange={(value) => updateNodeData(id, { model: value })}
+            onModelSelected={handleModelSelected}
           />
         ),
       },
     ];
-
-    // Bouton paramètres avancés vidéo
-    items.push({
-      tooltip: 'Paramètres avancés',
-      children: (
-        <VideoAdvancedSettingsPanel
-          settings={advancedSettings}
-          onSettingsChange={(settings) => {
-            setAdvancedSettings(settings);
-            updateNodeData(id, { advancedSettings: settings });
-          }}
-          modelId={modelId}
-          modelPath={modelPath}
-        />
-      ),
-    });
 
     // Last updated
     if (data.updatedAt) {
@@ -449,7 +443,7 @@ export const VideoTransform = ({
     }
 
     return items;
-  }, [modelId, id, updateNodeData, advancedSettings, modelPath, loading, data.generating, data.generated, data.updatedAt, project?.id, handleGenerate]);
+  }, [modelId, id, updateNodeData, availableModels, data.updatedAt, handleModelSelected]);
 
   const handleInstructionsChange: ChangeEventHandler<HTMLTextAreaElement> = (
     event
@@ -493,14 +487,22 @@ export const VideoTransform = ({
       )}
 
       {isGenerating && (
-        <GeneratingSkeleton 
-          className="rounded-b-xl"
-          estimatedDuration={60} // Vidéo ~60 secondes
-          startTime={data.generatingStartTime}
-        />
+        <div className="relative">
+          {/* Badge durée en haut à droite */}
+          <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
+          
+          <GeneratingSkeleton 
+            className="rounded-b-xl"
+            estimatedDuration={60} // Vidéo ~60 secondes
+            startTime={data.generatingStartTime}
+          />
+        </div>
       )}
       {!isGenerating && !data.generated?.url && (
-        <div className="flex aspect-video w-full items-center justify-center rounded-b-xl bg-secondary">
+        <div className="relative flex aspect-video w-full items-center justify-center rounded-b-xl bg-secondary">
+          {/* Badge durée en haut à droite */}
+          <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
+          
           <p className="text-muted-foreground text-sm text-center">
             {connectedImages.length > 0 
               ? `${connectedImages.length} image${connectedImages.length > 1 ? 's' : ''} connectée${connectedImages.length > 1 ? 's' : ''}`
@@ -522,19 +524,16 @@ export const VideoTransform = ({
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
             >
+              {/* Badge durée en haut à droite */}
+              <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
+              
               <video
                 src={data.generated.url}
                 autoPlay
                 muted
                 loop
                 playsInline
-                className="w-full rounded-b-xl"
-                style={{ 
-                  aspectRatio: data.width && data.height 
-                    ? `${data.width} / ${data.height}` 
-                    : '16 / 9',
-                  height: 'auto'
-                }}
+                className="w-full rounded-b-xl block"
                 onError={() => markAsExpired()}
               />
               {/* Overlay du prompt au hover */}

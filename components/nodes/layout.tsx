@@ -571,6 +571,7 @@ export const NodeLayout = ({
             className="relative size-full h-auto w-sm"
             onMouseEnter={handleNodeMouseEnter}
             onMouseLeave={handleNodeMouseLeave}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
             {type !== 'drop' && type !== 'collection' && (
               <div className="-translate-y-full -top-2 absolute right-0 left-0 flex shrink-0 items-center justify-between">
@@ -673,7 +674,19 @@ export const NodeLayout = ({
                 isCleanupMode && isSelectedForCleanup && 'ring-4 ring-red-500'
               )}
               onClick={isCleanupMode ? handleCleanupClick : undefined}
-              style={isCleanupMode ? { cursor: isProtectedFromCleanup ? 'not-allowed' : 'pointer' } : undefined}
+              style={{
+                // Bordure colorée qui grossit légèrement quand on zoom out (reste visible)
+                // Video = rose/magenta, Image = violet/bleu
+                ...(type === 'video' || type === 'image' ? {
+                  boxShadow: `0 0 0 ${Math.max(2, Math.min(6, Math.round(2 / zoom)))}px ${
+                    type === 'video' 
+                      ? 'rgba(244, 63, 94, 0.7)'  // rose-500
+                      : 'rgba(139, 92, 246, 0.7)' // violet-500
+                  }`,
+                  borderRadius: '20px',
+                } : {}),
+                ...(isCleanupMode ? { cursor: isProtectedFromCleanup ? 'not-allowed' : 'pointer' } : {}),
+              }}
             >
               <div className="overflow-hidden rounded-[17px] bg-card">
                 {children}

@@ -6,7 +6,7 @@ import { Panel, useReactFlow } from '@xyflow/react';
 import { memo, useState, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { LibraryIcon } from 'lucide-react';
+import { LibraryIcon, SquareIcon, TypeIcon } from 'lucide-react';
 import { CollectionsLibraryModal } from './collections-library-modal';
 import type { SavedCollection, CollectionCategory } from '@/lib/collections-library-store';
 
@@ -99,6 +99,58 @@ export const ToolbarInner = () => {
             <TooltipContent>{button.label}</TooltipContent>
           </Tooltip>
         ))}
+
+        {/* Séparateur */}
+        <div className="w-px h-6 bg-border mx-1" />
+
+        {/* Bouton Rectangle - crée directement au centre */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-11 w-11"
+              onClick={() => {
+                handleAddNode('shape', { 
+                  data: { 
+                    color: '#1e3a5f', // Bleu foncé
+                    opacity: 100,
+                    borderRadius: 0,
+                  },
+                  style: { width: 300, height: 200, zIndex: -1000 },
+                  zIndex: -1000, // Arrière-plan par défaut
+                });
+              }}
+            >
+              <SquareIcon size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Rectangle</TooltipContent>
+        </Tooltip>
+
+        {/* Bouton Texte - crée directement au centre */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-11 w-11"
+              onClick={() => {
+                handleAddNode('label', { 
+                  data: { 
+                    text: 'Texte',
+                    color: '#ffffff', // Blanc par défaut
+                    fontSize: 32,
+                  },
+                  zIndex: 10000, // Premier plan par défaut
+                });
+              }}
+            >
+              <TypeIcon size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Texte</TooltipContent>
+        </Tooltip>
 
         {/* Séparateur */}
         <div className="w-px h-6 bg-border mx-1" />

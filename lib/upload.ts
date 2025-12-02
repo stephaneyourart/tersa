@@ -2,9 +2,10 @@ import { nanoid } from 'nanoid';
 import { createClient } from './supabase/client';
 
 // Vérifier si on est en mode local (côté client)
-const isLocalMode = typeof window !== 'undefined' 
-  ? window.location.pathname.startsWith('/local')
-  : false;
+const getIsLocalMode = () => {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname.startsWith('/local');
+};
 
 /**
  * Upload un fichier localement via l'API
@@ -55,7 +56,7 @@ export const uploadFile = async (
   filename?: string
 ) => {
   // En mode local, utiliser l'upload local
-  if (isLocalMode) {
+  if (getIsLocalMode()) {
     return uploadFileLocally(file, bucket, filename);
   }
 

@@ -7,6 +7,7 @@
 
 import { GatewayProviderClient } from '@/providers/gateway/client';
 import { SubscriptionProvider } from '@/providers/subscription';
+import { ModelParamsSidebarProvider } from '@/components/model-params-sidebar';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { ReactNode } from 'react';
 
@@ -118,7 +119,9 @@ const LocalLayout = ({ children }: LocalLayoutProps) => {
     <SubscriptionProvider isSubscribed={true} plan="pro">
       <GatewayProviderClient models={mockModels as never}>
         <ReactFlowProvider>
-          {children}
+          <ModelParamsSidebarProvider>
+            {children}
+          </ModelParamsSidebarProvider>
         </ReactFlowProvider>
       </GatewayProviderClient>
     </SubscriptionProvider>

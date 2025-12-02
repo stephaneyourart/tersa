@@ -14,7 +14,7 @@ import type { WaveSpeedModel } from '@/app/(authenticated)/settings/models/page'
 import { cn } from '@/lib/utils';
 
 import { useModelPreferences } from '@/hooks/use-model-preferences';
-import { getModelSchema } from '@/lib/model-schemas';
+import { getProviderInfo, getReadableModelName } from '@/hooks/use-available-models';
 
 // Remove local hook definition
 
@@ -118,6 +118,12 @@ export function ModelList({
 function ModelCard({ model, enabled, onToggle }: { model: WaveSpeedModel, enabled: boolean, onToggle: (v: boolean) => void }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [imageError, setImageError] = useState(false);
+  
+  // Obtenir les infos du provider (icône + nom)
+  const providerInfo = getProviderInfo(model.model_uuid);
+  const ProviderIcon = providerInfo.icon;
+  // Utiliser le SEO pour le nom commercial complet
+  const readableName = getReadableModelName(model.model_name, model.seo);
 
   return (
     <Card className={cn(
@@ -135,8 +141,8 @@ function ModelCard({ model, enabled, onToggle }: { model: WaveSpeedModel, enable
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground bg-muted/50 p-4 text-center">
-             <ImageIcon className="w-8 h-8 mb-2 opacity-20" />
-             <span className="text-xs opacity-50 font-mono text-[10px] truncate w-full px-4">{model.model_name.split('/').pop()}</span>
+             <ProviderIcon className="w-12 h-12 mb-2 opacity-40" />
+             <span className="text-xs opacity-70 font-medium">{readableName}</span>
           </div>
         )}
         
@@ -147,6 +153,14 @@ function ModelCard({ model, enabled, onToggle }: { model: WaveSpeedModel, enable
           <Switch checked={enabled} onCheckedChange={onToggle} className="data-[state=checked]:bg-primary shadow-sm" />
         </div>
         
+        {/* Provider icon badge en haut à gauche */}
+        <div className="absolute top-2 left-2 z-10">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full backdrop-blur-md bg-black/50 border border-white/10">
+            <ProviderIcon className="w-4 h-4 text-white" />
+            <span className="text-[10px] font-medium text-white">{providerInfo.name}</span>
+          </div>
+        </div>
+        
         <div className="absolute bottom-2 left-2 right-2 flex justify-between items-end z-10">
              <Badge variant="secondary" className="backdrop-blur-md bg-black/60 text-white text-[10px] border-white/10 px-1.5 py-0.5 h-auto">
                 {model.type}
@@ -155,8 +169,8 @@ function ModelCard({ model, enabled, onToggle }: { model: WaveSpeedModel, enable
       </div>
 
       <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-lg font-bold tracking-tight leading-tight break-words" title={model.model_name}>
-          {model.model_name}
+        <CardTitle className="text-base font-bold tracking-tight leading-tight break-words" title={model.model_name}>
+          {readableName}
         </CardTitle>
         <CardDescription className="text-xs line-clamp-2 h-8 mt-1">
           {model.description}

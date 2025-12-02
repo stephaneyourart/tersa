@@ -25,15 +25,11 @@ export function useModelPreferences() {
   };
 
   const isModelEnabled = (modelId: string) => {
-    // If no preferences set (first load), default to true or false?
-    // User requirement: "uniquement ceux qui sont 'ON' seront disponibles".
-    // If nothing is stored, maybe all are ON by default?
-    // Let's assume default is OFF if not explicitly ON in the "whitelist" logic, 
-    // OR default is ON if key is missing.
-    // Given the phrasing "toggle les modèles que je garde", it implies filtering.
-    // Safest bet: If preference entry exists, use it. If not, default to TRUE (show all initially).
-    if (!loaded) return true;
-    return preferences[modelId] !== false; 
+    // User requirement: "uniquement ceux qui sont 'ON' seront disponibles dans la liste"
+    // Donc par défaut, un modèle est OFF s'il n'est pas explicitement activé
+    // Seuls les modèles avec preferences[modelId] === true apparaissent
+    if (!loaded) return false; // Pendant le chargement, ne rien montrer
+    return preferences[modelId] === true; // Doit être explicitement true
   };
 
   return { preferences, toggleModel, isModelEnabled, loaded };

@@ -9,10 +9,12 @@ import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
-import { imageModels } from '@/lib/models/image';
+import { useAvailableModels } from '@/hooks/use-available-models';
+import { useModelParamsSidebar } from '@/components/model-params-sidebar';
 import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
-import { getIncomers, useReactFlow } from '@xyflow/react';
+import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
+import type { Node, Edge } from '@xyflow/react';
 import {
   ArrowUpIcon,
   ClockIcon,
@@ -33,7 +35,6 @@ import { toast } from 'sonner';
 import { mutate } from 'swr';
 import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
-import { AdvancedSettingsPanel, DEFAULT_SETTINGS, type ImageAdvancedSettings } from './advanced-settings';
 import { ImageCompareSlider } from './image-compare-slider';
 import type { UpscaleSettings } from './upscale-button';
 
@@ -41,16 +42,9 @@ type ImageTransformProps = ImageNodeProps & {
   title: string;
 };
 
-const getDefaultModel = (models: typeof imageModels) => {
-  const defaultModel = Object.entries(models).find(
-    ([_, model]) => model.default
-  );
-
-  if (!defaultModel) {
-    throw new Error('No default model found');
-  }
-
-  return defaultModel[0];
+// Helper pour trouver un défaut si le modèle actuel n'est plus dispo
+const getFallbackModel = (models: Record<string, any>) => {
+  return Object.keys(models)[0];
 };
 
 export const ImageTransform = ({
@@ -62,11 +56,29 @@ export const ImageTransform = ({
   const { updateNodeData, getNodes, getEdges, addNodes, addEdges, getNode } = useReactFlow();
   const [loading, setLoading] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [advancedSettings, setAdvancedSettings] = useState<ImageAdvancedSettings>(
-    data.advancedSettings ?? DEFAULT_SETTINGS
+  const [advancedSettings, setAdvancedSettings] = useState<Record<string, any>>(
+    data.advancedSettings ?? {}
   );
   const project = useProject();
   const { trackGeneration } = useGenerationTracker();
+
+  // Utiliser les modèles dynamiques filtrés
+  const availableModels = useAvailableModels('image');
+  const modelId = data.model && availableModels[data.model] ? data.model : getFallbackModel(availableModels);
+  
+  const analytics = useAnalytics();
+  const selectedModel = availableModels[modelId];
+  
+  // Hook pour détecter si l'image est expirée (URL WaveSpeed plus accessible)
+  const imageUrl = data.generated?.url;
+  const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
+  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(imageUrl, isLocal);
+  
+  // Extraire le chemin WaveSpeed du modèle (ex: 'google/nano-banana/text-to-image')
+  const modelPath = useMemo(() => {
+    const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
+    return modelObj?.modelId || '';
+  }, [selectedModel]);
 
   // État de génération: soit local (single run), soit batch
   const isGenerating = loading || data.batchGenerating === true;
@@ -95,23 +107,10 @@ export const ImageTransform = ({
       if (interval) clearInterval(interval);
     };
   }, [isGenerating, generationStartTime]);
+
   const hasIncomingImageNodes =
     getImagesFromImageNodes(getIncomers({ id }, getNodes(), getEdges()))
       .length > 0;
-  const modelId = data.model ?? getDefaultModel(imageModels);
-  const analytics = useAnalytics();
-  const selectedModel = imageModels[modelId];
-  
-  // Hook pour détecter si l'image est expirée (URL WaveSpeed plus accessible)
-  const imageUrl = data.generated?.url;
-  const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
-  const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(imageUrl, isLocal);
-  
-  // Extraire le chemin WaveSpeed du modèle (ex: 'google/nano-banana/text-to-image')
-  const modelPath = useMemo(() => {
-    const modelObj = selectedModel?.providers?.[0]?.model as { modelId?: string } | undefined;
-    return modelObj?.modelId || '';
-  }, [selectedModel]);
 
   // Calculer la taille à partir des settings
   const sizeFromSettings = useMemo(() => {
@@ -237,6 +236,7 @@ export const ImageTransform = ({
         error: error instanceof Error ? error.message : 'Unknown error',
         nodeId: id,
         nodeName: (data as { customName?: string }).customName,
+        size: sizeFromSettings,
       });
     } finally {
       setLoading(false);
@@ -314,7 +314,7 @@ export const ImageTransform = ({
       const offsetX = (currentNode.measured?.width ?? 400) + 50; // Horizontal spacing
       
       // Créer le nœud dupliqué avec le prompt dans les instructions
-      const newNode = {
+      const newNode: Node = {
         ...currentNode,
         id: newNodeId,
         type: currentNode.type,
@@ -334,7 +334,7 @@ export const ImageTransform = ({
 
       // Dupliquer les connexions entrantes
       for (const edge of edges) {
-        const newEdge = {
+        const newEdge: Edge = {
           ...edge,
           id: `${edge.id}-batch-${i}-${Date.now()}`,
           target: newNodeId,
@@ -462,6 +462,7 @@ export const ImageTransform = ({
             error: result.error || 'Unknown error',
             nodeId: result.nodeId,
             nodeName: (data as { customName?: string }).customName,
+            size: sizeFromSettings,
           });
         }
       }
@@ -512,6 +513,7 @@ export const ImageTransform = ({
           error: error instanceof Error ? error.message : 'Unknown error',
           nodeId,
           nodeName: (data as { customName?: string }).customName,
+          size: sizeFromSettings,
         });
       });
       toast.error('Erreur lors du batch', {
@@ -545,19 +547,22 @@ export const ImageTransform = ({
     event
   ) => updateNodeData(id, { instructions: event.target.value });
 
-  const toolbar = useMemo<ComponentProps<typeof NodeLayout>['toolbar']>(() => {
-    const availableModels = Object.fromEntries(
-      Object.entries(imageModels).map(([key, model]) => [
-        key,
-        {
-          ...model,
-          disabled: hasIncomingImageNodes
-            ? !model.supportsEdit
-            : model.disabled,
-        },
-      ])
-    );
+  // Hook pour la sidebar des paramètres
+  const { openSidebar } = useModelParamsSidebar();
+  
+  // Callback appelé quand un modèle est sélectionné - ouvre automatiquement la sidebar
+  const handleModelSelected = useCallback((selectedModelId: string) => {
+    openSidebar(selectedModelId, id, advancedSettings, (settings) => {
+      setAdvancedSettings(settings);
+      updateNodeData(id, { advancedSettings: settings });
+    });
+  }, [id, advancedSettings, openSidebar, updateNodeData]);
 
+  const toolbar = useMemo<ComponentProps<typeof NodeLayout>['toolbar']>(() => {
+    // Filtrer les modèles disponibles (déjà fait par useAvailableModels)
+    // Ajouter la logique spécifique "edit" si nécessaire (hasIncomingImageNodes)
+    // Pour simplifier, on laisse tous les modèles disponibles, l'utilisateur choisira
+    
     const items: ComponentProps<typeof NodeLayout>['toolbar'] = [
       {
         children: (
@@ -567,33 +572,18 @@ export const ImageTransform = ({
             id={id}
             className="w-[200px] rounded-full"
             onChange={(value) => updateNodeData(id, { model: value })}
+            onModelSelected={handleModelSelected}
           />
         ),
       },
     ];
-
-    // Bouton paramètres avancés - affiche uniquement les params supportés par le modèle
-    items.push({
-      tooltip: 'Paramètres avancés',
-      children: (
-        <AdvancedSettingsPanel
-          settings={advancedSettings}
-          onSettingsChange={(settings) => {
-            setAdvancedSettings(settings);
-            updateNodeData(id, { advancedSettings: settings });
-          }}
-          modelId={modelId}
-          modelPath={modelPath}
-        />
-      ),
-    });
 
     if (data.updatedAt) {
       items.push({
         tooltip: `Last updated: ${new Intl.DateTimeFormat('en-US', {
           dateStyle: 'short',
           timeStyle: 'short',
-        }).format(new Date(data.updatedAt))}`,
+          }).format(new Date(data.updatedAt))}`,
         children: (
           <Button size="icon" variant="ghost" className="rounded-full">
             <ClockIcon size={12} />
@@ -616,7 +606,8 @@ export const ImageTransform = ({
     data.updatedAt,
     handleGenerate,
     project?.id,
-    advancedSettings,
+    availableModels,
+    handleModelSelected,
   ]);
 
   const aspectRatio = useMemo(() => {
@@ -800,13 +791,7 @@ export const ImageTransform = ({
                   alt="Generated image"
                   width={data.width || 1024}
                   height={data.height || 1024}
-                  className="w-full rounded-b-xl"
-                  style={{ 
-                    aspectRatio: data.width && data.height 
-                      ? `${data.width} / ${data.height}` 
-                      : 'auto',
-                    height: 'auto'
-                  }}
+                  className="w-full h-auto rounded-b-xl block"
                   onError={() => markAsExpired()}
                 />
               )}

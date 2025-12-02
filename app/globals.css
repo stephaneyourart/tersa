@@ -264,6 +264,22 @@
     outline: none !important;
     box-shadow: none !important;
   }
+  
+  /* Nœuds shape - arrière-plan par défaut, pas de style ReactFlow */
+  .react-flow__node-shape {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Nœuds label - premier plan, pas de style ReactFlow */
+  .react-flow__node-label {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
 }
 
 nextjs-portal {
