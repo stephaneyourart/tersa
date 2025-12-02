@@ -41,14 +41,17 @@ export default function LocalCanvasPage() {
       return;
     }
     
+    const loadedViewport = (project.data.viewport || { x: 0, y: 0, zoom: 1 }) as Viewport;
+    console.log('[LocalCanvas] Loading project with viewport:', loadedViewport);
+    
     setInitialData({
       nodes: (project.data.nodes || []) as Node[],
       edges: (project.data.edges || []) as Edge[],
-      viewport: (project.data.viewport || { x: 0, y: 0, zoom: 1 }) as Viewport,
+      viewport: loadedViewport,
     });
     
     // Simuler un petit délai pour le spinner
-    setTimeout(() => setLoading(false), 500);
+    setTimeout(() => setLoading(false), 300);
   }, [projectId, router]);
 
   // Auto-save callback
@@ -66,6 +69,7 @@ export default function LocalCanvasPage() {
     }
     
     autoSaveTimeoutRef.current = setTimeout(() => {
+      console.log('[Auto-save] Saving viewport:', viewport);
       updateLocalProject(projectId, {
         data: { nodes, edges, viewport },
       });
@@ -74,8 +78,8 @@ export default function LocalCanvasPage() {
       registerProjectMediaReferences(projectId, nodes);
       
       lastSavedRef.current = currentState;
-      console.log('[Auto-save] Project saved');
-    }, 1000); // Save après 1 seconde d'inactivité
+      console.log('[Auto-save] Project saved with', nodes.length, 'nodes');
+    }, 500); // Save après 500ms d'inactivité (plus réactif)
   }, [projectId]);
 
   // Cleanup timeout on unmount
@@ -84,6 +88,29 @@ export default function LocalCanvasPage() {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
+    };
+  }, []);
+
+  // Bloquer les gestes de navigation du navigateur (swipe back/forward)
+  useEffect(() => {
+    // Bloquer le swipe horizontal pour navigation
+    const preventNavigation = (e: WheelEvent) => {
+      // Si c'est un scroll horizontal significatif, bloquer
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 10) {
+        e.preventDefault();
+      }
+    };
+
+    // Bloquer aussi les touch events pour swipe
+    const preventTouchNavigation = (e: TouchEvent) => {
+      if (e.touches.length > 1) return; // Permettre pinch-to-zoom
+      // Le canvas gère ses propres touch events
+    };
+
+    document.addEventListener('wheel', preventNavigation, { passive: false });
+    
+    return () => {
+      document.removeEventListener('wheel', preventNavigation);
     };
   }, []);
 

@@ -366,3 +366,78 @@ nextjs-portal {
   border-left: 4px solid #d1d5db !important;
   padding-left: 1rem !important;
 }
+
+/* ============================================
+   CANVAS PERFORMANCE OPTIMIZATIONS
+   Fluidité type Figma pour scroll et zoom
+   ============================================ */
+
+/* GPU acceleration pour le viewport */
+.react-flow__viewport {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* GPU acceleration pour les nœuds */
+.react-flow__node {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: layout style;
+}
+
+/* GPU acceleration pour les edges */
+.react-flow__edges {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Optimisation du container principal */
+.react-flow {
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* Bloquer TOUS les gestes de navigation du navigateur */
+/* (swipe back/forward, pull to refresh, overscroll bounce) */
+html, body {
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+.react-flow,
+.react-flow__renderer,
+.react-flow__viewport,
+.react-flow__pane {
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+/* Transitions fluides pour le zoom */
+.react-flow__renderer {
+  transition: none !important;
+}
+
+/* Désactiver les transitions pendant le pan/zoom pour plus de fluidité */
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+
+/* Optimisation de la sélection */
+.react-flow__selection {
+  will-change: transform;
+}
+
+/* Background optimisé */
+.react-flow__background {
+  will-change: transform;
+  transform: translateZ(0);
+}

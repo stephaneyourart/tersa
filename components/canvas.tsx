@@ -156,17 +156,35 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     setViewport,
   } = useReactFlow();
   
-  // Appliquer le viewport initial après le montage
+  // Appliquer le viewport initial après le montage - avec plusieurs tentatives
   const viewportAppliedRef = useRef(false);
   useEffect(() => {
     if (initialViewport && !viewportAppliedRef.current) {
-      // Petit délai pour s'assurer que React Flow est prêt
-      const timer = setTimeout(() => {
+      console.log('[Canvas] Will restore viewport:', initialViewport);
+      
+      // Fonction pour appliquer le viewport
+      const applyViewport = () => {
         setViewport(initialViewport, { duration: 0 });
+        console.log('[Canvas] Viewport applied:', initialViewport);
+      };
+      
+      // Appliquer immédiatement
+      applyViewport();
+      
+      // Puis re-appliquer après un court délai (au cas où React Flow reset)
+      const timer1 = setTimeout(applyViewport, 50);
+      const timer2 = setTimeout(applyViewport, 150);
+      const timer3 = setTimeout(() => {
+        applyViewport();
         viewportAppliedRef.current = true;
-        console.log('[Canvas] Viewport restored:', initialViewport);
-      }, 100);
-      return () => clearTimeout(timer);
+        console.log('[Canvas] Viewport restoration complete');
+      }, 300);
+      
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+      };
     }
   }, [initialViewport, setViewport]);
   const analytics = useAnalytics();
@@ -1143,6 +1161,11 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     return labels[type] || type;
   };
 
+  // Sauvegarder le viewport quand l'utilisateur arrête de pan/zoom
+  const handleMoveEnd = useCallback(() => {
+    save();
+  }, [save]);
+
   // Calculer la couleur des points de la grille en fonction du fond
   const gridColor = (() => {
     // Convertir hex en luminosité approximative
@@ -1171,19 +1194,30 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               onConnectEnd={handleConnectEnd}
               onDrop={handleMediaLibraryDrop}
               onDragOver={handleDragOver}
+              onMoveEnd={handleMoveEnd}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               isValidConnection={isValidConnection}
               connectionLineComponent={ConnectionLine}
               panOnScroll
+              panOnScrollSpeed={1.5}
               fitView={!initialViewport}
               defaultViewport={initialViewport}
               zoomOnDoubleClick={false}
-              panOnDrag={false}
+              panOnDrag={[1, 2]}
               selectionOnDrag={true}
               onDoubleClick={addDropNode}
               minZoom={0.02}
               maxZoom={4}
+              zoomOnScroll={true}
+              zoomOnPinch={true}
+              preventScrolling={true}
+              elevateNodesOnSelect={false}
+              elevateEdgesOnSelect={false}
+              nodesDraggable={true}
+              nodesConnectable={true}
+              nodesFocusable={false}
+              edgesFocusable={false}
               style={{ '--canvas-bg-color': canvasBgColor } as React.CSSProperties}
               proOptions={{ hideAttribution: true }}
               {...rest}
