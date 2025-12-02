@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -258,7 +258,7 @@ const CollectionGallery = ({
   return (
     <div
       ref={scrollRef}
-      className="p-3 max-h-[380px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+      className="nowheel p-3 max-h-[380px] overflow-y-auto"
     >
       <div className={cn(
         'gap-2',
@@ -574,7 +574,7 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
   }, [id, data.label, items, presets, updateNodeData]);
 
   return (
-    <div className="relative">
+    <div className="relative collection-node-wrapper">
       {/* Tooltip automatique en zoom out (collapsed uniquement) */}
       {collapsed && (
         <div
@@ -595,7 +595,7 @@ export const CollectionNode = ({ id, data, selected }: CollectionNodeProps) => {
       
       <div
         className={cn(
-          'rounded-xl overflow-hidden bg-card shadow-lg transition-all',
+          'rounded-xl overflow-hidden bg-card shadow-lg transition-all collection-node-content',
           collapsed ? 'w-[180px]' : 'w-[380px]',
           selected && 'ring-2 ring-primary'
         )}

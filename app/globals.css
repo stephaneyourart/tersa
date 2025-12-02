@@ -417,6 +417,8 @@ html, body {
   overscroll-behavior-y: none !important;
 }
 
+
+
 /* Transitions fluides pour le zoom */
 .react-flow__renderer {
   transition: none !important;
@@ -441,3 +443,4 @@ html, body {
   will-change: transform;
   transform: translateZ(0);
 }
+

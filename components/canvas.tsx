@@ -1166,6 +1166,79 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     save();
   }, [save]);
 
+  // ============================================
+  // GESTION DU SCROLL/ZOOM - Solution définitive
+  // ============================================
+  // Principe : par défaut, la molette ZOOME le canvas.
+  // Après un CLIC sur un nœud, le scroll interne est activé sur ce nœud.
+  // Un clic ailleurs désactive le scroll interne.
+  const scrollActiveNodeId = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Quand on clique sur un nœud, activer le scroll interne pour ce nœud
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const nodeElement = target.closest('.react-flow__node');
+      
+      if (nodeElement) {
+        const nodeId = nodeElement.getAttribute('data-id');
+        scrollActiveNodeId.current = nodeId;
+      } else {
+        // Clic en dehors d'un nœud
+        scrollActiveNodeId.current = null;
+      }
+    };
+
+    // Intercepter le wheel pour décider : zoom ou scroll interne
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Trouver si on est dans un nœud
+      const nodeElement = target.closest('.react-flow__node');
+      if (!nodeElement) return; // Pas dans un nœud, laisser React Flow gérer (zoom)
+      
+      const nodeId = nodeElement.getAttribute('data-id');
+      
+      // Si ce nœud n'est PAS le nœud actif (cliqué), bloquer le scroll interne
+      if (nodeId !== scrollActiveNodeId.current) {
+        // Vérifier si on est dans un élément .nowheel (zone scrollable)
+        const nowheelElement = target.closest('.nowheel');
+        if (nowheelElement) {
+          // Bloquer le comportement par défaut de nowheel (qui permet le scroll)
+          // En stoppant la propagation, React Flow ne verra pas l'événement
+          // et le scroll interne sera bloqué
+          e.stopPropagation();
+          
+          // Simuler un zoom en dispatchant un nouvel événement sur le pane
+          const pane = document.querySelector('.react-flow__pane');
+          if (pane) {
+            const newEvent = new WheelEvent('wheel', {
+              deltaX: e.deltaX,
+              deltaY: e.deltaY,
+              deltaMode: e.deltaMode,
+              clientX: e.clientX,
+              clientY: e.clientY,
+              ctrlKey: e.ctrlKey,
+              metaKey: e.metaKey,
+              bubbles: true,
+              cancelable: true,
+            });
+            pane.dispatchEvent(newEvent);
+          }
+        }
+      }
+      // Si c'est le nœud actif, laisser le scroll interne fonctionner normalement
+    };
+
+    document.addEventListener('mousedown', handleMouseDown, { capture: true });
+    document.addEventListener('wheel', handleWheel, { capture: true });
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown, { capture: true });
+      document.removeEventListener('wheel', handleWheel, { capture: true });
+    };
+  }, []);
+
   // Calculer la couleur des points de la grille en fonction du fond
   const gridColor = (() => {
     // Convertir hex en luminosité approximative
