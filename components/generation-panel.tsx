@@ -233,7 +233,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         body: JSON.stringify({
           nodeId,
           prompt,
-          model: 'kling-2.1-image-to-video',
+          model: 'kling-o1-i2v',
           copies: videoCopies,
           projectId: projectId,
           images, // Passer les images des collections

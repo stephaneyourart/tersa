@@ -301,34 +301,34 @@ function createPlanStructure(
     height: LAYOUT.VIDEO_NODE_HEIGHT,
   });
 
-  // 3. Edges : collections → text → video
-  // Collections personnages → text
+  // 3. Edges : collections → video + text (prompt) → video
+  // Collections personnages → video (directement)
   for (const charRef of plan.characterRefs) {
     const collectionId = structure.characterCollectionIds[charRef];
     if (collectionId) {
       structure.edges.push({
-        id: `edge-${collectionId}-${textNodeId}-${nanoid(4)}`,
+        id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
         source: collectionId,
-        target: textNodeId,
+        target: videoNodeId,
         type: 'default',
       });
     }
   }
 
-  // Collection lieu → text
+  // Collection lieu → video (directement)
   if (plan.locationRef) {
     const collectionId = structure.locationCollectionIds[plan.locationRef];
     if (collectionId) {
       structure.edges.push({
-        id: `edge-${collectionId}-${textNodeId}-${nanoid(4)}`,
+        id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
         source: collectionId,
-        target: textNodeId,
+        target: videoNodeId,
         type: 'default',
       });
     }
   }
 
-  // Text → video
+  // Text (prompt) → video
   structure.edges.push({
     id: `edge-${textNodeId}-${videoNodeId}`,
     source: textNodeId,

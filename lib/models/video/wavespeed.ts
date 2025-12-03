@@ -8,8 +8,8 @@ import type { VideoModel } from '.';
 // Mapping des modelId courts vers les chemins API complets
 const MODEL_PATH_MAP: Record<string, string> = {
   // Kling O1 (nouveau modèle)
-  'kling-o1': 'kwaivgi/kling-o1-video-edit/text-to-video',
-  'kling-o1-i2v': 'kwaivgi/kling-o1-video-edit/image-to-video',
+  'kling-o1': 'kwaivgi/kling-video-o1/text-to-video',
+  'kling-o1-i2v': 'kwaivgi/kling-video-o1/image-to-video',
   // Kling 2.5
   'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',

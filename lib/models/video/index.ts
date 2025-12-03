@@ -437,6 +437,30 @@ export const videoModels: Record<string, TersaVideoModel> = {
     default: true,
   },
 
+  'kling-o1': {
+    label: 'Kling O1 Text-to-Video (WaveSpeed)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.klingO1(),
+        getCost: ({ duration }) => 0.05 * duration,
+      },
+    ],
+  },
+
+  'kling-o1-i2v': {
+    label: 'Kling O1 Image-to-Video (WaveSpeed)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.klingO1I2V(),
+        getCost: ({ duration }) => 0.05 * duration,
+      },
+    ],
+  },
+
   'seedream-v1': {
     label: 'Seedream v1',
     chef: providers.fal,

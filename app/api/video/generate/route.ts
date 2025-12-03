@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const { 
       nodeId, 
       prompt, 
-      model = 'kling-2.1-image-to-video',
+      model = 'kling-o1-i2v',
       projectId,
       images = [],
       copies = 1,
