@@ -276,36 +276,18 @@ export async function POST(request: NextRequest) {
             message: `🔗 ${canvasData.edges.length} connexions créées`,
           })));
 
-          // Créer le projet local
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-          const createResponse = await fetch(`${baseUrl}/api/local-project`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: projectName,
-              data: {
-                ...canvasData,
-                generationSequence, // Inclure la séquence pour le panneau de génération
-              },
-            }),
-          });
-
-          if (!createResponse.ok) {
-            // Fallback : créer le projet directement côté client
-            controller.enqueue(encoder.encode(sseEvent('project_data', { 
-              projectName,
-              canvasData: {
-                nodes: canvasData.nodes,
-                edges: canvasData.edges,
-                viewport: canvasData.viewport,
-              },
-              projectStructure,
-              generationSequence,
-            })));
-          }
-
-          const projectResult = await createResponse.json().catch(() => null);
-          const projectId = projectResult?.project?.id;
+          // IMPORTANT: Le projet est créé côté CLIENT (localStorage)
+          // L'API envoie les données, le client les stocke
+          controller.enqueue(encoder.encode(sseEvent('project_data', { 
+            projectName,
+            canvasData: {
+              nodes: canvasData.nodes,
+              edges: canvasData.edges,
+              viewport: canvasData.viewport,
+            },
+            projectStructure,
+            generationSequence,
+          })));
 
           controller.enqueue(encoder.encode(sseEvent('phase_complete', { 
             phase: 'canvas_creation',
@@ -316,7 +298,6 @@ export async function POST(request: NextRequest) {
 
           // ========== RÉSUMÉ FINAL ==========
           const summary = {
-            projectId,
             projectName,
             characters: projectStructure.characters.length,
             locations: projectStructure.locations.length,
@@ -332,7 +313,6 @@ export async function POST(request: NextRequest) {
 
           controller.enqueue(encoder.encode(sseEvent('complete', { 
             message: '🎉 Projet généré avec succès !',
-            projectId,
             summary,
             generationSequence,
           })));

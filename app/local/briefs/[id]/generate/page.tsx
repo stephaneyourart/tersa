@@ -211,6 +211,7 @@ export default function GenerateProjectPage() {
       let projectStructure: any = null;
       let buffer = '';
       let generationSequenceData: any = null;
+      let createdProjectId: string | null = null;
 
       // Fonction pour traiter une ligne SSE
       const processLine = (line: string) => {
@@ -246,13 +247,34 @@ export default function GenerateProjectPage() {
               break;
 
             case 'project_data':
-              // Fallback si l'API n'a pas pu créer le projet
+              // ========== CRÉATION DU PROJET DÈS RÉCEPTION DES DONNÉES ==========
+              // C'est le moment clé : on crée immédiatement le projet dans localStorage
               canvasData = data.canvasData;
               projectStructure = data.projectStructure;
-              // Stocker aussi la séquence de génération
-              if (data.generationSequence) {
-                canvasData.generationSequence = data.generationSequence;
-                generationSequenceData = data.generationSequence;
+              generationSequenceData = data.generationSequence;
+              
+              if (canvasData) {
+                setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
+                const newProject = createLocalProject(projectName);
+                
+                // Inclure la séquence de génération dans les données du projet
+                updateLocalProject(newProject.id, { 
+                  data: {
+                    ...canvasData,
+                    generationSequence: generationSequenceData,
+                  }
+                });
+                
+                createdProjectId = newProject.id;
+                setReasoning(prev => prev + `✅ Projet créé : ${createdProjectId}\n`);
+                
+                if (generationSequenceData) {
+                  const imgCount = 
+                    (generationSequenceData.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) || 0) +
+                    (generationSequenceData.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0) || 0);
+                  const vidCount = generationSequenceData.videos?.length || 0;
+                  setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
+                }
               }
               break;
 
@@ -277,40 +299,15 @@ export default function GenerateProjectPage() {
                 }
               }
 
-              // Stocker la séquence de génération
-              const generationSequence = data.generationSequence || generationSequenceData;
-
-              // Toujours créer le projet côté client (localStorage)
-              // L'API ne peut pas accéder à localStorage, donc on le fait ici
-              let projectId: string | null = null;
-              
-              if (canvasData) {
-                setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
-                const newProject = createLocalProject(projectName);
-                // Inclure la séquence de génération dans les données du projet
-                updateLocalProject(newProject.id, { 
-                  data: {
-                    ...canvasData,
-                    generationSequence,
-                  }
-                });
-                projectId = newProject.id;
-                setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
-                if (generationSequence) {
-                  const imgCount = 
-                    (generationSequence.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) || 0) +
-                    (generationSequence.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0) || 0);
-                  const vidCount = generationSequence.videos?.length || 0;
-                  setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
-                }
-              }
-
-              if (projectId) {
+              // Redirection vers le canvas (le projet a déjà été créé dans project_data)
+              if (createdProjectId) {
                 setReasoning(prev => prev + `\n🎨 Ouverture du canvas dans 2 secondes...`);
                 setPhaseStatus(prev => ({ ...prev, redirect: 'done' }));
                 setTimeout(() => {
-                  router.push(`/local/canvas/${projectId}`);
+                  router.push(`/local/canvas/${createdProjectId}`);
                 }, 2000);
+              } else {
+                setReasoning(prev => prev + `\n⚠️ Projet non créé, vérifiez les logs.`);
               }
               break;
 
