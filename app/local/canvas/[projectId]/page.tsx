@@ -6,6 +6,7 @@ import { LocalCanvasHeader } from '@/components/local-canvas-header';
 import { Toolbar } from '@/components/toolbar';
 import { CleanupDialogWrapper } from '@/components/cleanup-dialog-wrapper';
 import { MediaLibrarySidebar } from '@/components/media-library-sidebar';
+import { GenerationPanel } from '@/components/generation-panel';
 import { getLocalProjectById, updateLocalProject } from '@/lib/local-projects-store';
 import { registerProjectMediaReferences } from '@/lib/media-references';
 import { ProjectProvider } from '@/providers/project';
@@ -154,6 +155,7 @@ export default function LocalCanvasPage() {
             <Controls />
             <Toolbar />
             <CleanupDialogWrapper />
+            <GenerationPanel projectId={projectId} />
           </Canvas>
           <MediaLibrarySidebar />
         </div>

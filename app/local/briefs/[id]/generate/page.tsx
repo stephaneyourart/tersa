@@ -37,7 +37,7 @@ import {
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
-import { createLocalProject, updateLocalProject } from '@/lib/local-projects-store';
+import { createLocalProject, updateLocalProject, getLocalProjectById } from '@/lib/local-projects-store';
 import type { Brief, ProjectGenerationConfig, ReasoningLevel } from '@/types/brief';
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant IA expert en création de scénarios vidéo.
@@ -255,6 +255,10 @@ export default function GenerateProjectPage() {
                 // Fallback si l'API n'a pas pu créer le projet
                 canvasData = data.canvasData;
                 projectStructure = data.projectStructure;
+                // Stocker aussi la séquence de génération
+                if (data.generationSequence) {
+                  canvasData.generationSequence = data.generationSequence;
+                }
                 break;
 
               case 'complete':
@@ -270,7 +274,16 @@ export default function GenerateProjectPage() {
                   setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
                   setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
                   setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
+                  if (s.imagesToGenerate) {
+                    setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer\n`);
+                  }
+                  if (s.videosToGenerate) {
+                    setReasoning(prev => prev + `   • ${s.videosToGenerate} vidéos à générer\n`);
+                  }
                 }
+
+                // Stocker la séquence de génération
+                const generationSequence = data.generationSequence;
 
                 // Si on a reçu les données mais pas le projectId, créer le projet côté client
                 let projectId = data.projectId;
@@ -278,9 +291,26 @@ export default function GenerateProjectPage() {
                 if (!projectId && canvasData) {
                   setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
                   const newProject = createLocalProject(projectName);
-                  updateLocalProject(newProject.id, { data: canvasData });
+                  // Inclure la séquence de génération dans les données du projet
+                  updateLocalProject(newProject.id, { 
+                    data: {
+                      ...canvasData,
+                      generationSequence,
+                    }
+                  });
                   projectId = newProject.id;
                   setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
+                } else if (projectId && generationSequence) {
+                  // Mettre à jour le projet existant avec la séquence
+                  const existingProject = getLocalProjectById(projectId);
+                  if (existingProject) {
+                    updateLocalProject(projectId, {
+                      data: {
+                        ...existingProject.data,
+                        generationSequence,
+                      }
+                    });
+                  }
                 }
 
                 if (projectId) {
