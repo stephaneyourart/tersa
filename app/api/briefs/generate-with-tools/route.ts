@@ -113,6 +113,10 @@ export async function POST(request: NextRequest) {
             messages,
             tools: BRIEF_GENERATION_TOOLS,
             tool_choice: 'auto',
+            stream: true, // ACTIVER LE STREAMING
+            stream_options: {
+              include_usage: true,
+            },
           }),
         });
 
@@ -120,13 +124,80 @@ export async function POST(request: NextRequest) {
           throw new Error(`OpenAI error: ${response.statusText}`);
         }
 
-        const data = await response.json();
-        const message = data.choices[0].message;
-
-        // Envoyer le raisonnement si disponible
-        if (message.content) {
-          await sendEvent('reasoning', { content: message.content });
+        // Lire le stream SSE de OpenAI
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Pas de reader');
         }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentMessage: any = {
+          role: 'assistant',
+          content: '',
+          tool_calls: [],
+        };
+        let currentToolCall: any = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim() || line === 'data: [DONE]') continue;
+            if (!line.startsWith('data: ')) continue;
+
+            try {
+              const data = JSON.parse(line.slice(6));
+              const delta = data.choices?.[0]?.delta;
+
+              if (!delta) continue;
+
+              // Stream du contenu (raisonnement)
+              if (delta.content) {
+                currentMessage.content += delta.content;
+                // ENVOYER LE RAISONNEMENT EN TEMPS RÉEL
+                await sendEvent('reasoning_stream', { chunk: delta.content });
+              }
+
+              // Tool calls
+              if (delta.tool_calls) {
+                for (const toolCallDelta of delta.tool_calls) {
+                  const index = toolCallDelta.index;
+                  
+                  if (!currentMessage.tool_calls[index]) {
+                    currentMessage.tool_calls[index] = {
+                      id: toolCallDelta.id || '',
+                      type: 'function',
+                      function: {
+                        name: toolCallDelta.function?.name || '',
+                        arguments: '',
+                      },
+                    };
+                  }
+
+                  if (toolCallDelta.function?.name) {
+                    currentMessage.tool_calls[index].function.name = toolCallDelta.function.name;
+                  }
+                  if (toolCallDelta.function?.arguments) {
+                    currentMessage.tool_calls[index].function.arguments += toolCallDelta.function.arguments;
+                  }
+                  if (toolCallDelta.id) {
+                    currentMessage.tool_calls[index].id = toolCallDelta.id;
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Erreur parse SSE OpenAI:', e);
+            }
+          }
+        }
+
+        const message = currentMessage;
 
         // Si pas de tool calls, on a fini
         if (!message.tool_calls || message.tool_calls.length === 0) {

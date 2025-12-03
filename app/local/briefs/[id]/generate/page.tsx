@@ -250,12 +250,15 @@ export default function GenerateProjectPage() {
               
               // Gérer les différents types d'événements
               if (data.step === 'init' || data.step === 'analyzing') {
-                setReasoning(prev => prev + `\n📊 ${data.message}\n`);
+                setReasoning(prev => prev + `${data.message}\n\n`);
+              } else if (data.chunk) {
+                // STREAM DU RAISONNEMENT EN TEMPS RÉEL
+                setReasoning(prev => prev + data.chunk);
               } else if (data.content) {
-                setReasoning(prev => prev + `\n🧠 ${data.content}\n`);
+                setReasoning(prev => prev + data.content);
               } else if (data.toolName) {
                 if (data.params) {
-                  setReasoning(prev => prev + `\n🛠️  ${data.toolName}(...)\n`);
+                  setReasoning(prev => prev + `\n\n🛠️  ${data.toolName}(${JSON.stringify(data.params, null, 2).substring(0, 100)}...)\n`);
                 } else if (data.success !== undefined) {
                   if (data.success) {
                     setReasoning(prev => prev + `   ✅ ${data.data?.message || 'Succès'}\n`);
