@@ -6,13 +6,14 @@ import { eq } from 'drizzle-orm';
 // GET /api/briefs/[id] - Récupérer un brief
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const [brief] = await database
       .select()
       .from(briefs)
-      .where(eq(briefs.id, params.id));
+      .where(eq(briefs.id, id));
 
     if (!brief) {
       return NextResponse.json(
@@ -25,7 +26,7 @@ export async function GET(
     const docs = await database
       .select()
       .from(briefDocuments)
-      .where(eq(briefDocuments.briefId, params.id));
+      .where(eq(briefDocuments.briefId, id));
 
     return NextResponse.json({
       ...brief,
@@ -43,9 +44,10 @@ export async function GET(
 // PATCH /api/briefs/[id] - Mettre à jour un brief
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
 
     const [updated] = await database
@@ -58,7 +60,7 @@ export async function PATCH(
         status: body.status,
         updatedAt: new Date(),
       })
-      .where(eq(briefs.id, params.id))
+      .where(eq(briefs.id, id))
       .returning();
 
     if (!updated) {
@@ -73,14 +75,14 @@ export async function PATCH(
       // Supprimer les anciens documents
       await database
         .delete(briefDocuments)
-        .where(eq(briefDocuments.briefId, params.id));
+        .where(eq(briefDocuments.briefId, id));
 
       // Insérer les nouveaux
       if (body.documents.length > 0) {
         await database.insert(briefDocuments).values(
           body.documents.map((doc: any) => ({
             id: doc.id,
-            briefId: params.id,
+            briefId: id,
             name: doc.name,
             type: doc.type,
             mimeType: doc.mimeType,
@@ -110,18 +112,19 @@ export async function PATCH(
 // DELETE /api/briefs/[id] - Supprimer un brief
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     // Supprimer d'abord les documents
     await database
       .delete(briefDocuments)
-      .where(eq(briefDocuments.briefId, params.id));
+      .where(eq(briefDocuments.briefId, id));
 
     // Puis le brief
     await database
       .delete(briefs)
-      .where(eq(briefs.id, params.id));
+      .where(eq(briefs.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

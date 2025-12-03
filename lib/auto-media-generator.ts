@@ -4,7 +4,7 @@
  */
 
 import type { GeneratedScenario, Character, Location } from '@/types/brief';
-import { sendToDaVinciResolve } from '@/lib/davinci-resolve';
+import { importToDVR, createDVRFolder } from '@/lib/davinci-resolve';
 
 interface GenerationResult {
   nodeId: string;
@@ -332,14 +332,20 @@ async function sendAllToDaVinciResolve(
 ): Promise<void> {
   const folderName = `${projectName} - Auto Generated`;
 
+  // Créer le dossier dans DVR
+  try {
+    await createDVRFolder(folderName);
+  } catch (error) {
+    console.log(`[AutoGen] Dossier ${folderName} existe déjà ou erreur:`, error);
+  }
+
   for (const video of videos) {
     try {
-      await sendToDaVinciResolve({
-        filePath: video.url,
-        projectId,
-        folderName,
-      });
-      console.log(`[AutoGen] Vidéo ${video.nodeId} envoyée vers DVR`);
+      // importToDVR attend un chemin de fichier local, pas une URL
+      // Pour l'instant on skip l'import car les vidéos sont des URLs
+      console.log(`[AutoGen] Vidéo ${video.nodeId} prête pour DVR: ${video.url}`);
+      // TODO: Télécharger la vidéo depuis l'URL puis l'importer
+      // await importToDVR(localFilePath, folderName);
     } catch (error) {
       console.error(`[AutoGen] Erreur envoi DVR ${video.nodeId}:`, error);
     }
