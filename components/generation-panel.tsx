@@ -552,10 +552,11 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
               updateStep(dvrStepId, { status: 'generating' });
               setCurrentStep(++stepIdx);
 
-            const dvrSuccess = await sendVideoToDVR(videoNodeId);
-            updateStep(dvrStepId, { status: dvrSuccess ? 'done' : 'error' });
-            if (dvrSuccess) successCount++;
-            else errorCount++;
+              const dvrSuccess = await sendVideoToDVR(videoNodeId);
+              updateStep(dvrStepId, { status: dvrSuccess ? 'done' : 'error' });
+              if (dvrSuccess) successCount++;
+              else errorCount++;
+            }
           }
         }
       }
