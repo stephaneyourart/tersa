@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { database } from '@/lib/database';
 import { briefs, briefDocuments } from '@/schema';
 import { eq } from 'drizzle-orm';
 
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const userId = 'local-user'; // TODO: Récupérer depuis l'auth
     
-    const allBriefs = await db
+    const allBriefs = await database
       .select()
       .from(briefs)
       .where(eq(briefs.userId, userId))
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     // Charger les documents pour chaque brief
     const briefsWithDocs = await Promise.all(
       allBriefs.map(async (brief) => {
-        const docs = await db
+        const docs = await database
           .select()
           .from(briefDocuments)
           .where(eq(briefDocuments.briefId, brief.id));
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const userId = 'local-user'; // TODO: Récupérer depuis l'auth
 
-    const [newBrief] = await db
+    const [newBrief] = await database
       .insert(briefs)
       .values({
         name: body.name,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Insérer les documents s'il y en a
     if (body.documents && body.documents.length > 0) {
-      await db.insert(briefDocuments).values(
+      await database.insert(briefDocuments).values(
         body.documents.map((doc: any) => ({
           ...doc,
           briefId: newBrief.id,

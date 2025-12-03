@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { database } from '@/lib/database';
 import { briefs, briefDocuments } from '@/schema';
 import { eq } from 'drizzle-orm';
 
@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const [brief] = await db
+    const [brief] = await database
       .select()
       .from(briefs)
       .where(eq(briefs.id, params.id));
@@ -22,7 +22,7 @@ export async function GET(
     }
 
     // Charger les documents
-    const docs = await db
+    const docs = await database
       .select()
       .from(briefDocuments)
       .where(eq(briefDocuments.briefId, params.id));
@@ -48,7 +48,7 @@ export async function PATCH(
   try {
     const body = await request.json();
 
-    const [updated] = await db
+    const [updated] = await database
       .update(briefs)
       .set({
         name: body.name,
@@ -71,13 +71,13 @@ export async function PATCH(
     // Mettre à jour les documents si nécessaire
     if (body.documents) {
       // Supprimer les anciens documents
-      await db
+      await database
         .delete(briefDocuments)
         .where(eq(briefDocuments.briefId, params.id));
 
       // Insérer les nouveaux
       if (body.documents.length > 0) {
-        await db.insert(briefDocuments).values(
+        await database.insert(briefDocuments).values(
           body.documents.map((doc: any) => ({
             ...doc,
             briefId: params.id,
@@ -103,12 +103,12 @@ export async function DELETE(
 ) {
   try {
     // Supprimer d'abord les documents
-    await db
+    await database
       .delete(briefDocuments)
       .where(eq(briefDocuments.briefId, params.id));
 
     // Puis le brief
-    await db
+    await database
       .delete(briefs)
       .where(eq(briefs.id, params.id));
 

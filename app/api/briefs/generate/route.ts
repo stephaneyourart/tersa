@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { database } from '@/lib/database';
 import { briefs, projectGenerationConfigs } from '@/schema';
 import { eq } from 'drizzle-orm';
 import { generateProjectFromBrief } from '@/lib/brief-generator';
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     console.log('[Generate] Démarrage génération pour brief:', briefId);
 
     // Charger le brief
-    const [brief] = await db
+    const [brief] = await database
       .select()
       .from(briefs)
       .where(eq(briefs.id, briefId));
@@ -27,13 +27,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Marquer le brief comme "generating"
-    await db
+    await database
       .update(briefs)
       .set({ status: 'generating' })
       .where(eq(briefs.id, briefId));
 
     // Sauvegarder la config
-    const [savedConfig] = await db
+    const [savedConfig] = await database
       .insert(projectGenerationConfigs)
       .values({
         briefId,
@@ -61,13 +61,13 @@ export async function POST(request: NextRequest) {
       });
 
       // Mettre à jour la config avec le projectId
-      await db
+      await database
         .update(projectGenerationConfigs)
         .set({ projectId: result.projectId })
         .where(eq(projectGenerationConfigs.id, savedConfig.id));
 
       // Marquer le brief comme "completed"
-      await db
+      await database
         .update(briefs)
         .set({ status: 'completed' })
         .where(eq(briefs.id, briefId));
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       console.error('[Generate] Erreur génération:', error);
       
       // Réinitialiser le statut du brief
-      await db
+      await database
         .update(briefs)
         .set({ status: 'draft' })
         .where(eq(briefs.id, briefId));
