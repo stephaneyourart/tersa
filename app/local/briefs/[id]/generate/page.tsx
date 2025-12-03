@@ -288,11 +288,12 @@ export default function GenerateProjectPage() {
         }
       }
 
-      // Rediriger vers le projet
+      // Rediriger vers le canvas du projet
       if (projectId) {
+        setReasoning(prev => prev + `\n\n🎨 Ouverture du canvas...`);
         setTimeout(() => {
           router.push(`/local/canvas/${projectId}`);
-        }, 2000);
+        }, 1500);
       }
     } catch (error: any) {
       console.error('Erreur:', error);
