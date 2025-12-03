@@ -75,61 +75,6 @@ function nodeId(prefix: string): string {
   return `${prefix}-${nanoid(8)}`;
 }
 
-// ========== HELPER: Convertir texte en format Tiptap ==========
-function textToTiptapContent(text: string): object {
-  // Convertir le markdown basique en paragraphes Tiptap
-  const lines = text.split('\n');
-  const content: any[] = [];
-  
-  for (const line of lines) {
-    if (line.trim() === '') {
-      // Paragraphe vide
-      content.push({ type: 'paragraph' });
-    } else if (line.startsWith('# ')) {
-      // Titre H1
-      content.push({
-        type: 'heading',
-        attrs: { level: 1 },
-        content: [{ type: 'text', text: line.slice(2) }],
-      });
-    } else if (line.startsWith('## ')) {
-      // Titre H2
-      content.push({
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: line.slice(3) }],
-      });
-    } else if (line.startsWith('### ')) {
-      // Titre H3
-      content.push({
-        type: 'heading',
-        attrs: { level: 3 },
-        content: [{ type: 'text', text: line.slice(4) }],
-      });
-    } else if (line.startsWith('📷 *') && line.endsWith('*')) {
-      // Texte italique avec emoji
-      content.push({
-        type: 'paragraph',
-        content: [
-          { type: 'text', text: '📷 ' },
-          { type: 'text', marks: [{ type: 'italic' }], text: line.slice(4, -1) },
-        ],
-      });
-    } else {
-      // Paragraphe normal
-      content.push({
-        type: 'paragraph',
-        content: [{ type: 'text', text: line }],
-      });
-    }
-  }
-  
-  return {
-    type: 'doc',
-    content: content.length > 0 ? content : [{ type: 'paragraph' }],
-  };
-}
-
 // ========== HELPER: Enrichir prompt personnage avec fond noir ==========
 function enrichCharacterPrompt(originalPrompt: string, viewType: 'fullBody' | 'face' | 'profile' | 'back'): string {
   // Ajouter le préfixe et suffixe pour fond noir et expression neutre
@@ -227,13 +172,16 @@ function createCharacterStructure(
   const textContent = `# ${character.name}\n\n${character.description}\n\n**Code référence:** ${character.referenceCode}`;
   
   // 1. Nœud TEXT (description)
+  // IMPORTANT: TextTransform utilise data.generated.text pour afficher le texte
   structure.textNodes.push({
     id: textNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: textContent,
-      content: textToTiptapContent(textContent),
+      generated: {
+        text: textContent,
+      },
+      updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
@@ -342,13 +290,16 @@ function createLocationStructure(
   const textContent = `# ${location.name}\n\n${location.description}\n\n**Code référence:** ${location.referenceCode}`;
 
   // 1. Nœud TEXT
+  // IMPORTANT: TextTransform utilise data.generated.text pour afficher le texte
   structure.textNodes.push({
     id: textNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: textContent,
-      content: textToTiptapContent(textContent),
+      generated: {
+        text: textContent,
+      },
+      updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
@@ -446,13 +397,16 @@ function createPlanStructure(
   const textContent = `## Plan ${scene.sceneNumber}.${plan.planNumber}\n\n${plan.prompt}${plan.cameraMovement ? `\n\n📷 *${plan.cameraMovement}*` : ''}`;
 
   // 1. Nœud TEXT (prompt du plan)
+  // IMPORTANT: TextTransform utilise data.generated.text pour afficher le texte
   structure.textNodes.push({
     id: textNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: textContent,
-      content: textToTiptapContent(textContent),
+      generated: {
+        text: textContent,
+      },
+      updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
