@@ -61,8 +61,19 @@ export async function POST(request: NextRequest) {
     if (body.documents && body.documents.length > 0) {
       await database.insert(briefDocuments).values(
         body.documents.map((doc: any) => ({
-          ...doc,
+          id: doc.id,
           briefId: newBrief.id,
+          name: doc.name,
+          type: doc.type,
+          mimeType: doc.mimeType,
+          size: doc.size,
+          storagePath: doc.storagePath || '',
+          url: doc.url || '',
+          content: doc.content,
+          tokens: doc.tokens,
+          metadata: doc.metadata,
+          // Convertir la date string en Date si nécessaire
+          createdAt: doc.createdAt ? new Date(doc.createdAt) : new Date(),
         }))
       );
     }
