@@ -261,10 +261,19 @@ export async function POST(request: NextRequest) {
 
           // Générer les nœuds du canvas
           const canvasData = generateCanvasFromProject(projectStructure);
+          
+          // Extraire la séquence de génération pour plus tard
+          const { getGenerationSequence } = await import('@/lib/brief-canvas-generator');
+          const generationSequence = getGenerationSequence(canvasData.structure);
 
           controller.enqueue(encoder.encode(sseEvent('progress', { 
             progress: 50,
             message: `📦 ${canvasData.nodes.length} nœuds créés`,
+          })));
+          
+          controller.enqueue(encoder.encode(sseEvent('progress', { 
+            progress: 60,
+            message: `🔗 ${canvasData.edges.length} connexions créées`,
           })));
 
           // Créer le projet local
@@ -282,8 +291,13 @@ export async function POST(request: NextRequest) {
             // Fallback : créer le projet directement côté client
             controller.enqueue(encoder.encode(sseEvent('project_data', { 
               projectName,
-              canvasData,
+              canvasData: {
+                nodes: canvasData.nodes,
+                edges: canvasData.edges,
+                viewport: canvasData.viewport,
+              },
               projectStructure,
+              generationSequence,
             })));
           }
 
@@ -307,12 +321,17 @@ export async function POST(request: NextRequest) {
             plans: projectStructure.totalPlans,
             nodes: canvasData.nodes.length,
             edges: canvasData.edges.length,
+            // Infos pour génération séquentielle
+            imagesToGenerate: generationSequence.characterImages.reduce((acc, c) => acc + c.imageNodeIds.length, 0) +
+                              generationSequence.locationImages.reduce((acc, l) => acc + l.imageNodeIds.length, 0),
+            videosToGenerate: generationSequence.videos.length,
           };
 
           controller.enqueue(encoder.encode(sseEvent('complete', { 
             message: '🎉 Projet généré avec succès !',
             projectId,
             summary,
+            generationSequence,
           })));
 
           controller.close();
