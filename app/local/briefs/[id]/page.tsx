@@ -124,10 +124,10 @@ export default function BriefEditPage() {
     });
   }, []);
 
-  const saveBrief = async () => {
+  const saveBrief = async (): Promise<string | null> => {
     if (!brief.name.trim()) {
       alert('Veuillez donner un nom à votre brief');
-      return;
+      return null;
     }
 
     setSaving(true);
@@ -144,16 +144,40 @@ export default function BriefEditPage() {
       if (response.ok) {
         const saved = await response.json();
         if (isNew) {
-          router.push(`/local/briefs/${saved.id}`);
+          // Retourner l'ID du brief créé
+          return saved.id;
         } else {
           setBrief(saved);
+          return params.id as string;
         }
       }
+      return null;
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
       alert('Erreur lors de la sauvegarde');
+      return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateProject = async () => {
+    if (!brief.name.trim()) {
+      alert('Veuillez donner un nom à votre brief');
+      return;
+    }
+
+    if (isOverLimit) {
+      alert('Le nombre de tokens dépasse la limite. Veuillez réduire le contenu.');
+      return;
+    }
+
+    // Sauvegarder d'abord
+    const briefId = await saveBrief();
+    
+    if (briefId) {
+      // Rediriger vers la page de génération
+      router.push(`/local/briefs/${briefId}/generate`);
     }
   };
 
@@ -275,7 +299,7 @@ export default function BriefEditPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground overflow-y-auto">
       {/* Header */}
       <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -295,25 +319,23 @@ export default function BriefEditPage() {
             <Button 
               variant="outline" 
               onClick={saveBrief}
-              disabled={saving}
+              disabled={saving || !brief.name.trim()}
             >
               {saving ? 'Sauvegarde...' : 'Sauvegarder'}
             </Button>
-            {!isNew && brief.status !== 'generating' && (
-              <Button 
-                onClick={() => router.push(`/local/briefs/${params.id}/generate`)}
-                className="gap-2"
-                disabled={isOverLimit}
-              >
-                <PlayIcon size={16} />
-                Générer le projet
-              </Button>
-            )}
+            <Button 
+              onClick={handleGenerateProject}
+              className="gap-2"
+              disabled={isOverLimit || !brief.name.trim() || saving}
+            >
+              <PlayIcon size={16} />
+              {saving ? 'Préparation...' : 'Générer le projet'}
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulaire principal */}
           <div className="lg:col-span-2 space-y-6">
