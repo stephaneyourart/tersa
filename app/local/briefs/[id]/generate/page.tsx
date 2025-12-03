@@ -156,7 +156,7 @@ export default function GenerateProjectPage() {
   const [showPromptDialog, setShowPromptDialog] = useState(false);
   
   const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
-    aiModel: 'gemini-3',
+    aiModel: 'gpt-4o',
     reasoningLevel: 'medium',
     generateMediaDirectly: false,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -294,9 +294,10 @@ export default function GenerateProjectPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gemini-3">Gemini 3 (Recommandé)</SelectItem>
-                    <SelectItem value="gemini-2-flash">Gemini 2 Flash (Rapide)</SelectItem>
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="gpt-4o">GPT-4o (Recommandé)</SelectItem>
+                    <SelectItem value="gpt-4o-mini">GPT-4o Mini (Rapide)</SelectItem>
+                    <SelectItem value="gemini-3">Gemini 3</SelectItem>
+                    <SelectItem value="gemini-2-flash">Gemini 2 Flash</SelectItem>
                     <SelectItem value="claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
                   </SelectContent>
                 </Select>

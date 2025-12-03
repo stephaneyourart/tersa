@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const {
       briefContext,
       systemPrompt,
-      model = 'gemini-3',
+      model = 'gpt-4o',
       reasoningLevel = 'medium',
       customInstructions,
     } = await request.json();
@@ -31,7 +31,14 @@ export async function POST(request: NextRequest) {
     let scenario: GeneratedScenario;
 
     if (model.startsWith('gemini')) {
-      scenario = await callGemini(fullPrompt, model, reasoningLevel);
+      // Vérifier si Gemini est configuré, sinon utiliser OpenAI
+      const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!geminiKey && process.env.OPENAI_API_KEY) {
+        console.log('[AI] Gemini non configuré, utilisation de GPT-4o à la place');
+        scenario = await callOpenAI(fullPrompt, 'gpt-4o');
+      } else {
+        scenario = await callGemini(fullPrompt, model, reasoningLevel);
+      }
     } else if (model.startsWith('gpt')) {
       scenario = await callOpenAI(fullPrompt, model);
     } else if (model.startsWith('claude')) {
