@@ -610,8 +610,8 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
         </Button>
       </SheetTrigger>
       
-      <SheetContent side="right" className="w-[400px] sm:w-[500px] flex flex-col">
-        <SheetHeader className="flex-shrink-0 pr-8">
+      <SheetContent side="right" className="w-[450px] sm:w-[540px] flex flex-col p-6">
+        <SheetHeader className="flex-shrink-0 pr-10">
           <SheetTitle className="flex items-center gap-2">
             <SparklesIcon className="text-violet-400" />
             Génération automatique
@@ -621,7 +621,7 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6 flex-1 overflow-y-auto pr-2">
+        <div className="mt-6 space-y-6 flex-1 overflow-y-auto pr-4">
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-lg bg-muted/30 p-3 text-center">
@@ -723,9 +723,9 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
                     )}
                   >
                     {getStepIcon(step)}
-                    <span className="truncate">{step.label}</span>
+                    <span className="flex-1">{step.label}</span>
                     {step.error && (
-                      <span className="text-xs text-red-400">{step.error}</span>
+                      <span className="text-xs text-red-400 ml-2">{step.error}</span>
                     )}
                   </div>
                 ))}

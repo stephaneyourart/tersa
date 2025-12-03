@@ -25,39 +25,39 @@ import { getSceneColor } from '@/types/generated-project';
 
 // ========== CONSTANTES DE LAYOUT AMÉLIORÉES ==========
 const LAYOUT = {
-  // Marges générales
-  MARGIN: 150,
-  SECTION_GAP: 200,        // Espace entre sections
+  // Marges générales - TRÈS ESPACÉ
+  MARGIN: 200,
+  SECTION_GAP: 400,        // Espace entre sections (doublé)
   
   // Zone personnages/lieux (colonne gauche)
-  LEFT_COLUMN_WIDTH: 1400,
-  CHARACTER_ROW_HEIGHT: 550, // Hauteur totale pour un personnage
-  LOCATION_ROW_HEIGHT: 350,  // Hauteur totale pour un lieu
+  LEFT_COLUMN_WIDTH: 2000,
+  CHARACTER_ROW_HEIGHT: 800, // Hauteur totale pour un personnage (augmenté)
+  LOCATION_ROW_HEIGHT: 500,  // Hauteur totale pour un lieu (augmenté)
   
   // Tailles des nœuds
-  TEXT_NODE_WIDTH: 350,
-  TEXT_NODE_HEIGHT: 300,     // Estimation pour éviter chevauchement
-  IMAGE_NODE_SIZE: 220,
-  COLLECTION_NODE_WIDTH: 400,
-  COLLECTION_NODE_HEIGHT: 300,
-  VIDEO_NODE_WIDTH: 450,
-  VIDEO_NODE_HEIGHT: 350,
+  TEXT_NODE_WIDTH: 400,
+  TEXT_NODE_HEIGHT: 350,     // Estimation pour éviter chevauchement
+  IMAGE_NODE_SIZE: 280,      // Images plus grandes
+  COLLECTION_NODE_WIDTH: 500,
+  COLLECTION_NODE_HEIGHT: 400,
+  VIDEO_NODE_WIDTH: 550,
+  VIDEO_NODE_HEIGHT: 450,
   
-  // Espacement entre nœuds
-  NODE_GAP_X: 60,
-  NODE_GAP_Y: 50,
+  // Espacement entre nœuds - TRÈS ESPACÉ
+  NODE_GAP_X: 120,           // Doublé
+  NODE_GAP_Y: 100,           // Doublé
   
-  // Zone scènes (colonne droite)
-  SCENES_START_X: 1800,
-  SCENE_GAP: 500,
-  SCENE_PADDING: 100,
-  PLAN_WIDTH: 950,
-  PLAN_HEIGHT: 400,
+  // Zone scènes (colonne droite) - Plus loin
+  SCENES_START_X: 2600,      // Plus décalé à droite
+  SCENE_GAP: 700,            // Plus d'espace entre scènes
+  SCENE_PADDING: 150,
+  PLAN_WIDTH: 1200,          // Plans plus larges
+  PLAN_HEIGHT: 550,          // Plans plus hauts
   PLANS_PER_ROW: 1,          // 1 plan par ligne pour plus de clarté
   
   // Titre de scène
-  SCENE_TITLE_FONT_SIZE: 100,
-  SCENE_TITLE_HEIGHT: 140,
+  SCENE_TITLE_FONT_SIZE: 120,
+  SCENE_TITLE_HEIGHT: 180,
   
   // Z-Index
   SHAPE_Z_INDEX: -1000,
