@@ -44,6 +44,7 @@ import {
   TrendingUpIcon,
   DatabaseIcon,
   Trash2Icon,
+  FileTextIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -336,6 +337,12 @@ export default function LocalProjectsPage() {
             Media Conductor
           </h1>
           <div className="flex items-center gap-3">
+            <Link href="/local/briefs">
+              <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
+                <FileTextIcon size={16} />
+                Briefs
+              </Button>
+            </Link>
             <Link href="/local/dashboard">
               <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
                 <BarChart3Icon size={16} />

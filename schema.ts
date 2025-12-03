@@ -93,3 +93,59 @@ export const nodeGroups = pgTable('node_group', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at'),
 });
+
+// ========================================
+// TABLES POUR LE SYSTÈME DE BRIEFS
+// ========================================
+
+/**
+ * Table des briefs
+ * Un brief est une collection de documents qui servira à générer un projet
+ */
+export const briefs = pgTable('brief', {
+  id: text('id').primaryKey().default(uuid).notNull(),
+  name: varchar('name').notNull(),
+  description: text('description'),
+  userId: varchar('user_id').notNull(),
+  totalTokens: integer('total_tokens').notNull().default(0),
+  estimatedCost: varchar('estimated_cost'),
+  status: varchar('status', { length: 20 }).notNull().default('draft'), // 'draft' | 'ready' | 'generating' | 'completed'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at'),
+});
+
+/**
+ * Table des documents d'un brief
+ * Stocke les métadonnées des fichiers uploadés (texte, PDF, images, vidéos)
+ */
+export const briefDocuments = pgTable('brief_document', {
+  id: text('id').primaryKey().default(uuid).notNull(),
+  briefId: text('brief_id').notNull(),
+  name: varchar('name').notNull(),
+  type: varchar('type', { length: 50 }).notNull(), // 'text' | 'pdf' | 'image' | 'video' | 'audio'
+  mimeType: varchar('mime_type'),
+  size: integer('size').notNull(),
+  storagePath: text('storage_path').notNull(), // Chemin dans Supabase Storage
+  url: text('url').notNull(),
+  content: text('content'), // Pour les textes directs
+  tokens: integer('tokens').notNull().default(0),
+  metadata: json('metadata'), // Dimensions, durée, etc.
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/**
+ * Table des configurations de génération de projet
+ * Sauvegarde les paramètres utilisés pour générer un projet à partir d'un brief
+ */
+export const projectGenerationConfigs = pgTable('project_generation_config', {
+  id: text('id').primaryKey().default(uuid).notNull(),
+  briefId: text('brief_id').notNull(),
+  projectId: text('project_id'), // Null tant que le projet n'est pas créé
+  aiModel: varchar('ai_model').notNull().default('gemini-3'), // gemini-3, gpt-4o, etc.
+  reasoningLevel: varchar('reasoning_level', { length: 20 }).notNull().default('medium'), // 'low' | 'medium' | 'high'
+  generateMediaDirectly: boolean('generate_media_directly').notNull().default(false),
+  systemPrompt: text('system_prompt').notNull(),
+  customInstructions: text('custom_instructions'),
+  settings: json('settings'), // Paramètres supplémentaires
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

@@ -7,7 +7,10 @@ import type { VideoModel } from '.';
 
 // Mapping des modelId courts vers les chemins API complets
 const MODEL_PATH_MAP: Record<string, string> = {
-  // Kling
+  // Kling O1 (nouveau modèle)
+  'kling-o1': 'kwaivgi/kling-o1-video-edit/text-to-video',
+  'kling-o1-i2v': 'kwaivgi/kling-o1-video-edit/image-to-video',
+  // Kling 2.5
   'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',
   'kling-v2.5-pro': 'kwaivgi/kling-v2.5-pro/image-to-video',
@@ -26,6 +29,8 @@ const MODEL_PATH_MAP: Record<string, string> = {
 
 // Types pour l'API WaveSpeed
 type WaveSpeedVideoModel =
+  | 'kling-o1'
+  | 'kling-o1-i2v'
   | 'kling-v2.5-turbo'
   | 'kling-v2.5-standard'
   | 'kling-v2.5-pro'
@@ -191,6 +196,10 @@ function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
  * Export des modèles WaveSpeed
  */
 export const wavespeed = {
+  // Kling O1 (nouveau modèle de raisonnement)
+  klingO1: (): VideoModel => createWaveSpeedModel('kling-o1'),
+  klingO1I2V: (): VideoModel => createWaveSpeedModel('kling-o1-i2v'),
+
   // Kling 2.5 via WaveSpeed
   kling25Turbo: (): VideoModel => createWaveSpeedModel('kling-v2.5-turbo'),
   kling25Standard: (): VideoModel => createWaveSpeedModel('kling-v2.5-standard'),
