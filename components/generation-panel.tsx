@@ -564,8 +564,8 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
         </Button>
       </SheetTrigger>
       
-      <SheetContent side="right" className="w-[400px] sm:w-[500px]">
-        <SheetHeader>
+      <SheetContent side="right" className="w-[400px] sm:w-[500px] flex flex-col">
+        <SheetHeader className="flex-shrink-0 pr-8">
           <SheetTitle className="flex items-center gap-2">
             <SparklesIcon className="text-violet-400" />
             Génération automatique
@@ -575,7 +575,7 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-6 flex-1 overflow-y-auto pr-2">
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-lg bg-muted/30 p-3 text-center">
@@ -664,7 +664,7 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
 
           {/* Liste des étapes */}
           {steps.length > 0 && (
-            <ScrollArea className="h-[300px] rounded-lg border border-border/50 p-3">
+            <ScrollArea className="max-h-[40vh] rounded-lg border border-border/50 p-3">
               <div className="space-y-1">
                 {steps.map((step) => (
                   <div
@@ -686,6 +686,9 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
               </div>
             </ScrollArea>
           )}
+          
+          {/* Spacer pour éviter que le contenu colle au bas */}
+          <div className="h-4" />
         </div>
       </SheetContent>
     </Sheet>

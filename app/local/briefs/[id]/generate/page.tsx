@@ -669,8 +669,8 @@ export default function GenerateProjectPage() {
 
       {/* Dialog Raisonnement IA */}
       <Dialog open={showReasoningDialog} onOpenChange={(open) => !generating && setShowReasoningDialog(open)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               🧠 Génération du projet
               {generating && <Loader2Icon size={16} className="animate-spin" />}
@@ -681,7 +681,7 @@ export default function GenerateProjectPage() {
           </DialogHeader>
 
           {/* Indicateurs de phases */}
-          <div className="flex items-center gap-6 py-3 px-4 bg-muted/30 rounded-lg">
+          <div className="flex-shrink-0 flex items-center gap-6 py-3 px-4 bg-muted/30 rounded-lg">
             <PhaseIndicator phase="analysis" label="Analyse" />
             <div className="h-px w-8 bg-border" />
             <PhaseIndicator phase="canvas" label="Canvas" />
@@ -689,12 +689,14 @@ export default function GenerateProjectPage() {
             <PhaseIndicator phase="redirect" label="Terminé" />
           </div>
           
-          <ScrollArea className="flex-1 min-h-[400px] w-full rounded-md border p-4 bg-black/20">
-            <pre className="text-sm whitespace-pre-wrap font-mono text-emerald-400/90">
-              {reasoning || 'En attente...'}
-              <div ref={reasoningEndRef} />
-            </pre>
-          </ScrollArea>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full max-h-[50vh] w-full rounded-md border p-4 bg-black/20">
+              <pre className="text-sm whitespace-pre-wrap font-mono text-emerald-400/90">
+                {reasoning || 'En attente...'}
+                <div ref={reasoningEndRef} />
+              </pre>
+            </ScrollArea>
+          </div>
           
           <DialogFooter>
             <Button 
