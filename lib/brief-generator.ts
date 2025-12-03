@@ -76,8 +76,9 @@ async function analyzeBreifWithAI(
   // Construire le contexte du brief
   const briefContext = buildBriefContext(brief);
 
-  // Appeler l'IA
-  const response = await fetch('/api/ai/analyze-brief', {
+  // Appeler l'IA directement (on est déjà côté serveur)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/api/ai/analyze-brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -90,7 +91,8 @@ async function analyzeBreifWithAI(
   });
 
   if (!response.ok) {
-    throw new Error(`Erreur IA: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Erreur IA: ${response.statusText} - ${errorText}`);
   }
 
   const scenario: GeneratedScenario = await response.json();
