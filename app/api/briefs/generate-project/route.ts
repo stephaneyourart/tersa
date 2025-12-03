@@ -283,7 +283,10 @@ export async function POST(request: NextRequest) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: projectName,
-              data: canvasData,
+              data: {
+                ...canvasData,
+                generationSequence, // Inclure la séquence pour le panneau de génération
+              },
             }),
           });
 
