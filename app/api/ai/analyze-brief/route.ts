@@ -9,8 +9,8 @@ export async function POST(request: NextRequest) {
     const {
       briefContext,
       systemPrompt,
-      model = 'gpt-4o',
-      reasoningLevel = 'medium',
+      model = 'gpt-5.1-2025-11-13',
+      reasoningLevel = 'high',
       customInstructions,
     } = await request.json();
 
@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
       // Vérifier si Gemini est configuré, sinon utiliser OpenAI
       const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
       if (!geminiKey && process.env.OPENAI_API_KEY) {
-        console.log('[AI] Gemini non configuré, utilisation de GPT-4o à la place');
-        scenario = await callOpenAI(fullPrompt, 'gpt-4o');
+        console.log('[AI] Gemini non configuré, utilisation de GPT-5.1 à la place');
+        scenario = await callOpenAI(fullPrompt, 'gpt-5.1-2025-11-13');
       } else {
         scenario = await callGemini(fullPrompt, model, reasoningLevel);
       }
