@@ -1,19 +1,11 @@
 'use client';
 
-import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
-import { ProjectSettingsDialog } from '@/components/project-settings';
 import { getLocalProjectById } from '@/lib/local-projects-store';
 import { useCleanupMode } from '@/providers/cleanup-mode';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { SettingsIcon, Trash2Icon, XIcon, CheckIcon, BrainCircuitIcon } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Trash2Icon, XIcon, CheckIcon } from 'lucide-react';
 
 interface LocalCanvasHeaderProps {
   projectId: string;
@@ -21,11 +13,9 @@ interface LocalCanvasHeaderProps {
 
 export function LocalCanvasHeader({ projectId }: LocalCanvasHeaderProps) {
   const [projectName, setProjectName] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   
   const { 
     isCleanupMode, 
-    startCleanupMode,
     exitCleanupMode, 
     getSelectedCount,
   } = useCleanupMode();
@@ -79,13 +69,12 @@ export function LocalCanvasHeader({ projectId }: LocalCanvasHeaderProps) {
             </Button>
           </div>
         ) : (
-          /* Mode normal - logo + nom du projet */
+          /* Mode normal - nom du projet discret */
           <Link 
             href="/local/projects" 
-            className="pointer-events-auto flex items-center gap-3 rounded-lg bg-background/80 px-4 py-2 backdrop-blur transition-colors hover:bg-background"
+            className="pointer-events-auto rounded-md px-3 py-1.5 text-sm text-muted-foreground/60 transition-colors hover:text-foreground hover:bg-background/50"
           >
-            <Logo className="h-6 w-6" />
-            <span className="font-semibold">{projectName || 'Untitled'}</span>
+            {projectName || 'Untitled'}
           </Link>
         )}
       </div>

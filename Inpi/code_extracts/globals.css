@@ -1,0 +1,446 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import '@xyflow/react/dist/style.css';
+@import "shadcn-prose";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.145 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    @apply border-border;
+  }
+  * {
+    @apply min-w-0;
+  }
+  html {
+    text-rendering: optimizelegibility;
+  }
+  body {
+    @apply min-h-[100dvh];
+  }
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-muted-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer utilities {
+  .prose-sm h1 {
+    @apply text-3xl font-semibold tracking-tight;
+  }
+  .prose-sm h2 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .prose-sm h3 {
+    @apply text-xl font-semibold tracking-tight;
+  }
+  .prose-sm h4 {
+    @apply text-lg font-semibold tracking-tight;
+  }
+  .prose-sm h5 {
+    @apply text-base font-semibold tracking-tight;
+  }
+  .prose-sm h6 {
+    @apply text-sm font-semibold tracking-tight;
+  }
+}
+
+@layer base {
+  .react-flow__background {
+    background-color: var(--canvas-bg-color, var(--secondary)) !important;
+  }
+  .dark .react-flow__background {
+    background-color: var(--canvas-bg-color, var(--background)) !important;
+  }
+  .react-flow__background-pattern.dots {
+    @apply fill-foreground/25!;
+  }
+  .react-flow__node.selected .node-container {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 6px 1px rgba(255, 255, 255, 0.2) !important;
+  }
+  .react-flow__controls-button {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 rounded-full;
+    @apply border-none! size-9! bg-transparent! hover:bg-accent/50! dark:hover:bg-accent/50!;
+  }
+  .react-flow__controls-button > svg {
+    @apply size-4;
+  }
+  /* Handles style Flora - s'allument par proximité */
+  .react-flow__handle {
+    @apply !size-7 !border-2 !border-transparent !bg-transparent !rounded-full;
+    @apply !transition-all !duration-150 !ease-out;
+    @apply !flex !items-center !justify-center;
+    --proximity-intensity: 0;
+  }
+  
+  /* État actif par proximité */
+  .react-flow__handle.handle-proximity-active {
+    @apply !border-zinc-400 !bg-zinc-700;
+    opacity: calc(0.5 + var(--proximity-intensity) * 0.5) !important;
+    transform: scale(calc(0.9 + var(--proximity-intensity) * 0.2));
+  }
+  
+  /* Afficher le + quand actif */
+  .react-flow__handle::before {
+    content: '+';
+    @apply text-sm font-bold text-zinc-300;
+    opacity: 0;
+    @apply transition-opacity duration-150;
+    line-height: 1;
+  }
+  
+  .react-flow__handle.handle-proximity-active::before {
+    opacity: calc(0.6 + var(--proximity-intensity) * 0.4);
+  }
+  
+  /* Handles positionnés au bord - pas de décalage pour que les edges touchent les nœuds */
+  .react-flow__handle-left {
+    @apply !-left-3.5;
+  }
+  .react-flow__handle-right {
+    @apply !-right-3.5;
+  }
+  
+  /* Nœuds groupe - transparent, AUCUN style ReactFlow par défaut */
+  .react-flow__node-group {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .react-flow__node-group.selected,
+  .react-flow__node-group.selectable,
+  .react-flow__node-group:focus,
+  .react-flow__node-group:focus-visible {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  /* Nœuds shape - arrière-plan par défaut, pas de style ReactFlow */
+  .react-flow__node-shape {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Nœuds label - premier plan, pas de style ReactFlow */
+  .react-flow__node-label {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+
+nextjs-portal {
+  @apply hidden;
+}
+
+/* Help System - Force black text on white background */
+.help-article-content * {
+  background: transparent !important;
+  color: #000 !important;
+}
+
+.help-article-content h1,
+.help-article-content h2,
+.help-article-content h3,
+.help-article-content h4,
+.help-article-content h5,
+.help-article-content h6 {
+  color: #000 !important;
+  font-weight: 600 !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content h1 { font-size: 1.875rem !important; }
+.help-article-content h2 { font-size: 1.5rem !important; }
+.help-article-content h3 { font-size: 1.25rem !important; }
+
+.help-article-content p {
+  color: #000 !important;
+  margin-bottom: 1em !important;
+  background: transparent !important;
+}
+
+.help-article-content ul,
+.help-article-content ol {
+  color: #000 !important;
+  padding-left: 1.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content li {
+  color: #000 !important;
+  margin-bottom: 0.5em !important;
+  background: transparent !important;
+}
+
+.help-article-content strong {
+  color: #000 !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+}
+
+.help-article-content code {
+  background: #f3f4f6 !important;
+  color: #000 !important;
+  padding: 0.125rem 0.25rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.875em !important;
+}
+
+.help-article-content pre {
+  background: #f3f4f6 !important;
+  color: #000 !important;
+  padding: 1rem !important;
+  border-radius: 0.5rem !important;
+  overflow-x: auto !important;
+}
+
+.help-article-content pre code {
+  background: transparent !important;
+}
+
+.help-article-content a {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+  background: transparent !important;
+}
+
+.help-article-content blockquote {
+  color: #000 !important;
+  background: transparent !important;
+  border-left: 4px solid #d1d5db !important;
+  padding-left: 1rem !important;
+}
+
+/* ============================================
+   CANVAS PERFORMANCE OPTIMIZATIONS
+   Fluidité type Figma pour scroll et zoom
+   ============================================ */
+
+/* GPU acceleration pour le viewport */
+.react-flow__viewport {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* GPU acceleration pour les nœuds */
+.react-flow__node {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: layout style;
+}
+
+/* GPU acceleration pour les edges */
+.react-flow__edges {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Optimisation du container principal */
+.react-flow {
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* Bloquer TOUS les gestes de navigation du navigateur */
+/* (swipe back/forward, pull to refresh, overscroll bounce) */
+html, body {
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+.react-flow,
+.react-flow__renderer,
+.react-flow__viewport,
+.react-flow__pane {
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+}
+
+
+
+/* Transitions fluides pour le zoom */
+.react-flow__renderer {
+  transition: none !important;
+}
+
+/* Désactiver les transitions pendant le pan/zoom pour plus de fluidité */
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+
+/* Optimisation de la sélection */
+.react-flow__selection {
+  will-change: transform;
+}
+
+/* Background optimisé */
+.react-flow__background {
+  will-change: transform;
+  transform: translateZ(0);
+}
+

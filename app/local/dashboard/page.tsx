@@ -63,7 +63,6 @@ import {
   ArrowLeftIcon,
   TrendingUpIcon,
   ClockIcon,
-  DollarSignIcon,
   CheckCircleIcon,
   XCircleIcon,
   CalendarIcon,
@@ -135,10 +134,10 @@ function formatDuration(seconds: number): string {
 }
 
 function formatCost(cost: number): string {
-  if (cost === 0) return '$0.00';
-  if (cost < 0.001) return '< $0.001';
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(3)}`;
+  if (cost === 0) return '0 €';
+  if (cost < 0.001) return '< 0.001 €';
+  if (cost < 0.01) return `${cost.toFixed(4)} €`;
+  return `${cost.toFixed(3)} €`;
 }
 
 function formatFileSize(bytes: number | undefined): string {
@@ -516,14 +515,13 @@ export default function DashboardPage() {
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="relative">
               <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
-                <DollarSignIcon size={14} />
                 Coût {dateRange ? 'période' : 'total'}
               </div>
               <div className="text-3xl font-bold tabular-nums text-emerald-400">
-                ${stats.totalCost.toFixed(2)}
+                {stats.totalCost.toFixed(2)} €
               </div>
               <div className="text-xs text-muted-foreground mt-2">
-                ~${(stats.totalCost / Math.max(stats.total, 1)).toFixed(4)}/gen
+                ~{(stats.totalCost / Math.max(stats.total, 1)).toFixed(4)} €/gen
               </div>
             </div>
           </div>

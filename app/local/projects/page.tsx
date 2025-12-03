@@ -38,7 +38,6 @@ import {
   VideoIcon,
   MusicIcon,
   ClockIcon,
-  DollarSignIcon,
   HardDriveIcon,
   SparklesIcon,
   CheckCircle2Icon,
@@ -153,12 +152,12 @@ function formatDuration(seconds: number): string {
   return `${hours}h ${remainingMins}m`;
 }
 
-// Formater le coût
+// Formater le coût en euros
 function formatCost(cost: number): string {
-  if (cost === 0) return '$0';
-  if (cost < 0.001) return '<$0.001';
-  if (cost < 0.01) return `$${cost.toFixed(3)}`;
-  return `$${cost.toFixed(2)}`;
+  if (cost === 0) return '0 €';
+  if (cost < 0.001) return '< 0.001 €';
+  if (cost < 0.01) return `${cost.toFixed(3)} €`;
+  return `${cost.toFixed(2)} €`;
 }
 
 // Formater la taille
@@ -363,7 +362,6 @@ export default function LocalProjectsPage() {
                 <StatBadge icon={<HardDriveIcon size={14} />} value={formatSize(globalStats.totalStorage)} label="sur disque" color="text-cyan-400" />
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <DollarSignIcon size={14} className="text-emerald-400" />
                 <span className="font-mono text-emerald-400 text-lg">{formatCost(globalStats.totalCost)}</span>
                 <span className="text-zinc-500">coût total</span>
               </div>
@@ -610,7 +608,6 @@ function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDu
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <DollarSignIcon size={16} className="text-emerald-400" />
                 <span className="text-xl font-bold text-emerald-400 font-mono">
                   {formatCost(totalCost)}
                 </span>
