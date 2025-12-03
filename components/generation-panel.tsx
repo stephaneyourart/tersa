@@ -127,7 +127,9 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     try {
       const nodes = getNodes();
       const node = nodes.find(n => n.id === nodeId);
-      const prompt = node?.data?.instructions || '';
+      const prompt = node?.data?.instructions || node?.data?.label || '';
+
+      console.log(`[GenerationPanel] Génération image pour ${nodeId} avec prompt: ${prompt.substring(0, 50)}...`);
 
       // Déclencher la génération via l'API
       const response = await fetch('/api/image/generate', {
@@ -136,18 +138,41 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         body: JSON.stringify({
           nodeId,
           prompt,
-          model: 'nanobanana-pro',
+          model: 'nano-banana-pro-wavespeed',
+          projectId: projectId,
         }),
       });
 
       if (!response.ok) {
-        // Fallback : simuler une génération (pour le développement)
-        console.log('[GenerationPanel] API non disponible, simulation...');
-        await delay(2000);
+        const errorText = await response.text();
+        console.error('[GenerationPanel] Erreur API image:', errorText);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log('[GenerationPanel] Résultat génération image:', result);
+
+      // Mettre à jour le nœud avec l'URL générée
+      if (result.nodeData?.generated?.url) {
+        updateNodeData(nodeId, {
+          generated: result.nodeData.generated,
+          url: result.nodeData.generated.url,
+        });
+        console.log(`[GenerationPanel] Nœud ${nodeId} mis à jour avec URL: ${result.nodeData.generated.url}`);
         return true;
       }
 
-      return await waitForNodeRender(nodeId);
+      // Si nodeData contient directement l'URL
+      if (result.nodeData?.url) {
+        updateNodeData(nodeId, {
+          url: result.nodeData.url,
+          generated: { url: result.nodeData.url, type: 'image/png' },
+        });
+        return true;
+      }
+
+      console.warn('[GenerationPanel] Pas d\'URL dans le résultat:', result);
+      return false;
     } catch (error) {
       console.error('Erreur génération image:', error);
       return false;
@@ -158,7 +183,9 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     try {
       const nodes = getNodes();
       const node = nodes.find(n => n.id === nodeId);
-      const prompt = node?.data?.instructions || '';
+      const prompt = node?.data?.instructions || node?.data?.label || '';
+
+      console.log(`[GenerationPanel] Génération vidéo pour ${nodeId}`);
 
       const response = await fetch('/api/video/generate', {
         method: 'POST',
@@ -166,18 +193,35 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         body: JSON.stringify({
           nodeId,
           prompt,
-          model: 'kling-o1',
+          model: 'kling-2.1-image-to-video',
           copies: videoCopies,
+          projectId: projectId,
         }),
       });
 
       if (!response.ok) {
-        console.log('[GenerationPanel] API vidéo non disponible, simulation...');
-        await delay(5000);
-        return true;
+        const errorText = await response.text();
+        console.error('[GenerationPanel] Erreur API vidéo:', errorText);
+        return false;
       }
 
-      return await waitForNodeRender(nodeId, 180000); // 3 minutes pour vidéo
+      const result = await response.json();
+      console.log('[GenerationPanel] Résultat génération vidéo:', result);
+
+      // Mettre à jour le nœud avec l'URL générée
+      if (result.results && result.results.length > 0) {
+        const firstSuccess = result.results.find((r: any) => r.success && r.nodeData?.generated?.url);
+        if (firstSuccess) {
+          updateNodeData(nodeId, {
+            generated: firstSuccess.nodeData.generated,
+            url: firstSuccess.nodeData.generated.url,
+          });
+          return true;
+        }
+      }
+
+      console.warn('[GenerationPanel] Pas de vidéo réussie dans le résultat');
+      return false;
     } catch (error) {
       console.error('Erreur génération vidéo:', error);
       return false;
