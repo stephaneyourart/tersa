@@ -199,8 +199,11 @@ export default function GenerateProjectPage() {
     }
 
     setGenerating(true);
+    setReasoning('🚀 Initialisation...\n\n');
+    setShowReasoningDialog(true);
+
     try {
-      const response = await fetch('/api/briefs/generate', {
+      const response = await fetch('/api/briefs/generate-with-tools', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,16 +213,78 @@ export default function GenerateProjectPage() {
         }),
       });
 
-      if (response.ok) {
-        const { projectId } = await response.json();
-        router.push(`/local/projects/${projectId}`);
-      } else {
-        const error = await response.json();
-        alert(`Erreur : ${error.message || 'Erreur inconnue'}`);
+      if (!response.ok) {
+        throw new Error(`Erreur: ${response.statusText}`);
       }
-    } catch (error) {
+
+      // Lire le stream SSE
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('Pas de reader disponible');
+      }
+
+      let projectId = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          if (line.startsWith('event: ')) {
+            const eventType = line.slice(7);
+            continue;
+          }
+
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              // Gérer les différents types d'événements
+              if (data.step === 'init' || data.step === 'analyzing') {
+                setReasoning(prev => prev + `\n📊 ${data.message}\n`);
+              } else if (data.content) {
+                setReasoning(prev => prev + `\n🧠 ${data.content}\n`);
+              } else if (data.toolName) {
+                if (data.params) {
+                  setReasoning(prev => prev + `\n🛠️  ${data.toolName}(...)\n`);
+                } else if (data.success !== undefined) {
+                  if (data.success) {
+                    setReasoning(prev => prev + `   ✅ ${data.data?.message || 'Succès'}\n`);
+                  } else {
+                    setReasoning(prev => prev + `   ❌ ${data.error}\n`);
+                  }
+                }
+              } else if (data.projectId) {
+                projectId = data.projectId;
+                setReasoning(prev => prev + `\n\n🎉 Projet généré avec succès !\n`);
+              } else if (data.message && !data.step) {
+                setReasoning(prev => prev + `\n\n❌ ${data.message}\n`);
+              }
+            } catch (e) {
+              console.error('Erreur parse SSE:', e, line);
+            }
+          }
+        }
+      }
+
+      // Rediriger vers le projet
+      if (projectId) {
+        setTimeout(() => {
+          router.push(`/local/projects/${projectId}`);
+        }, 2000);
+      }
+    } catch (error: any) {
       console.error('Erreur:', error);
-      alert('Erreur lors de la génération');
+      setReasoning(prev => prev + `\n\n❌ Erreur: ${error.message}`);
     } finally {
       setGenerating(false);
     }
