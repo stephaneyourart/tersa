@@ -354,7 +354,75 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           break;
 
         case 'video':
-          success = await generateVideo(step.nodeId, step.videoInfo);
+          // Mettre le nœud en état de génération pour afficher le spinner
+          const startTime = Date.now();
+          updateNodeData(step.nodeId, { 
+            generating: true,
+            generatingStartTime: startTime,
+          });
+
+          // Utiliser l'API batch même pour un seul retry
+          const nodes = getNodes();
+          const images: { url: string; type: string }[] = [];
+          
+          // Collecter les images des collections
+          if (step.videoInfo?.characterCollectionIds) {
+            for (const collectionId of step.videoInfo.characterCollectionIds) {
+              const collectionNode = nodes.find(n => n.id === collectionId);
+              if (collectionNode?.data?.items) {
+                for (const item of collectionNode.data.items) {
+                  if (item.enabled && item.url) {
+                    images.push({ url: item.url, type: item.type || 'image/png' });
+                  }
+                }
+              }
+            }
+          }
+          if (step.videoInfo?.locationCollectionId) {
+            const locNode = nodes.find(n => n.id === step.videoInfo!.locationCollectionId);
+            if (locNode?.data?.items) {
+              const enabledItem = locNode.data.items.find((item: any) => item.enabled && item.url);
+              if (enabledItem) {
+                images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png' });
+              }
+            }
+          }
+
+          try {
+            const response = await fetch('/api/batch-generate-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                jobs: [{
+                  nodeId: step.nodeId,
+                  modelId: 'kling-o1-i2v',
+                  prompt: step.videoInfo?.prompt || '',
+                  images,
+                }],
+                projectId,
+              }),
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+              const videoResult = result.results?.[0];
+              if (videoResult?.success && videoResult?.videoUrl) {
+                updateNodeData(step.nodeId, {
+                  generated: { url: videoResult.videoUrl, type: 'video/mp4' },
+                  generating: false,
+                  generatingStartTime: undefined,
+                });
+                success = true;
+              }
+            }
+          } finally {
+            if (!success) {
+              updateNodeData(step.nodeId, {
+                generating: false,
+                generatingStartTime: undefined,
+              });
+            }
+          }
           break;
 
         case 'collection':
@@ -587,47 +655,147 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         }
       }
 
-      // ========== PHASE 5 : Vidéos (CHAQUE COPIE INDIVIDUELLEMENT) ==========
+      // ========== PHASE 5 : Vidéos EN PARALLÈLE ==========
       if (!aborted) {
-        setCurrentPhase('🎬 Vidéos');
-        toast.info('Génération des vidéos...');
+        setCurrentPhase('🎬 Vidéos (parallèle)');
+        
+        // Collecter TOUS les jobs vidéo
+        const videoJobs: { 
+          nodeId: string; 
+          stepId: string;
+          prompt: string; 
+          images: { url: string; type: string }[];
+        }[] = [];
+
+        const nodes = getNodes();
 
         for (const videoData of sequence.videos) {
-          if (aborted) break;
-          
-          const { planId, prompt, characterCollectionIds, locationCollectionId } = videoData;
-          // Nouveau format: videoNodeIds est un tableau
+          const { prompt, characterCollectionIds, locationCollectionId } = videoData;
           const videoNodeIds = videoData.videoNodeIds || [videoData.videoNodeId].filter(Boolean);
           
-          for (let copyIdx = 0; copyIdx < videoNodeIds.length; copyIdx++) {
-            if (aborted) break;
-            
-            const videoNodeId = videoNodeIds[copyIdx];
-            const stepId = `video-${videoNodeId}`;
-            updateStep(stepId, { status: 'generating' });
-            setCurrentStep(++stepIdx);
+          // Collecter les images des collections pour ce plan
+          const images: { url: string; type: string }[] = [];
+          
+          // Images des personnages
+          if (characterCollectionIds) {
+            for (const collectionId of characterCollectionIds) {
+              const collectionNode = nodes.find(n => n.id === collectionId);
+              if (collectionNode?.data?.items) {
+                for (const item of collectionNode.data.items) {
+                  if (item.enabled && item.url) {
+                    images.push({ url: item.url, type: item.type || 'image/png' });
+                  }
+                }
+              }
+            }
+          }
 
-            // Générer UNE SEULE vidéo par nœud
-            const success = await generateVideo(videoNodeId, {
+          // Image du lieu
+          if (locationCollectionId) {
+            const locCollectionNode = nodes.find(n => n.id === locationCollectionId);
+            if (locCollectionNode?.data?.items) {
+              const enabledItem = locCollectionNode.data.items.find((item: any) => item.enabled && item.url);
+              if (enabledItem) {
+                images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png' });
+              }
+            }
+          }
+
+          // Ajouter chaque nœud vidéo comme job
+          for (const videoNodeId of videoNodeIds) {
+            videoJobs.push({
+              nodeId: videoNodeId,
+              stepId: `video-${videoNodeId}`,
               prompt: prompt || '',
-              characterCollectionIds: characterCollectionIds || [],
-              locationCollectionId,
+              images,
             });
+          }
+        }
+
+        if (videoJobs.length > 0) {
+          toast.info(`🎬 Lancement de ${videoJobs.length} vidéo${videoJobs.length > 1 ? 's' : ''} en parallèle...`);
+
+          // Mettre TOUS les nœuds vidéo en état "generating" MAINTENANT
+          const startTime = Date.now();
+          for (const job of videoJobs) {
+            updateStep(job.stepId, { status: 'generating' });
+            updateNodeData(job.nodeId, { 
+              generating: true,
+              generatingStartTime: startTime,
+            });
+          }
+          setCurrentStep(stepIdx + videoJobs.length);
+
+          // Appeler l'API batch pour générer en PARALLÈLE
+          try {
+            const batchJobs = videoJobs.map(job => ({
+              nodeId: job.nodeId,
+              modelId: 'kling-o1-i2v',
+              prompt: job.prompt,
+              images: job.images,
+            }));
+
+            console.log(`[GenerationPanel] Envoi de ${batchJobs.length} jobs vidéo en parallèle`);
+
+            const response = await fetch('/api/batch-generate-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jobs: batchJobs, projectId }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`Batch API error: ${response.status}`);
+            }
+
+            const batchResult = await response.json();
+            console.log(`[GenerationPanel] Résultats batch:`, batchResult);
+
+            // Mettre à jour chaque nœud avec son résultat
+            for (const result of batchResult.results || []) {
+              const job = videoJobs.find(j => j.nodeId === result.nodeId);
+              if (!job) continue;
+
+              if (result.success && result.videoUrl) {
+                updateNodeData(result.nodeId, {
+                  generated: { url: result.videoUrl, type: 'video/mp4' },
+                  generating: false,
+                  generatingStartTime: undefined,
+                });
+                updateStep(job.stepId, { status: 'done' });
+                successCount++;
+
+                // DVR si activé
+                if (sendToDVR && !aborted) {
+                  const dvrStepId = `dvr-${result.nodeId}`;
+                  updateStep(dvrStepId, { status: 'generating' });
+                  const dvrSuccess = await sendVideoToDVR(result.nodeId);
+                  updateStep(dvrStepId, { status: dvrSuccess ? 'done' : 'error' });
+                  if (dvrSuccess) successCount++;
+                  else errorCount++;
+                }
+              } else {
+                updateNodeData(result.nodeId, {
+                  generating: false,
+                  generatingStartTime: undefined,
+                });
+                updateStep(job.stepId, { status: 'error', error: result.error || 'Échec' });
+                errorCount++;
+              }
+            }
+
+            stepIdx += videoJobs.length;
+
+          } catch (error: any) {
+            console.error('[GenerationPanel] Erreur batch vidéo:', error);
             
-            updateStep(stepId, { status: success ? 'done' : 'error' });
-            if (success) successCount++;
-            else errorCount++;
-
-            // DVR
-            if (sendToDVR && !aborted && success) {
-              const dvrStepId = `dvr-${videoNodeId}`;
-              updateStep(dvrStepId, { status: 'generating' });
-              setCurrentStep(++stepIdx);
-
-              const dvrSuccess = await sendVideoToDVR(videoNodeId);
-              updateStep(dvrStepId, { status: dvrSuccess ? 'done' : 'error' });
-              if (dvrSuccess) successCount++;
-              else errorCount++;
+            // Marquer tous les jobs comme erreur
+            for (const job of videoJobs) {
+              updateNodeData(job.nodeId, {
+                generating: false,
+                generatingStartTime: undefined,
+              });
+              updateStep(job.stepId, { status: 'error', error: error.message });
+              errorCount++;
             }
           }
         }
