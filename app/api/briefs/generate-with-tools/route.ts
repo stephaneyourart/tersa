@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Charger les documents
-      const docs = await database.select().from(require('@/schema').briefDocuments).where(eq(require('@/schema').briefDocuments.briefId, briefId));
+      const { briefDocuments } = require('@/schema');
+      const docs = await database.select().from(briefDocuments).where(eq(briefDocuments.briefId, briefId));
       
       // Construire le contexte
       let briefContext = `# BRIEF: ${brief.name}\n\n`;
@@ -63,22 +64,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Créer le projet
-      const projectResponse = await fetch('http://localhost:3000/api/project/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: projectName,
-          transcriptionModel: 'whisper-1',
-          visionModel: config.aiModel,
-        }),
-      });
-
-      if (!projectResponse.ok) {
-        throw new Error('Erreur création projet');
+      // Créer le projet (mode local)
+      const { createLocalProject } = await import('@/lib/local-projects-store');
+      const project = createLocalProject(projectName);
+      
+      if (!project) {
+        throw new Error('Erreur création projet local');
       }
 
-      const { projectId } = await projectResponse.json();
+      const projectId = project.id;
       
       // Initialiser la session
       initGenerationSession(projectId);
