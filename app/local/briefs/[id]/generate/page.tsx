@@ -139,9 +139,11 @@ export default function GenerateProjectPage() {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     customInstructions: '',
     settings: {
-      videoModel: 'kling-o1',
-      imageModel: 'nanobanana-pro',
+      videoModel: 'kling-o1-i2v',
+      imageModel: 'nano-banana-pro-ultra-wavespeed',
       videoCopies: 4,
+      videoDuration: 10, // 10 secondes par défaut
+      videoAspectRatio: '16:9', // 16:9 par défaut
       testMode: false,
     },
   });
@@ -548,6 +550,85 @@ export default function GenerateProjectPage() {
                   <p className="text-sm text-muted-foreground mt-1">
                     Limite à 2 personnages, 2 plans max, prompts courts (3 phrases).
                   </p>
+                </div>
+              </div>
+
+              {/* Paramètres Vidéo */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border/30">
+                <div>
+                  <Label htmlFor="videoCopies" className="mb-2 flex items-center gap-2 text-sm">
+                    <VideoIcon size={14} />
+                    Copies vidéo
+                  </Label>
+                  <Select
+                    value={String(config.settings?.videoCopies || 4)}
+                    onValueChange={(value) => 
+                      setConfig({ 
+                        ...config, 
+                        settings: { ...config.settings, videoCopies: parseInt(value) } 
+                      })
+                    }
+                  >
+                    <SelectTrigger id="videoCopies">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 copie</SelectItem>
+                      <SelectItem value="2">2 copies</SelectItem>
+                      <SelectItem value="4">4 copies</SelectItem>
+                      <SelectItem value="8">8 copies</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="videoDuration" className="mb-2 flex items-center gap-2 text-sm">
+                    ⏱️ Durée vidéo
+                  </Label>
+                  <Select
+                    value={String(config.settings?.videoDuration || 10)}
+                    onValueChange={(value) => 
+                      setConfig({ 
+                        ...config, 
+                        settings: { ...config.settings, videoDuration: parseInt(value) } 
+                      })
+                    }
+                  >
+                    <SelectTrigger id="videoDuration">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 secondes</SelectItem>
+                      <SelectItem value="10">10 secondes</SelectItem>
+                      <SelectItem value="15">15 secondes</SelectItem>
+                      <SelectItem value="20">20 secondes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="videoAspectRatio" className="mb-2 flex items-center gap-2 text-sm">
+                    📐 Format vidéo
+                  </Label>
+                  <Select
+                    value={config.settings?.videoAspectRatio || '16:9'}
+                    onValueChange={(value) => 
+                      setConfig({ 
+                        ...config, 
+                        settings: { ...config.settings, videoAspectRatio: value } 
+                      })
+                    }
+                  >
+                    <SelectTrigger id="videoAspectRatio">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="16:9">16:9 (Paysage)</SelectItem>
+                      <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
+                      <SelectItem value="1:1">1:1 (Carré)</SelectItem>
+                      <SelectItem value="4:3">4:3 (Standard)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

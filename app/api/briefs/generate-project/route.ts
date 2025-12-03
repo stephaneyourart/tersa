@@ -259,11 +259,16 @@ export async function POST(request: NextRequest) {
             message: '🎨 Phase 2 : Création du canvas...',
           })));
 
-          // Récupérer le nombre de copies vidéo depuis la config
+          // Récupérer les paramètres vidéo depuis la config
           const videoCopies = config?.settings?.videoCopies || 4;
+          const videoDuration = config?.settings?.videoDuration || 10;
+          const videoAspectRatio = config?.settings?.videoAspectRatio || '16:9';
 
-          // Générer les nœuds du canvas (avec N nœuds vidéo par plan)
-          const canvasData = generateCanvasFromProject(projectStructure, isTestMode, videoCopies);
+          // Générer les nœuds du canvas (avec N nœuds vidéo par plan et paramètres)
+          const canvasData = generateCanvasFromProject(projectStructure, isTestMode, videoCopies, {
+            videoDuration,
+            videoAspectRatio,
+          });
           
           // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)
           const { getGenerationSequence } = await import('@/lib/brief-canvas-generator');

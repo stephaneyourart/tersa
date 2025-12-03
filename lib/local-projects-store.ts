@@ -36,8 +36,20 @@ export interface ProjectStats {
 }
 
 export interface GenerationSequence {
-  characterImages: { characterId: string; imageNodeIds: string[] }[];
-  locationImages: { locationId: string; imageNodeIds: string[] }[];
+  characterImages: { 
+    characterId: string; 
+    imageNodeIds: string[];
+    prompts?: Record<string, string>; // viewType -> prompt enrichi
+    aspectRatios?: Record<string, string>; // viewType -> aspectRatio
+    order?: string[]; // Ordre de génération (fullBody d'abord)
+  }[];
+  locationImages: { 
+    locationId: string; 
+    imageNodeIds: string[];
+    prompts?: Record<string, string>;
+    aspectRatios?: Record<string, string>;
+    order?: string[];
+  }[];
   characterCollections: [string, string][]; // [characterId, collectionNodeId]
   locationCollections: [string, string][]; // [locationId, collectionNodeId]
   videos: { 
@@ -48,6 +60,7 @@ export interface GenerationSequence {
     locationCollectionId?: string; // ID de la collection lieu
   }[];
   videoCopies: number; // Nombre de copies par plan (défaut: 4)
+  videoSettings?: { duration: number; aspectRatio: string }; // Paramètres vidéo
 }
 
 export interface LocalProject {

@@ -31,8 +31,8 @@ const LAYOUT = {
   
   // Zone personnages/lieux (colonne gauche)
   LEFT_COLUMN_WIDTH: 2000,
-  CHARACTER_ROW_HEIGHT: 800, // Hauteur totale pour un personnage (augmenté)
-  LOCATION_ROW_HEIGHT: 500,  // Hauteur totale pour un lieu (augmenté)
+  CHARACTER_ROW_HEIGHT: 1000, // Augmenté pour 4 images
+  LOCATION_ROW_HEIGHT: 600,   // Augmenté pour 4 images
   
   // Tailles des nœuds
   TEXT_NODE_WIDTH: 400,
@@ -64,9 +64,113 @@ const LAYOUT = {
   TITLE_Z_INDEX: -999,
 };
 
+// ========== CONSTANTES POUR LES PROMPTS ==========
+const CHARACTER_PROMPT_PREFIX = `Professional studio photography, solid black background, neutral studio lighting with soft key light, `;
+const CHARACTER_PROMPT_SUFFIX = `, neutral facial expression, relaxed pose, high-end fashion photography style, 8K, ultra detailed, sharp focus`;
+
+const LOCATION_PROMPT_SUFFIX = `, professional cinematography, 8K, ultra detailed, cinematic lighting`;
+
 // ========== GÉNÉRATEUR D'IDS ==========
 function nodeId(prefix: string): string {
   return `${prefix}-${nanoid(8)}`;
+}
+
+// ========== HELPER: Convertir texte en format Tiptap ==========
+function textToTiptapContent(text: string): object {
+  // Convertir le markdown basique en paragraphes Tiptap
+  const lines = text.split('\n');
+  const content: any[] = [];
+  
+  for (const line of lines) {
+    if (line.trim() === '') {
+      // Paragraphe vide
+      content.push({ type: 'paragraph' });
+    } else if (line.startsWith('# ')) {
+      // Titre H1
+      content.push({
+        type: 'heading',
+        attrs: { level: 1 },
+        content: [{ type: 'text', text: line.slice(2) }],
+      });
+    } else if (line.startsWith('## ')) {
+      // Titre H2
+      content.push({
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: line.slice(3) }],
+      });
+    } else if (line.startsWith('### ')) {
+      // Titre H3
+      content.push({
+        type: 'heading',
+        attrs: { level: 3 },
+        content: [{ type: 'text', text: line.slice(4) }],
+      });
+    } else if (line.startsWith('📷 *') && line.endsWith('*')) {
+      // Texte italique avec emoji
+      content.push({
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '📷 ' },
+          { type: 'text', marks: [{ type: 'italic' }], text: line.slice(4, -1) },
+        ],
+      });
+    } else {
+      // Paragraphe normal
+      content.push({
+        type: 'paragraph',
+        content: [{ type: 'text', text: line }],
+      });
+    }
+  }
+  
+  return {
+    type: 'doc',
+    content: content.length > 0 ? content : [{ type: 'paragraph' }],
+  };
+}
+
+// ========== HELPER: Enrichir prompt personnage avec fond noir ==========
+function enrichCharacterPrompt(originalPrompt: string, viewType: 'fullBody' | 'face' | 'profile' | 'back'): string {
+  // Ajouter le préfixe et suffixe pour fond noir et expression neutre
+  let poseDescription = '';
+  switch (viewType) {
+    case 'fullBody':
+      poseDescription = 'full body shot, standing front facing, ';
+      break;
+    case 'face':
+      poseDescription = 'close-up portrait, front facing, ';
+      break;
+    case 'profile':
+      poseDescription = 'side profile portrait, ';
+      break;
+    case 'back':
+      poseDescription = 'back view, full body from behind, ';
+      break;
+  }
+  
+  return `${CHARACTER_PROMPT_PREFIX}${poseDescription}${originalPrompt}${CHARACTER_PROMPT_SUFFIX}`;
+}
+
+// ========== HELPER: Enrichir prompt lieu ==========
+function enrichLocationPrompt(originalPrompt: string, angleNum: number): string {
+  let angleDescription = '';
+  switch (angleNum) {
+    case 1:
+      angleDescription = 'establishing shot, wide angle view, ';
+      break;
+    case 2:
+      angleDescription = 'medium shot, alternative angle, ';
+      break;
+    case 3:
+      angleDescription = 'detail shot, atmospheric angle, ';
+      break;
+    case 4:
+      angleDescription = 'close-up detail shot, ';
+      break;
+  }
+  
+  return `${angleDescription}${originalPrompt}${LOCATION_PROMPT_SUFFIX}`;
 }
 
 // ========== STRUCTURE DE DONNÉES POUR TRACKING ==========
@@ -86,13 +190,14 @@ export interface CanvasStructure {
   // Edges
   edges: Edge[];
   
-  // Métadonnées
-  characterImageMap: Record<string, string[]>;  // characterId -> imageNodeIds
-  locationImageMap: Record<string, string[]>;   // locationId -> imageNodeIds
+  // Métadonnées - avec ordre de génération
+  characterImageMap: Record<string, { nodeIds: string[]; prompts: Record<string, string>; aspectRatios: Record<string, string>; order: string[] }>;
+  locationImageMap: Record<string, { nodeIds: string[]; prompts: Record<string, string>; aspectRatios: Record<string, string>; order: string[] }>;
   planVideoMap: Record<string, string[]>;       // planId -> videoNodeIds (TABLEAU pour les copies)
   
   // Config vidéos
   videoCopies: number;                          // Nombre de copies par plan
+  videoSettings: { duration: number; aspectRatio: string }; // Paramètres vidéo
 }
 
 // ========== CRÉATION PERSONNAGE ==========
@@ -106,45 +211,54 @@ function createCharacterStructure(
   const textNodeId = nodeId('text-perso');
   const collectionNodeId = nodeId('collection-perso');
   
-  // En mode test : seulement face et fullBody (2 images)
-  const imageNodeIds: Record<string, string> = testMode
-    ? {
-        face: nodeId('img-face'),
-        fullBody: nodeId('img-fullbody'),
-      }
-    : {
-        face: nodeId('img-face'),
-        profile: nodeId('img-profile'),
-        fullBody: nodeId('img-fullbody'),
-        back: nodeId('img-back'),
-      };
+  // TOUJOURS 4 images pour les personnages (mode test ou non)
+  // La première est fullBody (référence), les autres sont générées par edit-multi
+  const imageNodeIds: Record<string, string> = {
+    fullBody: nodeId('img-fullbody'),  // PREMIÈRE IMAGE (référence)
+    face: nodeId('img-face'),
+    profile: nodeId('img-profile'),
+    back: nodeId('img-back'),
+  };
+  
+  // Ordre de génération : fullBody d'abord (text-to-image), puis les autres (edit-multi)
+  const generationOrder = ['fullBody', 'face', 'profile', 'back'];
 
+  // Texte descriptif
+  const textContent = `# ${character.name}\n\n${character.description}\n\n**Code référence:** ${character.referenceCode}`;
+  
   // 1. Nœud TEXT (description)
   structure.textNodes.push({
     id: textNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: `# ${character.name}\n\n${character.description}`,
+      text: textContent,
+      content: textToTiptapContent(textContent),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (4 angles ou 2 en mode test)
+  // 2. Nœuds IMAGE (4 vues)
+  // fullBody en 9:16, les autres en 1:1 pour les portraits
   const imageY = startY;
   const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  const allImageConfigs = [
-    { key: 'face', id: imageNodeIds.face, label: 'Face', prompt: character.prompts.face, x: 0, y: 0 },
-    { key: 'profile', id: imageNodeIds.profile, label: 'Profil', prompt: character.prompts.profile, x: 1, y: 0 },
-    { key: 'fullBody', id: imageNodeIds.fullBody, label: 'Pied', prompt: character.prompts.fullBody, x: testMode ? 1 : 0, y: testMode ? 0 : 1 },
-    { key: 'back', id: imageNodeIds.back, label: 'Dos', prompt: character.prompts.back, x: 1, y: 1 },
+  const imageConfigs = [
+    { key: 'fullBody', id: imageNodeIds.fullBody, label: 'Pied (Réf)', prompt: character.prompts.fullBody, x: 0, y: 0, aspectRatio: '9:16', isReference: true },
+    { key: 'face', id: imageNodeIds.face, label: 'Visage', prompt: character.prompts.face, x: 1, y: 0, aspectRatio: '1:1', isReference: false },
+    { key: 'profile', id: imageNodeIds.profile, label: 'Profil', prompt: character.prompts.profile, x: 0, y: 1, aspectRatio: '1:1', isReference: false },
+    { key: 'back', id: imageNodeIds.back, label: 'Dos', prompt: character.prompts.back, x: 1, y: 1, aspectRatio: '9:16', isReference: false },
   ];
-  
-  // Filtrer selon le mode
-  const imageConfigs = allImageConfigs.filter(c => imageNodeIds[c.key]);
+
+  const prompts: Record<string, string> = {};
+  const aspectRatios: Record<string, string> = {};
 
   for (const config of imageConfigs) {
+    // Enrichir le prompt avec fond noir et style studio
+    const enrichedPrompt = enrichCharacterPrompt(config.prompt, config.key as any);
+    prompts[config.key] = enrichedPrompt;
+    aspectRatios[config.key] = config.aspectRatio;
+    
     structure.imageNodes.push({
       id: config.id,
       type: 'image',
@@ -154,7 +268,11 @@ function createCharacterStructure(
       },
       data: {
         label: `${character.name} - ${config.label}`,
-        instructions: config.prompt,
+        instructions: enrichedPrompt,
+        aspectRatio: config.aspectRatio,
+        isReference: config.isReference,
+        characterId: character.id,
+        viewType: config.key,
       },
       width: LAYOUT.IMAGE_NODE_SIZE,
       height: LAYOUT.IMAGE_NODE_SIZE,
@@ -188,9 +306,14 @@ function createCharacterStructure(
     });
   }
 
-  // 5. Tracking
+  // 5. Tracking avec info de génération
   structure.characterCollectionIds[character.id] = collectionNodeId;
-  structure.characterImageMap[character.id] = Object.values(imageNodeIds);
+  structure.characterImageMap[character.id] = {
+    nodeIds: Object.values(imageNodeIds),
+    prompts,
+    aspectRatios,
+    order: generationOrder,
+  };
 }
 
 // ========== CRÉATION LIEU ==========
@@ -204,17 +327,19 @@ function createLocationStructure(
   const textNodeId = nodeId('text-lieu');
   const collectionNodeId = nodeId('collection-lieu');
   
-  // En mode test : seulement 2 angles
-  const imageNodeIds: Record<string, string> = testMode
-    ? {
-        angle1: nodeId('img-angle1'),
-        angle2: nodeId('img-angle2'),
-      }
-    : {
-        angle1: nodeId('img-angle1'),
-        angle2: nodeId('img-angle2'),
-        angle3: nodeId('img-angle3'),
-      };
+  // TOUJOURS 4 images pour les lieux (mode test ou non)
+  // La première est angle1 (référence), les autres sont générées par edit-multi
+  const imageNodeIds: Record<string, string> = {
+    angle1: nodeId('img-angle1'),  // PREMIÈRE IMAGE (référence)
+    angle2: nodeId('img-angle2'),
+    angle3: nodeId('img-angle3'),
+    angle4: nodeId('img-angle4'),
+  };
+  
+  const generationOrder = ['angle1', 'angle2', 'angle3', 'angle4'];
+
+  // Texte descriptif
+  const textContent = `# ${location.name}\n\n${location.description}\n\n**Code référence:** ${location.referenceCode}`;
 
   // 1. Nœud TEXT
   structure.textNodes.push({
@@ -222,24 +347,31 @@ function createLocationStructure(
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: `# ${location.name}\n\n${location.description}`,
+      text: textContent,
+      content: textToTiptapContent(textContent),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (3 angles ou 2 en mode test)
+  // 2. Nœuds IMAGE (4 angles)
   const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  const allImageConfigs = [
-    { key: 'angle1', id: imageNodeIds.angle1, label: 'Angle 1', prompt: location.prompts.angle1, x: 0 },
-    { key: 'angle2', id: imageNodeIds.angle2, label: 'Angle 2', prompt: location.prompts.angle2, x: 1 },
-    { key: 'angle3', id: imageNodeIds.angle3, label: 'Angle 3', prompt: location.prompts.angle3, x: 2 },
+  const imageConfigs = [
+    { key: 'angle1', id: imageNodeIds.angle1, label: 'Vue 1 (Réf)', prompt: location.prompts.angle1, x: 0, isReference: true },
+    { key: 'angle2', id: imageNodeIds.angle2, label: 'Vue 2', prompt: location.prompts.angle2, x: 1, isReference: false },
+    { key: 'angle3', id: imageNodeIds.angle3, label: 'Vue 3', prompt: location.prompts.angle3, x: 2, isReference: false },
+    { key: 'angle4', id: imageNodeIds.angle4, label: 'Vue 4', prompt: location.prompts.angle3, x: 3, isReference: false }, // Réutilise angle3 prompt
   ];
-  
-  // Filtrer selon le mode
-  const imageConfigs = allImageConfigs.filter(c => imageNodeIds[c.key]);
+
+  const prompts: Record<string, string> = {};
+  const aspectRatios: Record<string, string> = {};
 
   for (const config of imageConfigs) {
+    const angleNum = parseInt(config.key.replace('angle', ''));
+    const enrichedPrompt = enrichLocationPrompt(config.prompt, angleNum);
+    prompts[config.key] = enrichedPrompt;
+    aspectRatios[config.key] = '16:9'; // Tous les lieux en 16:9
+    
     structure.imageNodes.push({
       id: config.id,
       type: 'image',
@@ -249,14 +381,18 @@ function createLocationStructure(
       },
       data: {
         label: `${location.name} - ${config.label}`,
-        instructions: config.prompt,
+        instructions: enrichedPrompt,
+        aspectRatio: '16:9',
+        isReference: config.isReference,
+        locationId: location.id,
+        viewType: config.key,
       },
       width: LAYOUT.IMAGE_NODE_SIZE,
       height: LAYOUT.IMAGE_NODE_SIZE,
     });
   }
 
-  // 3. Nœud COLLECTION (position dynamique selon le nombre d'images)
+  // 3. Nœud COLLECTION (position dynamique)
   const numImages = imageConfigs.length;
   const collectionX = imageStartX + numImages * (LAYOUT.IMAGE_NODE_SIZE + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
   
@@ -283,9 +419,14 @@ function createLocationStructure(
     });
   }
 
-  // 5. Tracking
+  // 5. Tracking avec info de génération
   structure.locationCollectionIds[location.id] = collectionNodeId;
-  structure.locationImageMap[location.id] = Object.values(imageNodeIds);
+  structure.locationImageMap[location.id] = {
+    nodeIds: Object.values(imageNodeIds),
+    prompts,
+    aspectRatios,
+    order: generationOrder,
+  };
 }
 
 // ========== CRÉATION PLAN ==========
@@ -299,6 +440,10 @@ function createPlanStructure(
   const textNodeId = nodeId('text-plan');
   const videoCopies = structure.videoCopies || 4;
   const videoNodeIds: string[] = [];
+  const { duration, aspectRatio } = structure.videoSettings;
+
+  // Texte du plan
+  const textContent = `## Plan ${scene.sceneNumber}.${plan.planNumber}\n\n${plan.prompt}${plan.cameraMovement ? `\n\n📷 *${plan.cameraMovement}*` : ''}`;
 
   // 1. Nœud TEXT (prompt du plan)
   structure.textNodes.push({
@@ -306,7 +451,8 @@ function createPlanStructure(
     type: 'text',
     position: { x: startX, y: startY },
     data: {
-      text: `## Plan ${scene.sceneNumber}.${plan.planNumber}\n\n${plan.prompt}${plan.cameraMovement ? `\n\n📷 *${plan.cameraMovement}*` : ''}`,
+      text: textContent,
+      content: textToTiptapContent(textContent),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
@@ -331,6 +477,8 @@ function createPlanStructure(
         instructions: plan.prompt,
         copyIndex: copyIndex + 1,
         totalCopies: videoCopies,
+        duration,
+        aspectRatio,
       },
       width: LAYOUT.VIDEO_NODE_WIDTH,
       height: LAYOUT.VIDEO_NODE_HEIGHT,
@@ -460,13 +608,24 @@ export interface GeneratedCanvasData {
   structure: CanvasStructure;
 }
 
+export interface GenerationConfig {
+  videoCopies?: number;
+  videoDuration?: number;
+  videoAspectRatio?: string;
+  testMode?: boolean;
+}
+
 export function generateCanvasFromProject(
   project: GeneratedProjectStructure,
   testMode: boolean = false,
-  videoCopies: number = 4
+  videoCopies: number = 4,
+  config?: GenerationConfig
 ): GeneratedCanvasData {
+  // Paramètres vidéo
+  const videoDuration = config?.videoDuration || 10; // 10 secondes par défaut
+  const videoAspectRatio = config?.videoAspectRatio || '16:9'; // 16:9 par défaut
+  
   // TOUJOURS créer N copies vidéo (même en mode test)
-  // Le mode test limite seulement les images et les plans, PAS les copies vidéo
   const effectiveVideoCopies = videoCopies;
   
   // Structure pour tracking
@@ -484,6 +643,10 @@ export function generateCanvasFromProject(
     locationImageMap: {},
     planVideoMap: {},
     videoCopies: effectiveVideoCopies,
+    videoSettings: {
+      duration: videoDuration,
+      aspectRatio: videoAspectRatio,
+    },
   };
 
   let currentY = LAYOUT.MARGIN;
@@ -600,23 +763,31 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
 
   return {
     // Étape 1 : Images de personnages à générer
-    characterImages: Object.entries(structure.characterImageMap).map(([charId, imageIds]) => ({
+    // Incluant l'ordre, les prompts enrichis et les aspect ratios
+    characterImages: Object.entries(structure.characterImageMap).map(([charId, data]) => ({
       characterId: charId,
-      imageNodeIds: imageIds,
+      imageNodeIds: data.nodeIds,
+      prompts: data.prompts,
+      aspectRatios: data.aspectRatios,
+      order: data.order, // fullBody d'abord, puis les autres
     })),
     
     // Étape 2 : Images de lieux à générer
-    locationImages: Object.entries(structure.locationImageMap).map(([locId, imageIds]) => ({
+    locationImages: Object.entries(structure.locationImageMap).map(([locId, data]) => ({
       locationId: locId,
-      imageNodeIds: imageIds,
+      imageNodeIds: data.nodeIds,
+      prompts: data.prompts,
+      aspectRatios: data.aspectRatios,
+      order: data.order, // angle1 d'abord, puis les autres
     })),
     
     // Étape 3 : Collections à populer (après génération images)
     characterCollections: Object.entries(structure.characterCollectionIds),
     locationCollections: Object.entries(structure.locationCollectionIds),
     
-    // Nombre de copies vidéo
+    // Config vidéo
     videoCopies: structure.videoCopies || 4,
+    videoSettings: structure.videoSettings,
     
     // Étape 4 : Vidéos à générer (après collections remplies)
     // Chaque plan a N nœuds vidéo (copies)

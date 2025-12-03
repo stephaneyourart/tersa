@@ -14,6 +14,8 @@ interface VideoJob {
   modelId: string;
   prompt: string;
   images: { url: string; type: string }[];
+  duration?: number; // Durée en secondes (défaut: 10)
+  aspectRatio?: string; // Aspect ratio (défaut: 16:9)
 }
 
 interface BatchRequest {
@@ -81,13 +83,13 @@ async function generateVideoForJob(job: VideoJob): Promise<{
 
     console.log(`[Video Batch API] Calling model.generate for ${job.nodeId}`);
     
-    // Appeler le modèle
+    // Appeler le modèle avec les paramètres configurés
     const videoUrl = await provider.model.generate({
       prompt: job.prompt,
       imagePrompt: firstFrameImage,
       lastFrameImage: lastFrameImage,
-      duration: 5,
-      aspectRatio: '16:9',
+      duration: job.duration || 10, // 10 secondes par défaut
+      aspectRatio: job.aspectRatio || '16:9',
     });
 
     console.log(`[Video Batch API] Got video URL for ${job.nodeId}: ${videoUrl.substring(0, 50)}...`);

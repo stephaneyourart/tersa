@@ -6,10 +6,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateImageAction } from '@/app/actions/image/create';
 
+// Convertir aspect ratio en taille
+function aspectRatioToSize(aspectRatio: string): string {
+  const sizeMap: Record<string, string> = {
+    '1:1': '1024x1024',
+    '9:16': '576x1024',
+    '16:9': '1024x576',
+    '3:4': '768x1024',
+    '4:3': '1024x768',
+  };
+  return sizeMap[aspectRatio] || '1024x1024';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { nodeId, prompt, model = 'nano-banana-pro-wavespeed', projectId, size = '1024x1024' } = body;
+    const { 
+      nodeId, 
+      prompt, 
+      model = 'nano-banana-pro-ultra-wavespeed',
+      projectId, 
+      size,
+      aspectRatio = '1:1'
+    } = body;
 
     if (!nodeId || !prompt) {
       return NextResponse.json(
@@ -20,15 +39,18 @@ export async function POST(request: NextRequest) {
 
     // Utiliser le projectId fourni ou un ID par défaut pour les projets locaux
     const effectiveProjectId = projectId || 'local-generation';
+    
+    // Convertir l'aspect ratio en size si pas de size explicite
+    const effectiveSize = size || aspectRatioToSize(aspectRatio);
 
-    console.log(`[API Image Generate] Génération pour nœud ${nodeId} avec modèle ${model}`);
+    console.log(`[API Image Generate] Génération pour nœud ${nodeId} avec modèle ${model}, taille: ${effectiveSize}`);
 
     const result = await generateImageAction({
       prompt,
       modelId: model,
       nodeId,
       projectId: effectiveProjectId,
-      size,
+      size: effectiveSize,
       instructions: '',
     });
 
