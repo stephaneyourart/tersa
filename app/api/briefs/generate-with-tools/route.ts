@@ -19,6 +19,8 @@ import {
  * L'IA orchestre elle-même la génération via des tool calls
  */
 export async function POST(request: NextRequest) {
+  const { briefId, projectName, config } = await request.json();
+
   const encoder = new TextEncoder();
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
@@ -32,7 +34,6 @@ export async function POST(request: NextRequest) {
   // Démarrer le traitement en arrière-plan
   (async () => {
     try {
-      const { briefId, projectName, config } = await request.json();
 
       await sendEvent('status', { message: '🧠 Démarrage de l\'analyse...', step: 'init' });
 
