@@ -35,12 +35,12 @@ export async function POST(request: NextRequest) {
       const geminiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
       if (!geminiKey && process.env.OPENAI_API_KEY) {
         console.log('[AI] Gemini non configuré, utilisation de GPT-5.1 à la place');
-        scenario = await callOpenAI(fullPrompt, 'gpt-5.1-2025-11-13');
+        scenario = await callOpenAI(fullPrompt, 'gpt-5.1-2025-11-13', reasoningLevel);
       } else {
         scenario = await callGemini(fullPrompt, model, reasoningLevel);
       }
     } else if (model.startsWith('gpt')) {
-      scenario = await callOpenAI(fullPrompt, model);
+      scenario = await callOpenAI(fullPrompt, model, reasoningLevel);
     } else if (model.startsWith('claude')) {
       scenario = await callClaude(fullPrompt, model);
     } else {
@@ -116,13 +116,42 @@ async function callGemini(
 /**
  * Appel à OpenAI GPT
  */
-async function callOpenAI(prompt: string, model: string): Promise<GeneratedScenario> {
+async function callOpenAI(prompt: string, model: string, reasoningLevel: string = 'medium'): Promise<GeneratedScenario> {
   const apiKey = process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY non configuré');
   }
 
+  // GPT-5.1 utilise la nouvelle API Responses
+  if (model.startsWith('gpt-5')) {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: prompt,
+        reasoning: {
+          effort: reasoningLevel, // 'low', 'medium', 'high'
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenAI API error: ${error}`);
+    }
+
+    const data = await response.json();
+    const text = data.output || data.content;
+
+    return parseScenarioFromText(text);
+  }
+
+  // GPT-4 et antérieurs utilisent l'ancienne API Chat Completions
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
