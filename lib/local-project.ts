@@ -39,9 +39,15 @@ export const localProject = {
 
 /**
  * Vérifie si c'est un projet local
+ * - En mode local, TOUS les projets commençant par "project-" ou "local" sont locaux
  */
 export function isLocalProject(projectId: string): boolean {
-  return isLocalMode && projectId === LOCAL_PROJECT_ID;
+  if (!isLocalMode) return false;
+  
+  // En mode local, reconnaître les projets générés dynamiquement
+  return projectId === LOCAL_PROJECT_ID || 
+         projectId.startsWith('project-') || 
+         projectId.startsWith('local-');
 }
 
 /**

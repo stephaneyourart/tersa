@@ -465,8 +465,9 @@ export function generateCanvasFromProject(
   testMode: boolean = false,
   videoCopies: number = 4
 ): GeneratedCanvasData {
-  // En mode test, 1 seule copie par vidéo
-  const effectiveVideoCopies = testMode ? 1 : videoCopies;
+  // TOUJOURS créer N copies vidéo (même en mode test)
+  // Le mode test limite seulement les images et les plans, PAS les copies vidéo
+  const effectiveVideoCopies = videoCopies;
   
   // Structure pour tracking
   const structure: CanvasStructure = {
