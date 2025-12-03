@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Brief, ProjectGenerationConfig, ReasoningLevel } from '@/types/brief';
 
 const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant IA spécialisé dans la création de scénarios vidéo à partir de briefs.
@@ -157,6 +157,14 @@ export default function GenerateProjectPage() {
   const [showPromptDialog, setShowPromptDialog] = useState(false);
   const [showReasoningDialog, setShowReasoningDialog] = useState(false);
   const [reasoning, setReasoning] = useState<string>('');
+  const reasoningEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll vers le bas quand le raisonnement change
+  useEffect(() => {
+    if (reasoningEndRef.current && showReasoningDialog) {
+      reasoningEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [reasoning, showReasoningDialog]);
   
   const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
     aiModel: 'gpt-5.1-2025-11-13',
@@ -616,6 +624,7 @@ export default function GenerateProjectPage() {
           <ScrollArea className="h-[60vh] w-full rounded-md border p-4">
             <pre className="text-sm whitespace-pre-wrap font-mono">
               {reasoning || 'En attente...'}
+              <div ref={reasoningEndRef} />
             </pre>
           </ScrollArea>
           
