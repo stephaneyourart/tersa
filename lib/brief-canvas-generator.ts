@@ -513,7 +513,7 @@ export function generateCanvasFromProject(
   return {
     nodes: allNodes,
     edges: structure.edges,
-    viewport: { x: 0, y: 0, zoom: 0.25 },
+    viewport: { x: 50, y: 50, zoom: 0.6 },
     structure,
   };
 }
