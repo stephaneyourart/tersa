@@ -53,6 +53,8 @@ export default function BriefEditPage() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [briefContent, setBriefContent] = useState('');
+  const [briefContentTokens, setBriefContentTokens] = useState(0);
 
   useEffect(() => {
     if (!isNew) {
@@ -66,6 +68,13 @@ export default function BriefEditPage() {
       if (response.ok) {
         const data = await response.json();
         setBrief(data);
+        
+        // Charger le contenu textuel s'il existe
+        const textDoc = data.documents?.find((d: BriefDocument) => d.type === 'text' && d.name === '__brief_content__');
+        if (textDoc && textDoc.content) {
+          setBriefContent(textDoc.content);
+          setBriefContentTokens(textDoc.tokens);
+        }
       }
     } catch (error) {
       console.error('Erreur lors du chargement:', error);
@@ -73,6 +82,47 @@ export default function BriefEditPage() {
       setLoading(false);
     }
   };
+
+  const handleBriefContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const content = e.target.value;
+    setBriefContent(content);
+    
+    // Calculer les tokens
+    const tokens = countTextTokens(content).tokens;
+    setBriefContentTokens(tokens);
+    
+    // Mettre à jour le brief avec le nouveau contenu
+    setBrief(prev => {
+      // Retirer l'ancien document texte s'il existe
+      const otherDocs = (prev.documents || []).filter(d => !(d.type === 'text' && d.name === '__brief_content__'));
+      const oldTextDoc = (prev.documents || []).find(d => d.type === 'text' && d.name === '__brief_content__');
+      const oldTokens = oldTextDoc?.tokens || 0;
+      
+      // Créer le nouveau document texte
+      const newDocs = content.trim() ? [
+        ...otherDocs,
+        {
+          id: oldTextDoc?.id || `text-${Date.now()}`,
+          briefId: prev.id,
+          name: '__brief_content__',
+          type: 'text' as const,
+          size: new Blob([content]).size,
+          storagePath: '',
+          url: '',
+          content,
+          tokens,
+          createdAt: new Date(),
+        }
+      ] : otherDocs;
+      
+      return {
+        ...prev,
+        documents: newDocs,
+        totalTokens: prev.totalTokens - oldTokens + tokens,
+        estimatedCost: formatCost(calculateCost(prev.totalTokens - oldTokens + tokens)),
+      };
+    });
+  }, []);
 
   const saveBrief = async () => {
     if (!brief.name.trim()) {
@@ -295,6 +345,37 @@ export default function BriefEditPage() {
               </div>
             </Card>
 
+            {/* Contenu textuel du brief */}
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Contenu du brief (texte)</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Saisissez directement le contenu de votre brief ici. Vous pouvez également ajouter des documents ci-dessous.
+              </p>
+              <Textarea
+                value={briefContent}
+                onChange={handleBriefContentChange}
+                placeholder="Ex: Je souhaite créer une vidéo promotionnelle pour ma startup tech. 
+                
+Personnages :
+- Jean, CEO, 35 ans, cheveux bruns, costume gris
+- Marie, CTO, 30 ans, cheveux blonds, tenue décontractée
+
+Lieux :
+- Bureau moderne avec grandes baies vitrées
+- Salle des serveurs avec éclairage bleu
+
+Scénario :
+Jean présente la vision de l'entreprise...
+Marie explique l'architecture technique...
+..."
+                rows={15}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Tokens : {formatTokens(briefContentTokens)}
+              </p>
+            </Card>
+
             {/* Zone d'upload */}
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-4">Documents</h2>
@@ -321,33 +402,35 @@ export default function BriefEditPage() {
               </div>
 
               {/* Liste des documents */}
-              {brief.documents && brief.documents.length > 0 && (
+              {brief.documents && brief.documents.filter(d => d.name !== '__brief_content__').length > 0 && (
                 <div className="mt-6 space-y-2">
-                  {brief.documents.map((doc) => {
-                    const Icon = getFileIcon(doc.type);
-                    return (
-                      <div
-                        key={doc.id}
-                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <Icon size={20} className="text-muted-foreground flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{doc.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatTokens(doc.tokens)} • {(doc.size / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeDocument(doc.id)}
-                          className="flex-shrink-0"
+                  {brief.documents
+                    .filter(d => d.name !== '__brief_content__')
+                    .map((doc) => {
+                      const Icon = getFileIcon(doc.type);
+                      return (
+                        <div
+                          key={doc.id}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                         >
-                          <TrashIcon size={14} />
-                        </Button>
-                      </div>
-                    );
-                  })}
+                          <Icon size={20} className="text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatTokens(doc.tokens)} • {(doc.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removeDocument(doc.id)}
+                            className="flex-shrink-0"
+                          >
+                            <TrashIcon size={14} />
+                          </Button>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </Card>
@@ -421,8 +504,12 @@ export default function BriefEditPage() {
               <h2 className="text-lg font-semibold mb-4">Statistiques</h2>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Documents</span>
-                  <span className="font-medium">{brief.documents?.length || 0}</span>
+                  <span className="text-muted-foreground">Contenu texte</span>
+                  <span className="font-medium">{briefContent ? '✓' : '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fichiers</span>
+                  <span className="font-medium">{brief.documents?.filter(d => d.name !== '__brief_content__').length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Taille totale</span>
