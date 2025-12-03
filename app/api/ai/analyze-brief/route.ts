@@ -147,8 +147,15 @@ async function callOpenAI(prompt: string, model: string, reasoningLevel: string 
 
     const data = await response.json();
     const text = data.output || data.content;
+    const reasoning = data.reasoning_content || data.reasoning || '';
 
-    return parseScenarioFromText(text);
+    const scenario = parseScenarioFromText(text);
+    
+    // Ajouter le raisonnement au scénario
+    return {
+      ...scenario,
+      reasoning: reasoning,
+    };
   }
 
   // GPT-4 et antérieurs utilisent l'ancienne API Chat Completions

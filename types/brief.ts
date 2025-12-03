@@ -102,5 +102,6 @@ export interface GeneratedScenario {
   scenes: ScenarioScene[];
   totalPlans: number;
   estimatedDuration: number; // En secondes
+  reasoning?: string; // Raisonnement de l'IA (GPT-5.1)
 }
 

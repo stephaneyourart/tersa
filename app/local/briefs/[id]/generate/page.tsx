@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -154,6 +155,8 @@ export default function GenerateProjectPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [showReasoningDialog, setShowReasoningDialog] = useState(false);
+  const [reasoning, setReasoning] = useState<string>('');
   
   const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
     aiModel: 'gpt-5.1-2025-11-13',
@@ -524,6 +527,36 @@ export default function GenerateProjectPage() {
             </Button>
             <Button onClick={() => setShowPromptDialog(false)}>
               Sauvegarder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Raisonnement IA */}
+      <Dialog open={showReasoningDialog} onOpenChange={setShowReasoningDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              🧠 Raisonnement de l'IA
+              {generating && <Loader2Icon size={16} className="animate-spin" />}
+            </DialogTitle>
+            <DialogDescription>
+              Suivez le processus de réflexion de GPT-5.1 en temps réel
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="h-[60vh] w-full rounded-md border p-4">
+            <pre className="text-sm whitespace-pre-wrap font-mono">
+              {reasoning || 'En attente...'}
+            </pre>
+          </ScrollArea>
+          
+          <DialogFooter>
+            <Button 
+              onClick={() => setShowReasoningDialog(false)}
+              disabled={generating}
+            >
+              {generating ? 'Génération en cours...' : 'Fermer'}
             </Button>
           </DialogFooter>
         </DialogContent>
