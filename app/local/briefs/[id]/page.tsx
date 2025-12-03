@@ -135,6 +135,8 @@ export default function BriefEditPage() {
       const url = isNew ? '/api/briefs' : `/api/briefs/${params.id}`;
       const method = isNew ? 'POST' : 'PATCH';
       
+      console.log('[Brief] Sauvegarde...', { url, method, brief });
+      
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -143,21 +145,37 @@ export default function BriefEditPage() {
 
       if (response.ok) {
         const saved = await response.json();
+        console.log('[Brief] Sauvegardé:', saved);
+        
         if (isNew) {
-          // Retourner l'ID du brief créé
+          // Ne pas rediriger, juste mettre à jour l'état
+          setBrief(saved);
+          // Mettre à jour l'URL sans recharger
+          window.history.replaceState({}, '', `/local/briefs/${saved.id}`);
           return saved.id;
         } else {
           setBrief(saved);
           return params.id as string;
         }
+      } else {
+        const error = await response.text();
+        console.error('[Brief] Erreur sauvegarde:', error);
+        alert(`Erreur lors de la sauvegarde: ${error}`);
+        return null;
       }
-      return null;
     } catch (error) {
-      console.error('Erreur lors de la sauvegarde:', error);
+      console.error('[Brief] Erreur lors de la sauvegarde:', error);
       alert('Erreur lors de la sauvegarde');
       return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveClick = async () => {
+    const briefId = await saveBrief();
+    if (briefId) {
+      alert('Brief sauvegardé avec succès !');
     }
   };
 
@@ -172,12 +190,17 @@ export default function BriefEditPage() {
       return;
     }
 
+    console.log('[Brief] Lancement génération...');
+    
     // Sauvegarder d'abord
     const briefId = await saveBrief();
     
     if (briefId) {
+      console.log('[Brief] Redirection vers génération...', briefId);
       // Rediriger vers la page de génération
       router.push(`/local/briefs/${briefId}/generate`);
+    } else {
+      alert('Erreur lors de la sauvegarde du brief');
     }
   };
 
@@ -299,9 +322,9 @@ export default function BriefEditPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-y-auto">
+    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/local/briefs">
@@ -318,7 +341,7 @@ export default function BriefEditPage() {
           <div className="flex items-center gap-2">
             <Button 
               variant="outline" 
-              onClick={saveBrief}
+              onClick={handleSaveClick}
               disabled={saving || !brief.name.trim()}
             >
               {saving ? 'Sauvegarde...' : 'Sauvegarder'}
@@ -335,8 +358,9 @@ export default function BriefEditPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Formulaire principal */}
           <div className="lg:col-span-2 space-y-6">
             {/* Informations de base */}
@@ -546,6 +570,7 @@ Marie explique l'architecture technique...
               </div>
             </Card>
           </div>
+        </div>
         </div>
       </main>
     </div>
