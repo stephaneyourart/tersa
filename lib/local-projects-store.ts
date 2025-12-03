@@ -35,6 +35,14 @@ export interface ProjectStats {
   totalSentToDVR: number;
 }
 
+export interface GenerationSequence {
+  characterImages: { characterId: string; imageNodeIds: string[] }[];
+  locationImages: { locationId: string; imageNodeIds: string[] }[];
+  characterCollections: [string, string][];
+  locationCollections: [string, string][];
+  videos: { planId: string; videoNodeId: string }[];
+}
+
 export interface LocalProject {
   id: string;
   name: string;
@@ -47,6 +55,7 @@ export interface LocalProject {
     nodes: unknown[];
     edges: unknown[];
     viewport?: unknown;
+    generationSequence?: GenerationSequence; // Séquence pour génération automatique
   };
 }
 

@@ -38,7 +38,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getLocalProjectById, updateLocalProject } from '@/lib/local-projects-store';
+import { 
+  getLocalProjectById, 
+  updateLocalProject, 
+  type GenerationSequence 
+} from '@/lib/local-projects-store';
 
 interface GenerationStep {
   id: string;
@@ -47,14 +51,6 @@ interface GenerationStep {
   nodeId: string;
   label: string;
   error?: string;
-}
-
-interface GenerationSequence {
-  characterImages: { characterId: string; imageNodeIds: string[] }[];
-  locationImages: { locationId: string; imageNodeIds: string[] }[];
-  characterCollections: [string, string][];
-  locationCollections: [string, string][];
-  videos: { planId: string; videoNodeId: string }[];
 }
 
 interface GenerationPanelProps {
@@ -79,8 +75,12 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   // Charger la séquence depuis le projet
   useEffect(() => {
     const project = getLocalProjectById(projectId);
+    console.log('[GenerationPanel] Loading project:', projectId, project?.data);
     if (project?.data?.generationSequence) {
+      console.log('[GenerationPanel] Found generation sequence:', project.data.generationSequence);
       setSequence(project.data.generationSequence as GenerationSequence);
+    } else {
+      console.log('[GenerationPanel] No generation sequence found');
     }
   }, [projectId]);
 

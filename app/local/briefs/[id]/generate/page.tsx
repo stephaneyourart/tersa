@@ -285,10 +285,11 @@ export default function GenerateProjectPage() {
                 // Stocker la séquence de génération
                 const generationSequence = data.generationSequence;
 
-                // Si on a reçu les données mais pas le projectId, créer le projet côté client
-                let projectId = data.projectId;
+                // Toujours créer le projet côté client (localStorage)
+                // L'API ne peut pas accéder à localStorage, donc on le fait ici
+                let projectId: string | null = null;
                 
-                if (!projectId && canvasData) {
+                if (canvasData) {
                   setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
                   const newProject = createLocalProject(projectName);
                   // Inclure la séquence de génération dans les données du projet
@@ -300,16 +301,12 @@ export default function GenerateProjectPage() {
                   });
                   projectId = newProject.id;
                   setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
-                } else if (projectId && generationSequence) {
-                  // Mettre à jour le projet existant avec la séquence
-                  const existingProject = getLocalProjectById(projectId);
-                  if (existingProject) {
-                    updateLocalProject(projectId, {
-                      data: {
-                        ...existingProject.data,
-                        generationSequence,
-                      }
-                    });
+                  if (generationSequence) {
+                    const imgCount = 
+                      generationSequence.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) +
+                      generationSequence.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0);
+                    const vidCount = generationSequence.videos?.length || 0;
+                    setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
                   }
                 }
 
