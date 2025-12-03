@@ -532,7 +532,22 @@ export function createEmptyProjectStructure(title: string, synopsis: string): Ge
 }
 
 // ========== HELPER : Obtenir les IDs pour génération séquentielle ==========
-export function getGenerationSequence(structure: CanvasStructure) {
+export function getGenerationSequence(structure: CanvasStructure, project?: GeneratedProjectStructure) {
+  // Créer un map des plans par ID pour accès rapide
+  const plansMap = new Map<string, { prompt: string; characterRefs: string[]; locationRef?: string }>();
+  
+  if (project) {
+    for (const scene of project.scenes) {
+      for (const plan of scene.plans) {
+        plansMap.set(plan.id, {
+          prompt: plan.prompt,
+          characterRefs: plan.characterRefs || [],
+          locationRef: plan.locationRef,
+        });
+      }
+    }
+  }
+
   return {
     // Étape 1 : Images de personnages à générer
     characterImages: Object.entries(structure.characterImageMap).map(([charId, imageIds]) => ({
@@ -551,9 +566,32 @@ export function getGenerationSequence(structure: CanvasStructure) {
     locationCollections: Object.entries(structure.locationCollectionIds),
     
     // Étape 4 : Vidéos à générer (après collections remplies)
-    videos: Object.entries(structure.planVideoMap).map(([planId, videoId]) => ({
-      planId,
-      videoNodeId: videoId,
-    })),
+    videos: Object.entries(structure.planVideoMap).map(([planId, videoId]) => {
+      const planInfo = plansMap.get(planId);
+      
+      // Résoudre les IDs de collections depuis les références
+      const characterCollectionIds: string[] = [];
+      if (planInfo?.characterRefs) {
+        for (const charRef of planInfo.characterRefs) {
+          const collectionId = structure.characterCollectionIds[charRef];
+          if (collectionId) {
+            characterCollectionIds.push(collectionId);
+          }
+        }
+      }
+      
+      let locationCollectionId: string | undefined;
+      if (planInfo?.locationRef) {
+        locationCollectionId = structure.locationCollectionIds[planInfo.locationRef];
+      }
+
+      return {
+        planId,
+        videoNodeId: videoId,
+        prompt: planInfo?.prompt || '',
+        characterCollectionIds,
+        locationCollectionId,
+      };
+    }),
   };
 }

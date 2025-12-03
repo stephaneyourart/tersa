@@ -262,9 +262,9 @@ export async function POST(request: NextRequest) {
           // Générer les nœuds du canvas
           const canvasData = generateCanvasFromProject(projectStructure);
           
-          // Extraire la séquence de génération pour plus tard
+          // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)
           const { getGenerationSequence } = await import('@/lib/brief-canvas-generator');
-          const generationSequence = getGenerationSequence(canvasData.structure);
+          const generationSequence = getGenerationSequence(canvasData.structure, projectStructure);
 
           controller.enqueue(encoder.encode(sseEvent('progress', { 
             progress: 50,

@@ -38,9 +38,15 @@ export interface ProjectStats {
 export interface GenerationSequence {
   characterImages: { characterId: string; imageNodeIds: string[] }[];
   locationImages: { locationId: string; imageNodeIds: string[] }[];
-  characterCollections: [string, string][];
-  locationCollections: [string, string][];
-  videos: { planId: string; videoNodeId: string }[];
+  characterCollections: [string, string][]; // [characterId, collectionNodeId]
+  locationCollections: [string, string][]; // [locationId, collectionNodeId]
+  videos: { 
+    planId: string; 
+    videoNodeId: string;
+    prompt: string;
+    characterCollectionIds: string[]; // IDs des collections personnages
+    locationCollectionId?: string; // ID de la collection lieu
+  }[];
 }
 
 export interface LocalProject {

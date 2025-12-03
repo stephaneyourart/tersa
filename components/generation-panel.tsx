@@ -179,13 +179,53 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     }
   };
 
-  const generateVideo = async (nodeId: string): Promise<boolean> => {
+  const generateVideo = async (nodeId: string, videoInfo?: { 
+    prompt: string; 
+    characterCollectionIds: string[]; 
+    locationCollectionId?: string; 
+  }): Promise<boolean> => {
     try {
       const nodes = getNodes();
       const node = nodes.find(n => n.id === nodeId);
-      const prompt = node?.data?.instructions || node?.data?.label || '';
+      
+      // Utiliser le prompt de la séquence ou celui du nœud
+      const prompt = videoInfo?.prompt || node?.data?.instructions || node?.data?.label || '';
 
       console.log(`[GenerationPanel] Génération vidéo pour ${nodeId}`);
+      console.log(`[GenerationPanel] Prompt: ${prompt.substring(0, 100)}...`);
+
+      // Récupérer les images des collections référencées
+      const images: { url: string; type: string }[] = [];
+      
+      // Images des personnages
+      if (videoInfo?.characterCollectionIds) {
+        for (const collectionId of videoInfo.characterCollectionIds) {
+          const collectionNode = nodes.find(n => n.id === collectionId);
+          if (collectionNode?.data?.items) {
+            for (const item of collectionNode.data.items) {
+              if (item.enabled && item.url) {
+                images.push({ url: item.url, type: item.type || 'image/png' });
+                console.log(`[GenerationPanel] Image perso ajoutée: ${item.url.substring(0, 50)}...`);
+              }
+            }
+          }
+        }
+      }
+
+      // Image du lieu
+      if (videoInfo?.locationCollectionId) {
+        const locCollectionNode = nodes.find(n => n.id === videoInfo.locationCollectionId);
+        if (locCollectionNode?.data?.items) {
+          // Prendre la première image activée du lieu
+          const enabledItem = locCollectionNode.data.items.find((item: any) => item.enabled && item.url);
+          if (enabledItem) {
+            images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png' });
+            console.log(`[GenerationPanel] Image lieu ajoutée: ${enabledItem.url.substring(0, 50)}...`);
+          }
+        }
+      }
+
+      console.log(`[GenerationPanel] ${images.length} images à envoyer pour la vidéo`);
 
       const response = await fetch('/api/video/generate', {
         method: 'POST',
@@ -196,6 +236,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           model: 'kling-2.1-image-to-video',
           copies: videoCopies,
           projectId: projectId,
+          images, // Passer les images des collections
         }),
       });
 
@@ -472,14 +513,19 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         setCurrentPhase('🎬 Vidéos');
         toast.info('Génération des vidéos...');
 
-        for (const { planId, videoNodeId } of sequence.videos) {
+        for (const videoData of sequence.videos) {
           if (aborted) break;
-
+          
+          const { planId, videoNodeId, prompt, characterCollectionIds, locationCollectionId } = videoData;
           const stepId = `video-${videoNodeId}`;
           updateStep(stepId, { status: 'generating' });
           setCurrentStep(++stepIdx);
 
-          const success = await generateVideo(videoNodeId);
+          const success = await generateVideo(videoNodeId, {
+            prompt: prompt || '',
+            characterCollectionIds: characterCollectionIds || [],
+            locationCollectionId,
+          });
           
           updateStep(stepId, { status: success ? 'done' : 'error' });
           if (success) successCount++;
