@@ -89,7 +89,10 @@ export interface CanvasStructure {
   // Métadonnées
   characterImageMap: Record<string, string[]>;  // characterId -> imageNodeIds
   locationImageMap: Record<string, string[]>;   // locationId -> imageNodeIds
-  planVideoMap: Record<string, string>;         // planId -> videoNodeId
+  planVideoMap: Record<string, string[]>;       // planId -> videoNodeIds (TABLEAU pour les copies)
+  
+  // Config vidéos
+  videoCopies: number;                          // Nombre de copies par plan
 }
 
 // ========== CRÉATION PERSONNAGE ==========
@@ -294,7 +297,8 @@ function createPlanStructure(
   structure: CanvasStructure
 ): { width: number; height: number } {
   const textNodeId = nodeId('text-plan');
-  const videoNodeId = nodeId('video-plan');
+  const videoCopies = structure.videoCopies || 4;
+  const videoNodeIds: string[] = [];
 
   // 1. Nœud TEXT (prompt du plan)
   structure.textNodes.push({
@@ -307,60 +311,73 @@ function createPlanStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœud VIDEO
-  const videoX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X * 2;
+  // 2. Créer N nœuds VIDEO (copies)
+  const videoStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X * 2;
+  const videoGap = LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  structure.videoNodes.push({
-    id: videoNodeId,
-    type: 'video',
-    position: { x: videoX, y: startY },
-    data: {
-      label: `Plan ${scene.sceneNumber}.${plan.planNumber}`,
-      instructions: plan.prompt,
-    },
-    width: LAYOUT.VIDEO_NODE_WIDTH,
-    height: LAYOUT.VIDEO_NODE_HEIGHT,
-  });
+  for (let copyIndex = 0; copyIndex < videoCopies; copyIndex++) {
+    const videoNodeId = nodeId(`video-plan-${copyIndex + 1}`);
+    videoNodeIds.push(videoNodeId);
+    
+    structure.videoNodes.push({
+      id: videoNodeId,
+      type: 'video',
+      position: { 
+        x: videoStartX + (copyIndex * videoGap), 
+        y: startY 
+      },
+      data: {
+        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Copie ${copyIndex + 1}`,
+        instructions: plan.prompt,
+        copyIndex: copyIndex + 1,
+        totalCopies: videoCopies,
+      },
+      width: LAYOUT.VIDEO_NODE_WIDTH,
+      height: LAYOUT.VIDEO_NODE_HEIGHT,
+    });
 
-  // 3. Edges : collections → video + text (prompt) → video
-  // Collections personnages → video (directement)
-  for (const charRef of plan.characterRefs) {
-    const collectionId = structure.characterCollectionIds[charRef];
-    if (collectionId) {
-      structure.edges.push({
-        id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: videoNodeId,
-        type: 'default',
-      });
+    // 3. Edges pour chaque vidéo : collections → video + text (prompt) → video
+    // Collections personnages → video (directement)
+    for (const charRef of plan.characterRefs) {
+      const collectionId = structure.characterCollectionIds[charRef];
+      if (collectionId) {
+        structure.edges.push({
+          id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: videoNodeId,
+          type: 'default',
+        });
+      }
     }
+
+    // Collection lieu → video (directement)
+    if (plan.locationRef) {
+      const collectionId = structure.locationCollectionIds[plan.locationRef];
+      if (collectionId) {
+        structure.edges.push({
+          id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: videoNodeId,
+          type: 'default',
+        });
+      }
+    }
+
+    // Text (prompt) → video
+    structure.edges.push({
+      id: `edge-${textNodeId}-${videoNodeId}-${nanoid(4)}`,
+      source: textNodeId,
+      target: videoNodeId,
+      type: 'default',
+    });
   }
 
-  // Collection lieu → video (directement)
-  if (plan.locationRef) {
-    const collectionId = structure.locationCollectionIds[plan.locationRef];
-    if (collectionId) {
-      structure.edges.push({
-        id: `edge-${collectionId}-${videoNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: videoNodeId,
-        type: 'default',
-      });
-    }
-  }
+  // 4. Tracking (tableau de videoNodeIds)
+  structure.planVideoMap[plan.id] = videoNodeIds;
 
-  // Text (prompt) → video
-  structure.edges.push({
-    id: `edge-${textNodeId}-${videoNodeId}`,
-    source: textNodeId,
-    target: videoNodeId,
-    type: 'default',
-  });
-
-  // 4. Tracking
-  structure.planVideoMap[plan.id] = videoNodeId;
-
-  return { width: LAYOUT.PLAN_WIDTH, height: LAYOUT.PLAN_HEIGHT };
+  // Largeur totale : prompt + N vidéos
+  const totalWidth = LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X * 2 + (videoCopies * videoGap);
+  return { width: totalWidth, height: LAYOUT.PLAN_HEIGHT };
 }
 
 // ========== CRÉATION SCÈNE ==========
@@ -374,10 +391,15 @@ function createSceneStructure(
   const labelNodeId = nodeId('label-scene');
 
   // Calculer les dimensions de la scène
+  // IMPORTANT: La largeur dépend du nombre de copies vidéo
+  const videoCopies = structure.videoCopies || 4;
+  const videoGap = LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.NODE_GAP_X;
+  const planWidth = LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X * 2 + (videoCopies * videoGap);
+  
   const plansCount = scene.plans.length;
   const rows = Math.ceil(plansCount / LAYOUT.PLANS_PER_ROW);
   const contentHeight = rows * (LAYOUT.PLAN_HEIGHT + LAYOUT.NODE_GAP_Y);
-  const sceneWidth = LAYOUT.PLAN_WIDTH + LAYOUT.SCENE_PADDING * 2;
+  const sceneWidth = planWidth + LAYOUT.SCENE_PADDING * 2;
   const sceneHeight = LAYOUT.SCENE_TITLE_HEIGHT + contentHeight + LAYOUT.SCENE_PADDING * 2;
 
   // 1. Shape de fond
@@ -440,8 +462,12 @@ export interface GeneratedCanvasData {
 
 export function generateCanvasFromProject(
   project: GeneratedProjectStructure,
-  testMode: boolean = false
+  testMode: boolean = false,
+  videoCopies: number = 4
 ): GeneratedCanvasData {
+  // En mode test, 1 seule copie par vidéo
+  const effectiveVideoCopies = testMode ? 1 : videoCopies;
+  
   // Structure pour tracking
   const structure: CanvasStructure = {
     characterCollectionIds: {},
@@ -456,6 +482,7 @@ export function generateCanvasFromProject(
     characterImageMap: {},
     locationImageMap: {},
     planVideoMap: {},
+    videoCopies: effectiveVideoCopies,
   };
 
   let currentY = LAYOUT.MARGIN;
@@ -587,8 +614,12 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
     characterCollections: Object.entries(structure.characterCollectionIds),
     locationCollections: Object.entries(structure.locationCollectionIds),
     
+    // Nombre de copies vidéo
+    videoCopies: structure.videoCopies || 4,
+    
     // Étape 4 : Vidéos à générer (après collections remplies)
-    videos: Object.entries(structure.planVideoMap).map(([planId, videoId]) => {
+    // Chaque plan a N nœuds vidéo (copies)
+    videos: Object.entries(structure.planVideoMap).map(([planId, videoNodeIds]) => {
       const planInfo = plansMap.get(planId);
       
       // Résoudre les IDs de collections depuis les références
@@ -609,7 +640,7 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
 
       return {
         planId,
-        videoNodeId: videoId,
+        videoNodeIds: videoNodeIds, // TABLEAU maintenant
         prompt: planInfo?.prompt || '',
         characterCollectionIds,
         locationCollectionId,

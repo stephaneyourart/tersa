@@ -227,6 +227,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
 
       console.log(`[GenerationPanel] ${images.length} images à envoyer pour la vidéo`);
 
+      // CHAQUE NŒUD = 1 VIDÉO (plus de copies multiples ici)
       const response = await fetch('/api/video/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,7 +235,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           nodeId,
           prompt,
           model: 'kling-o1-i2v',
-          copies: videoCopies,
+          copies: 1, // 1 seule vidéo par nœud (les copies sont des nœuds distincts)
           projectId: projectId,
           images, // Passer les images des collections
         }),
@@ -388,24 +389,30 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       });
     }
 
-    // Vidéos
-    for (const { planId, videoNodeId } of sequence.videos) {
-      allSteps.push({
-        id: `video-${videoNodeId}`,
-        type: 'video',
-        status: 'pending',
-        nodeId: videoNodeId,
-        label: `Vidéo plan`,
-      });
-
-      if (sendToDVR) {
+    // Vidéos (CHAQUE COPIE est un nœud distinct)
+    for (const videoData of sequence.videos) {
+      // videoNodeIds est maintenant un tableau (1 nœud par copie)
+      const videoNodeIds = videoData.videoNodeIds || [videoData.videoNodeId].filter(Boolean);
+      
+      for (let copyIdx = 0; copyIdx < videoNodeIds.length; copyIdx++) {
+        const videoNodeId = videoNodeIds[copyIdx];
         allSteps.push({
-          id: `dvr-${videoNodeId}`,
-          type: 'dvr',
+          id: `video-${videoNodeId}`,
+          type: 'video',
           status: 'pending',
           nodeId: videoNodeId,
-          label: `→ DVR`,
+          label: `Vidéo ${videoData.planId?.split('-')[0] || 'plan'} - Copie ${copyIdx + 1}`,
         });
+
+        if (sendToDVR) {
+          allSteps.push({
+            id: `dvr-${videoNodeId}`,
+            type: 'dvr',
+            status: 'pending',
+            nodeId: videoNodeId,
+            label: `→ DVR`,
+          });
+        }
       }
     }
 
@@ -508,7 +515,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         }
       }
 
-      // ========== PHASE 5 : Vidéos ==========
+      // ========== PHASE 5 : Vidéos (CHAQUE COPIE INDIVIDUELLEMENT) ==========
       if (!aborted) {
         setCurrentPhase('🎬 Vidéos');
         toast.info('Génération des vidéos...');
@@ -516,26 +523,34 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         for (const videoData of sequence.videos) {
           if (aborted) break;
           
-          const { planId, videoNodeId, prompt, characterCollectionIds, locationCollectionId } = videoData;
-          const stepId = `video-${videoNodeId}`;
-          updateStep(stepId, { status: 'generating' });
-          setCurrentStep(++stepIdx);
-
-          const success = await generateVideo(videoNodeId, {
-            prompt: prompt || '',
-            characterCollectionIds: characterCollectionIds || [],
-            locationCollectionId,
-          });
+          const { planId, prompt, characterCollectionIds, locationCollectionId } = videoData;
+          // Nouveau format: videoNodeIds est un tableau
+          const videoNodeIds = videoData.videoNodeIds || [videoData.videoNodeId].filter(Boolean);
           
-          updateStep(stepId, { status: success ? 'done' : 'error' });
-          if (success) successCount++;
-          else errorCount++;
-
-          // DVR
-          if (sendToDVR && !aborted && success) {
-            const dvrStepId = `dvr-${videoNodeId}`;
-            updateStep(dvrStepId, { status: 'generating' });
+          for (let copyIdx = 0; copyIdx < videoNodeIds.length; copyIdx++) {
+            if (aborted) break;
+            
+            const videoNodeId = videoNodeIds[copyIdx];
+            const stepId = `video-${videoNodeId}`;
+            updateStep(stepId, { status: 'generating' });
             setCurrentStep(++stepIdx);
+
+            // Générer UNE SEULE vidéo par nœud
+            const success = await generateVideo(videoNodeId, {
+              prompt: prompt || '',
+              characterCollectionIds: characterCollectionIds || [],
+              locationCollectionId,
+            });
+            
+            updateStep(stepId, { status: success ? 'done' : 'error' });
+            if (success) successCount++;
+            else errorCount++;
+
+            // DVR
+            if (sendToDVR && !aborted && success) {
+              const dvrStepId = `dvr-${videoNodeId}`;
+              updateStep(dvrStepId, { status: 'generating' });
+              setCurrentStep(++stepIdx);
 
             const dvrSuccess = await sendVideoToDVR(videoNodeId);
             updateStep(dvrStepId, { status: dvrSuccess ? 'done' : 'error' });

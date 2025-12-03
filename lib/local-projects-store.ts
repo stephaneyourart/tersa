@@ -42,11 +42,12 @@ export interface GenerationSequence {
   locationCollections: [string, string][]; // [locationId, collectionNodeId]
   videos: { 
     planId: string; 
-    videoNodeId: string;
+    videoNodeIds: string[]; // TABLEAU : 1 nœud par copie (ex: 4 nœuds pour 4 copies)
     prompt: string;
     characterCollectionIds: string[]; // IDs des collections personnages
     locationCollectionId?: string; // ID de la collection lieu
   }[];
+  videoCopies: number; // Nombre de copies par plan (défaut: 4)
 }
 
 export interface LocalProject {
