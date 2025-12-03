@@ -39,12 +39,11 @@ export const localProject = {
 
 /**
  * Vérifie si c'est un projet local
- * - En mode local, TOUS les projets commençant par "project-" ou "local" sont locaux
+ * - Tous les projets commençant par "project-" ou "local" sont considérés locaux
+ * - Ces projets sont stockés dans localStorage, pas dans la BDD
  */
 export function isLocalProject(projectId: string): boolean {
-  if (!isLocalMode) return false;
-  
-  // En mode local, reconnaître les projets générés dynamiquement
+  // Projets locaux identifiés par leur préfixe (pas besoin de LOCAL_MODE)
   return projectId === LOCAL_PROJECT_ID || 
          projectId.startsWith('project-') || 
          projectId.startsWith('local-');
