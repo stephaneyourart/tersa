@@ -35,6 +35,7 @@ import {
   VideoIcon,
   FolderIcon,
   SendIcon,
+  RotateCcwIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -51,6 +52,13 @@ interface GenerationStep {
   nodeId: string;
   label: string;
   error?: string;
+  // Infos supplémentaires pour le retry
+  videoInfo?: {
+    prompt: string;
+    characterCollectionIds: string[];
+    locationCollectionId?: string;
+  };
+  collectionSourceIds?: string[]; // Pour les collections
 }
 
 interface GenerationPanelProps {
@@ -330,6 +338,56 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     }
   };
 
+  // ========== RETRY ==========
+  const retryStep = async (step: GenerationStep) => {
+    console.log(`[GenerationPanel] Retry step: ${step.id} (${step.type})`);
+    
+    // Mettre à jour le statut
+    updateStep(step.id, { status: 'generating', error: undefined });
+
+    let success = false;
+
+    try {
+      switch (step.type) {
+        case 'image':
+          success = await generateImage(step.nodeId);
+          break;
+
+        case 'video':
+          success = await generateVideo(step.nodeId, step.videoInfo);
+          break;
+
+        case 'collection':
+          if (step.collectionSourceIds) {
+            success = await populateCollection(step.nodeId, step.collectionSourceIds);
+          }
+          break;
+
+        case 'dvr':
+          success = await sendVideoToDVR(step.nodeId);
+          break;
+      }
+
+      updateStep(step.id, { 
+        status: success ? 'done' : 'error',
+        error: success ? undefined : 'Échec du retry'
+      });
+
+      if (success) {
+        toast.success(`${step.type === 'video' ? 'Vidéo' : step.type === 'image' ? 'Image' : 'Étape'} régénérée !`);
+      } else {
+        toast.error(`Échec du retry pour ${step.label}`);
+      }
+    } catch (error) {
+      console.error('[GenerationPanel] Erreur retry:', error);
+      updateStep(step.id, { 
+        status: 'error', 
+        error: error instanceof Error ? error.message : 'Erreur inconnue' 
+      });
+      toast.error(`Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    }
+  };
+
   // ========== LANCEMENT ==========
   const startGeneration = useCallback(async () => {
     if (!sequence || isGenerating) return;
@@ -356,12 +414,15 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
 
     // Collections personnages
     for (const [charId, collectionId] of sequence.characterCollections) {
+      // Trouver les IDs des images sources
+      const charData = sequence.characterImages.find(c => c.characterId === charId);
       allSteps.push({
         id: `coll-${collectionId}`,
         type: 'collection',
         status: 'pending',
         nodeId: collectionId,
         label: `Collection perso`,
+        collectionSourceIds: charData?.imageNodeIds || [],
       });
     }
 
@@ -380,12 +441,15 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
 
     // Collections lieux
     for (const [locId, collectionId] of sequence.locationCollections) {
+      // Trouver les IDs des images sources
+      const locData = sequence.locationImages.find(l => l.locationId === locId);
       allSteps.push({
         id: `coll-${collectionId}`,
         type: 'collection',
         status: 'pending',
         nodeId: collectionId,
         label: `Collection lieu`,
+        collectionSourceIds: locData?.imageNodeIds || [],
       });
     }
 
@@ -393,6 +457,13 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     for (const videoData of sequence.videos) {
       // videoNodeIds est maintenant un tableau (1 nœud par copie)
       const videoNodeIds = videoData.videoNodeIds || [videoData.videoNodeId].filter(Boolean);
+      
+      // Préparer les infos pour retry
+      const videoInfo = {
+        prompt: videoData.prompt || '',
+        characterCollectionIds: videoData.characterCollectionIds || [],
+        locationCollectionId: videoData.locationCollectionId,
+      };
       
       for (let copyIdx = 0; copyIdx < videoNodeIds.length; copyIdx++) {
         const videoNodeId = videoNodeIds[copyIdx];
@@ -402,6 +473,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           status: 'pending',
           nodeId: videoNodeId,
           label: `Vidéo ${videoData.planId?.split('-')[0] || 'plan'} - Copie ${copyIdx + 1}`,
+          videoInfo, // Pour le retry
         });
 
         if (sendToDVR) {
@@ -735,13 +807,26 @@ ${errorCount > 0 ? `❌ ${errorCount} erreurs` : ''}
                       'flex items-center gap-2 rounded px-2 py-1 text-sm',
                       step.status === 'generating' && 'bg-blue-500/10',
                       step.status === 'done' && 'text-emerald-400/70',
-                      step.status === 'error' && 'text-red-400/70'
+                      step.status === 'error' && 'text-red-400/70 bg-red-500/5'
                     )}
                   >
                     {getStepIcon(step)}
                     <span className="flex-1">{step.label}</span>
+                    {step.status === 'error' && !isGenerating && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs hover:bg-red-500/20"
+                        onClick={() => retryStep(step)}
+                      >
+                        <RotateCcwIcon size={12} className="mr-1" />
+                        Retry
+                      </Button>
+                    )}
                     {step.error && (
-                      <span className="text-xs text-red-400 ml-2">{step.error}</span>
+                      <span className="text-xs text-red-400 ml-1 max-w-[100px] truncate" title={step.error}>
+                        {step.error}
+                      </span>
                     )}
                   </div>
                 ))}
