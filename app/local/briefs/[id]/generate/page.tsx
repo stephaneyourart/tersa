@@ -210,125 +210,142 @@ export default function GenerateProjectPage() {
       let canvasData: any = null;
       let projectStructure: any = null;
       let buffer = '';
+      let generationSequenceData: any = null;
 
+      // Fonction pour traiter une ligne SSE
+      const processLine = (line: string) => {
+        if (!line.startsWith('data: ')) return;
+
+        try {
+          const data = JSON.parse(line.slice(6));
+          
+          switch (data.type) {
+            case 'phase_start':
+              setCurrentPhase(data.phase);
+              setReasoning(prev => prev + `\n${data.message}\n\n`);
+              if (data.phase === 'analysis') {
+                setPhaseStatus(prev => ({ ...prev, analysis: 'running' }));
+              } else if (data.phase === 'canvas_creation') {
+                setPhaseStatus(prev => ({ ...prev, analysis: 'done', canvas: 'running' }));
+              }
+              break;
+
+            case 'reasoning':
+              setReasoning(prev => prev + data.content);
+              break;
+
+            case 'phase_complete':
+              setReasoning(prev => prev + `\n\n${data.message}\n`);
+              if (data.nodeCount) {
+                setReasoning(prev => prev + `📦 ${data.nodeCount} nœuds créés\n`);
+              }
+              break;
+
+            case 'progress':
+              setReasoning(prev => prev + `${data.message}\n`);
+              break;
+
+            case 'project_data':
+              // Fallback si l'API n'a pas pu créer le projet
+              canvasData = data.canvasData;
+              projectStructure = data.projectStructure;
+              // Stocker aussi la séquence de génération
+              if (data.generationSequence) {
+                canvasData.generationSequence = data.generationSequence;
+                generationSequenceData = data.generationSequence;
+              }
+              break;
+
+            case 'complete':
+              setPhaseStatus(prev => ({ ...prev, canvas: 'done', redirect: 'running' }));
+              setReasoning(prev => prev + `\n\n🎉 ${data.message}\n`);
+              
+              // Résumé
+              if (data.summary) {
+                const s = data.summary;
+                setReasoning(prev => prev + `\n📊 Résumé :\n`);
+                setReasoning(prev => prev + `   • ${s.characters} personnage(s)\n`);
+                setReasoning(prev => prev + `   • ${s.locations} lieu(x)\n`);
+                setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
+                setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
+                setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
+                if (s.imagesToGenerate) {
+                  setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer\n`);
+                }
+                if (s.videosToGenerate) {
+                  setReasoning(prev => prev + `   • ${s.videosToGenerate} vidéos à générer\n`);
+                }
+              }
+
+              // Stocker la séquence de génération
+              const generationSequence = data.generationSequence || generationSequenceData;
+
+              // Toujours créer le projet côté client (localStorage)
+              // L'API ne peut pas accéder à localStorage, donc on le fait ici
+              let projectId: string | null = null;
+              
+              if (canvasData) {
+                setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
+                const newProject = createLocalProject(projectName);
+                // Inclure la séquence de génération dans les données du projet
+                updateLocalProject(newProject.id, { 
+                  data: {
+                    ...canvasData,
+                    generationSequence,
+                  }
+                });
+                projectId = newProject.id;
+                setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
+                if (generationSequence) {
+                  const imgCount = 
+                    (generationSequence.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) || 0) +
+                    (generationSequence.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0) || 0);
+                  const vidCount = generationSequence.videos?.length || 0;
+                  setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
+                }
+              }
+
+              if (projectId) {
+                setReasoning(prev => prev + `\n🎨 Ouverture du canvas dans 2 secondes...`);
+                setPhaseStatus(prev => ({ ...prev, redirect: 'done' }));
+                setTimeout(() => {
+                  router.push(`/local/canvas/${projectId}`);
+                }, 2000);
+              }
+              break;
+
+            case 'error':
+              setReasoning(prev => prev + `\n\n❌ Erreur: ${data.error}\n`);
+              if (data.details) {
+                setReasoning(prev => prev + `\nDétails: ${data.details}\n`);
+              }
+              break;
+          }
+        } catch (e) {
+          console.error('Erreur parse SSE:', e, line);
+        }
+      };
+
+      // Lire le stream
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-
-          try {
-            const data = JSON.parse(line.slice(6));
-            
-            switch (data.type) {
-              case 'phase_start':
-                setCurrentPhase(data.phase);
-                setReasoning(prev => prev + `\n${data.message}\n\n`);
-                if (data.phase === 'analysis') {
-                  setPhaseStatus(prev => ({ ...prev, analysis: 'running' }));
-                } else if (data.phase === 'canvas_creation') {
-                  setPhaseStatus(prev => ({ ...prev, analysis: 'done', canvas: 'running' }));
-                }
-                break;
-
-              case 'reasoning':
-                setReasoning(prev => prev + data.content);
-                break;
-
-              case 'phase_complete':
-                setReasoning(prev => prev + `\n\n${data.message}\n`);
-                if (data.nodeCount) {
-                  setReasoning(prev => prev + `📦 ${data.nodeCount} nœuds créés\n`);
-                }
-                break;
-
-              case 'progress':
-                setReasoning(prev => prev + `${data.message}\n`);
-                break;
-
-              case 'project_data':
-                // Fallback si l'API n'a pas pu créer le projet
-                canvasData = data.canvasData;
-                projectStructure = data.projectStructure;
-                // Stocker aussi la séquence de génération
-                if (data.generationSequence) {
-                  canvasData.generationSequence = data.generationSequence;
-                }
-                break;
-
-              case 'complete':
-                setPhaseStatus(prev => ({ ...prev, canvas: 'done', redirect: 'running' }));
-                setReasoning(prev => prev + `\n\n🎉 ${data.message}\n`);
-                
-                // Résumé
-                if (data.summary) {
-                  const s = data.summary;
-                  setReasoning(prev => prev + `\n📊 Résumé :\n`);
-                  setReasoning(prev => prev + `   • ${s.characters} personnage(s)\n`);
-                  setReasoning(prev => prev + `   • ${s.locations} lieu(x)\n`);
-                  setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
-                  setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
-                  setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
-                  if (s.imagesToGenerate) {
-                    setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer\n`);
-                  }
-                  if (s.videosToGenerate) {
-                    setReasoning(prev => prev + `   • ${s.videosToGenerate} vidéos à générer\n`);
-                  }
-                }
-
-                // Stocker la séquence de génération
-                const generationSequence = data.generationSequence;
-
-                // Toujours créer le projet côté client (localStorage)
-                // L'API ne peut pas accéder à localStorage, donc on le fait ici
-                let projectId: string | null = null;
-                
-                if (canvasData) {
-                  setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
-                  const newProject = createLocalProject(projectName);
-                  // Inclure la séquence de génération dans les données du projet
-                  updateLocalProject(newProject.id, { 
-                    data: {
-                      ...canvasData,
-                      generationSequence,
-                    }
-                  });
-                  projectId = newProject.id;
-                  setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
-                  if (generationSequence) {
-                    const imgCount = 
-                      generationSequence.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) +
-                      generationSequence.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0);
-                    const vidCount = generationSequence.videos?.length || 0;
-                    setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
-                  }
-                }
-
-                if (projectId) {
-                  setReasoning(prev => prev + `\n🎨 Ouverture du canvas dans 2 secondes...`);
-                  setPhaseStatus(prev => ({ ...prev, redirect: 'done' }));
-                  setTimeout(() => {
-                    router.push(`/local/canvas/${projectId}`);
-                  }, 2000);
-                }
-                break;
-
-              case 'error':
-                setReasoning(prev => prev + `\n\n❌ Erreur: ${data.error}\n`);
-                if (data.details) {
-                  setReasoning(prev => prev + `\nDétails: ${data.details}\n`);
-                }
-                break;
-            }
-          } catch (e) {
-            console.error('Erreur parse SSE:', e, line);
+        
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            processLine(line);
           }
+        }
+        
+        if (done) {
+          // Traiter le buffer restant à la fin du stream
+          if (buffer.trim()) {
+            processLine(buffer);
+          }
+          break;
         }
       }
     } catch (error: any) {
