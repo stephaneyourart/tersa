@@ -176,6 +176,7 @@ export default function GenerateProjectPage() {
       videoModel: 'kling-o1',
       imageModel: 'nanobanana-pro',
       videoCopies: 4,
+      testMode: false, // Mode test : limite à 2 personnages et 2 plans
     },
   });
   
@@ -290,7 +291,7 @@ export default function GenerateProjectPage() {
       // Rediriger vers le projet
       if (projectId) {
         setTimeout(() => {
-          router.push(`/local/projects/${projectId}`);
+          router.push(`/local/canvas/${projectId}`);
         }, 2000);
       }
     } catch (error: any) {
@@ -442,23 +443,48 @@ export default function GenerateProjectPage() {
             </div>
 
             {/* Génération automatique */}
-            <div className="flex items-start gap-3 mb-6 p-4 bg-muted/20 rounded-lg">
-              <Checkbox
-                id="generateMediaDirectly"
-                checked={config.generateMediaDirectly}
-                onCheckedChange={(checked) => 
-                  setConfig({ ...config, generateMediaDirectly: checked as boolean })
-                }
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <Label htmlFor="generateMediaDirectly" className="font-medium cursor-pointer">
-                  Générer les médias directement
-                </Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  L'IA génère automatiquement les images (personnages, lieux) et les vidéos,
-                  puis les envoie vers DaVinci Resolve.
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 bg-muted/20 rounded-lg">
+                <Checkbox
+                  id="generateMediaDirectly"
+                  checked={config.generateMediaDirectly}
+                  onCheckedChange={(checked) => 
+                    setConfig({ ...config, generateMediaDirectly: checked as boolean })
+                  }
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="generateMediaDirectly" className="font-medium cursor-pointer">
+                    Générer les médias directement
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    L'IA génère automatiquement les images (personnages, lieux) et les vidéos,
+                    puis les envoie vers DaVinci Resolve.
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode Test */}
+              <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <Checkbox
+                  id="testMode"
+                  checked={config.settings?.testMode}
+                  onCheckedChange={(checked) => 
+                    setConfig({ 
+                      ...config, 
+                      settings: { ...config.settings, testMode: checked as boolean } 
+                    })
+                  }
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="testMode" className="font-medium cursor-pointer text-amber-500">
+                    🧪 Mode Test (Rapide)
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Limite la génération à 2 personnages max et 2 plans max pour tester rapidement le workflow.
+                  </p>
+                </div>
               </div>
             </div>
 

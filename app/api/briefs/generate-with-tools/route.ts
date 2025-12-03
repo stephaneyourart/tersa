@@ -86,13 +86,22 @@ export async function POST(request: NextRequest) {
         throw new Error('OPENAI_API_KEY non configuré');
       }
 
-      const systemMessage = config.systemPrompt + `\n\nTu as accès à des outils pour générer le projet. Utilise-les dans cet ordre :
+      let systemMessage = config.systemPrompt + `\n\nTu as accès à des outils pour générer le projet. Utilise-les dans cet ordre :
 1. create_project_structure() - Définir la structure
 2. generate_character_image() - Pour chaque personnage (4 angles)
 3. generate_location_image() - Pour chaque lieu
 4. create_collection() - Grouper les images
 5. generate_video_plan() - Pour chaque plan
 6. send_videos_to_davinci() - Export final`;
+
+      // Mode test : limiter la génération
+      if (config.settings?.testMode) {
+        systemMessage += `\n\n⚠️ MODE TEST ACTIVÉ : LIMITE-TOI À :
+- MAXIMUM 2 personnages
+- MAXIMUM 2 plans au total
+Ceci est pour tester rapidement le workflow.`;
+        await sendEvent('status', { message: '🧪 Mode test activé (2 persos, 2 plans max)', step: 'test' });
+      }
 
       let messages: any[] = [
         { role: 'system', content: systemMessage },
