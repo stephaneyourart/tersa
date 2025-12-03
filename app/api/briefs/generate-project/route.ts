@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
           })));
 
           // Générer les nœuds du canvas
-          const canvasData = generateCanvasFromProject(projectStructure);
+          const canvasData = generateCanvasFromProject(projectStructure, isTestMode);
           
           // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)
           const { getGenerationSequence } = await import('@/lib/brief-canvas-generator');

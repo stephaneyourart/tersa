@@ -97,17 +97,24 @@ function createCharacterStructure(
   character: GeneratedCharacter,
   startX: number,
   startY: number,
-  structure: CanvasStructure
+  structure: CanvasStructure,
+  testMode: boolean = false
 ): void {
   const textNodeId = nodeId('text-perso');
   const collectionNodeId = nodeId('collection-perso');
   
-  const imageNodeIds = {
-    face: nodeId('img-face'),
-    profile: nodeId('img-profile'),
-    fullBody: nodeId('img-fullbody'),
-    back: nodeId('img-back'),
-  };
+  // En mode test : seulement face et fullBody (2 images)
+  const imageNodeIds: Record<string, string> = testMode
+    ? {
+        face: nodeId('img-face'),
+        fullBody: nodeId('img-fullbody'),
+      }
+    : {
+        face: nodeId('img-face'),
+        profile: nodeId('img-profile'),
+        fullBody: nodeId('img-fullbody'),
+        back: nodeId('img-back'),
+      };
 
   // 1. Nœud TEXT (description)
   structure.textNodes.push({
@@ -120,16 +127,19 @@ function createCharacterStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (4 angles)
+  // 2. Nœuds IMAGE (4 angles ou 2 en mode test)
   const imageY = startY;
   const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  const imageConfigs = [
-    { id: imageNodeIds.face, label: 'Face', prompt: character.prompts.face, x: 0, y: 0 },
-    { id: imageNodeIds.profile, label: 'Profil', prompt: character.prompts.profile, x: 1, y: 0 },
-    { id: imageNodeIds.fullBody, label: 'Pied', prompt: character.prompts.fullBody, x: 0, y: 1 },
-    { id: imageNodeIds.back, label: 'Dos', prompt: character.prompts.back, x: 1, y: 1 },
+  const allImageConfigs = [
+    { key: 'face', id: imageNodeIds.face, label: 'Face', prompt: character.prompts.face, x: 0, y: 0 },
+    { key: 'profile', id: imageNodeIds.profile, label: 'Profil', prompt: character.prompts.profile, x: 1, y: 0 },
+    { key: 'fullBody', id: imageNodeIds.fullBody, label: 'Pied', prompt: character.prompts.fullBody, x: testMode ? 1 : 0, y: testMode ? 0 : 1 },
+    { key: 'back', id: imageNodeIds.back, label: 'Dos', prompt: character.prompts.back, x: 1, y: 1 },
   ];
+  
+  // Filtrer selon le mode
+  const imageConfigs = allImageConfigs.filter(c => imageNodeIds[c.key]);
 
   for (const config of imageConfigs) {
     structure.imageNodes.push({
@@ -185,16 +195,23 @@ function createLocationStructure(
   location: GeneratedLocation,
   startX: number,
   startY: number,
-  structure: CanvasStructure
+  structure: CanvasStructure,
+  testMode: boolean = false
 ): void {
   const textNodeId = nodeId('text-lieu');
   const collectionNodeId = nodeId('collection-lieu');
   
-  const imageNodeIds = {
-    angle1: nodeId('img-angle1'),
-    angle2: nodeId('img-angle2'),
-    angle3: nodeId('img-angle3'),
-  };
+  // En mode test : seulement 2 angles
+  const imageNodeIds: Record<string, string> = testMode
+    ? {
+        angle1: nodeId('img-angle1'),
+        angle2: nodeId('img-angle2'),
+      }
+    : {
+        angle1: nodeId('img-angle1'),
+        angle2: nodeId('img-angle2'),
+        angle3: nodeId('img-angle3'),
+      };
 
   // 1. Nœud TEXT
   structure.textNodes.push({
@@ -207,14 +224,17 @@ function createLocationStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (3 angles sur une ligne)
+  // 2. Nœuds IMAGE (3 angles ou 2 en mode test)
   const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  const imageConfigs = [
-    { id: imageNodeIds.angle1, label: 'Angle 1', prompt: location.prompts.angle1, x: 0 },
-    { id: imageNodeIds.angle2, label: 'Angle 2', prompt: location.prompts.angle2, x: 1 },
-    { id: imageNodeIds.angle3, label: 'Angle 3', prompt: location.prompts.angle3, x: 2 },
+  const allImageConfigs = [
+    { key: 'angle1', id: imageNodeIds.angle1, label: 'Angle 1', prompt: location.prompts.angle1, x: 0 },
+    { key: 'angle2', id: imageNodeIds.angle2, label: 'Angle 2', prompt: location.prompts.angle2, x: 1 },
+    { key: 'angle3', id: imageNodeIds.angle3, label: 'Angle 3', prompt: location.prompts.angle3, x: 2 },
   ];
+  
+  // Filtrer selon le mode
+  const imageConfigs = allImageConfigs.filter(c => imageNodeIds[c.key]);
 
   for (const config of imageConfigs) {
     structure.imageNodes.push({
@@ -233,8 +253,9 @@ function createLocationStructure(
     });
   }
 
-  // 3. Nœud COLLECTION
-  const collectionX = imageStartX + 3 * (LAYOUT.IMAGE_NODE_SIZE + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
+  // 3. Nœud COLLECTION (position dynamique selon le nombre d'images)
+  const numImages = imageConfigs.length;
+  const collectionX = imageStartX + numImages * (LAYOUT.IMAGE_NODE_SIZE + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
   
   structure.collectionNodes.push({
     id: collectionNodeId,
@@ -418,7 +439,8 @@ export interface GeneratedCanvasData {
 }
 
 export function generateCanvasFromProject(
-  project: GeneratedProjectStructure
+  project: GeneratedProjectStructure,
+  testMode: boolean = false
 ): GeneratedCanvasData {
   // Structure pour tracking
   const structure: CanvasStructure = {
@@ -454,7 +476,7 @@ export function generateCanvasFromProject(
     currentY += 100;
 
     for (const character of project.characters) {
-      createCharacterStructure(character, LAYOUT.MARGIN, currentY, structure);
+      createCharacterStructure(character, LAYOUT.MARGIN, currentY, structure, testMode);
       currentY += LAYOUT.CHARACTER_ROW_HEIGHT;
     }
   }
@@ -477,7 +499,7 @@ export function generateCanvasFromProject(
     currentY += 100;
 
     for (const location of project.locations) {
-      createLocationStructure(location, LAYOUT.MARGIN, currentY, structure);
+      createLocationStructure(location, LAYOUT.MARGIN, currentY, structure, testMode);
       currentY += LAYOUT.LOCATION_ROW_HEIGHT;
     }
   }
