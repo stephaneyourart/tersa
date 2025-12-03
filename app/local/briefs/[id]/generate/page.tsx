@@ -25,127 +25,87 @@ import {
 import {
   ArrowLeftIcon,
   PlayIcon,
-  SettingsIcon,
   FileTextIcon,
   Loader2Icon,
   SparklesIcon,
   BrainIcon,
   ImageIcon,
   VideoIcon,
+  CheckCircle2Icon,
+  CircleDotIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
+import { createLocalProject, updateLocalProject } from '@/lib/local-projects-store';
 import type { Brief, ProjectGenerationConfig, ReasoningLevel } from '@/types/brief';
 
-const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant IA spécialisé dans la création de scénarios vidéo à partir de briefs.
+const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant IA expert en création de scénarios vidéo.
 
-## OBJECTIF
-Analyser le brief fourni et générer un scénario complet découpé en scènes et plans, avec les éléments visuels nécessaires.
+## MISSION
+Analyse le brief et génère une structure de projet complète au format JSON.
 
-## STRUCTURE ATTENDUE
+## FORMAT DE SORTIE (JSON STRICT)
+Tu DOIS retourner UNIQUEMENT un JSON valide sans markdown:
 
-### 1. PERSONNAGES
-Pour chaque personnage identifié dans le brief :
-- Générer une description détaillée et cohérente
-- Créer un code de référence : [PERSO:NomPersonnage]
-- Créer 4 prompts de génération d'image :
-  * Visage de face
-  * Visage de profil
-  * Corps entier de face
-  * Vue de dos
-
-Format prompt personnage : "Génère une image haute qualité pour [angle] du personnage [Nom]. Description : [description détaillée incluant traits physiques, vêtements, style, ambiance]. Style : cinématographique, éclairage professionnel, 4K."
-
-### 2. LIEUX
-Pour chaque lieu identifié :
-- Description détaillée de l'environnement
-- Créer un code de référence : [LIEU:NomLieu]
-- Créer un prompt multi-angles
-
-Format prompt lieu : "Génère plusieurs angles du lieu [Nom]. Description : [description complète incluant architecture, décoration, atmosphère, éclairage, style]. Générer : vue d'ensemble, plan rapproché, détails. Style : cinématographique, 4K."
-
-### 3. SCÉNARIO
-Découper en scènes numérotées, chaque scène contient :
-- Numéro et titre de la scène
-- Description narrative
-- Plans numérotés (format: Scène X - Plan Y)
-
-### 4. PLANS
-Chaque plan doit contenir :
-- Numéro unique (ex: Plan 1.1, Plan 1.2, etc.)
-- Type : "character", "location", ou "shot"
-- Prompt AUTO-SUFFISANT : décrire COMPLÈTEMENT la scène comme si le modèle ne connaissait RIEN du contexte
-- Personnages impliqués (codes de référence)
-- Lieux impliqués (codes de référence)
-- Durée estimée en secondes
-
-**RÈGLE CRITIQUE** : Les prompts de plans doivent être EXHAUSTIFS. Le modèle de génération n'a PAS accès au contexte global. Chaque prompt doit décrire :
-- QUI (description physique complète des personnages présents)
-- OÙ (description complète du lieu)
-- QUOI (l'action précise)
-- COMMENT (cadrage, mouvement caméra, ambiance, éclairage)
-
-Exemple de prompt de plan :
-"Plan moyen : Une femme de 30 ans aux cheveux bruns mi-longs, vêtue d'un tailleur gris élégant, marche avec confiance dans un bureau moderne aux murs blancs, bureau en bois clair à droite, grande baie vitrée en arrière-plan montrant la ville. Lumière naturelle douce, mouvement de caméra suivant son déplacement de gauche à droite, style cinématographique."
-
-## FORMAT DE SORTIE JSON
-
-\`\`\`json
 {
   "title": "Titre du projet",
-  "synopsis": "Résumé en 2-3 phrases",
+  "synopsis": "Synopsis général (2-3 phrases)",
   "characters": [
     {
-      "name": "NomPersonnage",
+      "id": "perso-prenom",
+      "name": "Prénom",
       "description": "Description complète",
-      "referenceCode": "[PERSO:NomPersonnage]",
+      "referenceCode": "[PERSO:Prénom]",
       "prompts": {
-        "face": "prompt face",
-        "profile": "prompt profil",
-        "fullBody": "prompt corps entier",
-        "back": "prompt dos"
+        "face": "Portrait frontal détaillé...",
+        "profile": "Portrait de profil détaillé...",
+        "fullBody": "Photo en pied détaillée...",
+        "back": "Vue de dos détaillée..."
       }
     }
   ],
   "locations": [
     {
-      "name": "NomLieu",
+      "id": "lieu-nom",
+      "name": "Nom du lieu",
       "description": "Description complète",
-      "referenceCode": "[LIEU:NomLieu]",
-      "prompt": "prompt multi-angles"
+      "referenceCode": "[LIEU:Nom]",
+      "prompts": {
+        "angle1": "Vue principale détaillée...",
+        "angle2": "Vue alternative...",
+        "angle3": "Vue ambiance/détail..."
+      }
     }
   ],
   "scenes": [
     {
+      "id": "scene-1",
       "sceneNumber": 1,
       "title": "Titre de la scène",
-      "description": "Description narrative",
+      "description": "Synopsis de la scène",
       "plans": [
         {
+          "id": "plan-1-1",
           "planNumber": 1,
-          "sceneNumber": 1,
-          "prompt": "Prompt EXHAUSTIF et AUTO-SUFFISANT",
-          "characters": ["[PERSO:Jean]"],
-          "locations": ["[LIEU:Bureau]"],
+          "prompt": "Prompt COMPLET et AUTO-SUFFISANT pour la vidéo...",
+          "characterRefs": ["perso-prenom"],
+          "locationRef": "lieu-nom",
           "duration": 5,
-          "type": "shot"
+          "cameraMovement": "Description mouvement caméra"
         }
       ]
     }
   ],
-  "totalPlans": 0,
-  "estimatedDuration": 0
+  "totalPlans": 4,
+  "estimatedDuration": 60
 }
-\`\`\`
 
-## CONSIGNES IMPORTANTES
-1. Chaque prompt doit être AUTONOME - ne jamais assumer que le modèle a du contexte
-2. Les descriptions doivent être TRÈS DÉTAILLÉES et VISUELLES
-3. Maintenir la COHÉRENCE entre tous les plans (personnages, lieux)
-4. Privilégier des plans de 3-8 secondes
-5. Inclure des codes de référence pour lier personnages/lieux aux plans
-6. Style : cinématographique, professionnel, haute qualité`;
+## RÈGLES CRITIQUES
+1. Chaque prompt doit être AUTONOME - décrire TOUT (qui, où, quoi, comment)
+2. Inclure : vêtements, posture, expression, éclairage, ambiance
+3. Style : cinématographique, professionnel, 4K
+4. Plans de 3-8 secondes`;
 
 export default function GenerateProjectPage() {
   const router = useRouter();
@@ -157,9 +117,15 @@ export default function GenerateProjectPage() {
   const [showPromptDialog, setShowPromptDialog] = useState(false);
   const [showReasoningDialog, setShowReasoningDialog] = useState(false);
   const [reasoning, setReasoning] = useState<string>('');
+  const [currentPhase, setCurrentPhase] = useState<string>('');
+  const [phaseStatus, setPhaseStatus] = useState<Record<string, 'pending' | 'running' | 'done'>>({
+    analysis: 'pending',
+    canvas: 'pending',
+    redirect: 'pending',
+  });
   const reasoningEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll vers le bas quand le raisonnement change
+  // Auto-scroll
   useEffect(() => {
     if (reasoningEndRef.current && showReasoningDialog) {
       reasoningEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -167,7 +133,7 @@ export default function GenerateProjectPage() {
   }, [reasoning, showReasoningDialog]);
   
   const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
-    aiModel: 'gpt-5.1-2025-11-13',
+    aiModel: 'gpt-4o',
     reasoningLevel: 'high',
     generateMediaDirectly: false,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -176,7 +142,7 @@ export default function GenerateProjectPage() {
       videoModel: 'kling-o1',
       imageModel: 'nanobanana-pro',
       videoCopies: 4,
-      testMode: false, // Mode test : limite à 2 personnages et 2 plans
+      testMode: false,
     },
   });
   
@@ -208,22 +174,29 @@ export default function GenerateProjectPage() {
     }
 
     setGenerating(true);
-    setReasoning('🚀 Initialisation...\n\n');
+    setReasoning('');
     setShowReasoningDialog(true);
+    setPhaseStatus({ analysis: 'running', canvas: 'pending', redirect: 'pending' });
+    setCurrentPhase('analysis');
 
     try {
-      const response = await fetch('/api/briefs/generate-with-tools', {
+      // ========== PHASE 1 : ANALYSE ==========
+      setReasoning('🧠 Phase 1 : Analyse du brief...\n\n');
+
+      const response = await fetch('/api/briefs/generate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           briefId: params.id,
           projectName,
           config,
+          isTestMode: config.settings?.testMode || false,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Erreur: ${response.statusText}`);
+        const error = await response.json();
+        throw new Error(error.error || `Erreur: ${response.statusText}`);
       }
 
       // Lire le stream SSE
@@ -234,7 +207,8 @@ export default function GenerateProjectPage() {
         throw new Error('Pas de reader disponible');
       }
 
-      let projectId = '';
+      let canvasData: any = null;
+      let projectStructure: any = null;
       let buffer = '';
 
       while (true) {
@@ -242,58 +216,93 @@ export default function GenerateProjectPage() {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split('\n\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (!line.trim()) continue;
+          if (!line.startsWith('data: ')) continue;
 
-          if (line.startsWith('event: ')) {
-            const eventType = line.slice(7);
-            continue;
-          }
-
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              // Gérer les différents types d'événements
-              if (data.step === 'init' || data.step === 'analyzing') {
-                setReasoning(prev => prev + `${data.message}\n\n`);
-              } else if (data.chunk) {
-                // STREAM DU RAISONNEMENT EN TEMPS RÉEL
-                setReasoning(prev => prev + data.chunk);
-              } else if (data.content) {
-                setReasoning(prev => prev + data.content);
-              } else if (data.toolName) {
-                if (data.params) {
-                  setReasoning(prev => prev + `\n\n🛠️  ${data.toolName}(${JSON.stringify(data.params, null, 2).substring(0, 100)}...)\n`);
-                } else if (data.success !== undefined) {
-                  if (data.success) {
-                    setReasoning(prev => prev + `   ✅ ${data.data?.message || 'Succès'}\n`);
-                  } else {
-                    setReasoning(prev => prev + `   ❌ ${data.error}\n`);
-                  }
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            switch (data.type) {
+              case 'phase_start':
+                setCurrentPhase(data.phase);
+                setReasoning(prev => prev + `\n${data.message}\n\n`);
+                if (data.phase === 'analysis') {
+                  setPhaseStatus(prev => ({ ...prev, analysis: 'running' }));
+                } else if (data.phase === 'canvas_creation') {
+                  setPhaseStatus(prev => ({ ...prev, analysis: 'done', canvas: 'running' }));
                 }
-              } else if (data.projectId) {
-                projectId = data.projectId;
-                setReasoning(prev => prev + `\n\n🎉 Projet généré avec succès !\n`);
-              } else if (data.message && !data.step) {
-                setReasoning(prev => prev + `\n\n❌ ${data.message}\n`);
-              }
-            } catch (e) {
-              console.error('Erreur parse SSE:', e, line);
+                break;
+
+              case 'reasoning':
+                setReasoning(prev => prev + data.content);
+                break;
+
+              case 'phase_complete':
+                setReasoning(prev => prev + `\n\n${data.message}\n`);
+                if (data.nodeCount) {
+                  setReasoning(prev => prev + `📦 ${data.nodeCount} nœuds créés\n`);
+                }
+                break;
+
+              case 'progress':
+                setReasoning(prev => prev + `${data.message}\n`);
+                break;
+
+              case 'project_data':
+                // Fallback si l'API n'a pas pu créer le projet
+                canvasData = data.canvasData;
+                projectStructure = data.projectStructure;
+                break;
+
+              case 'complete':
+                setPhaseStatus(prev => ({ ...prev, canvas: 'done', redirect: 'running' }));
+                setReasoning(prev => prev + `\n\n🎉 ${data.message}\n`);
+                
+                // Résumé
+                if (data.summary) {
+                  const s = data.summary;
+                  setReasoning(prev => prev + `\n📊 Résumé :\n`);
+                  setReasoning(prev => prev + `   • ${s.characters} personnage(s)\n`);
+                  setReasoning(prev => prev + `   • ${s.locations} lieu(x)\n`);
+                  setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
+                  setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
+                  setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
+                }
+
+                // Si on a reçu les données mais pas le projectId, créer le projet côté client
+                let projectId = data.projectId;
+                
+                if (!projectId && canvasData) {
+                  setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
+                  const newProject = createLocalProject(projectName);
+                  updateLocalProject(newProject.id, { data: canvasData });
+                  projectId = newProject.id;
+                  setReasoning(prev => prev + `✅ Projet créé : ${projectId}\n`);
+                }
+
+                if (projectId) {
+                  setReasoning(prev => prev + `\n🎨 Ouverture du canvas dans 2 secondes...`);
+                  setPhaseStatus(prev => ({ ...prev, redirect: 'done' }));
+                  setTimeout(() => {
+                    router.push(`/local/canvas/${projectId}`);
+                  }, 2000);
+                }
+                break;
+
+              case 'error':
+                setReasoning(prev => prev + `\n\n❌ Erreur: ${data.error}\n`);
+                if (data.details) {
+                  setReasoning(prev => prev + `\nDétails: ${data.details}\n`);
+                }
+                break;
             }
+          } catch (e) {
+            console.error('Erreur parse SSE:', e, line);
           }
         }
-      }
-
-      // Rediriger vers le canvas du projet
-      if (projectId) {
-        setReasoning(prev => prev + `\n\n🎨 Ouverture du canvas...`);
-        setTimeout(() => {
-          router.push(`/local/canvas/${projectId}`);
-        }, 1500);
       }
     } catch (error: any) {
       console.error('Erreur:', error);
@@ -301,6 +310,23 @@ export default function GenerateProjectPage() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  // Composant indicateur de phase
+  const PhaseIndicator = ({ phase, label }: { phase: string; label: string }) => {
+    const status = phaseStatus[phase];
+    return (
+      <div className={`flex items-center gap-2 ${status === 'running' ? 'text-violet-400' : status === 'done' ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+        {status === 'done' ? (
+          <CheckCircle2Icon size={16} />
+        ) : status === 'running' ? (
+          <Loader2Icon size={16} className="animate-spin" />
+        ) : (
+          <CircleDotIcon size={16} />
+        )}
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+    );
   };
 
   if (loading) {
@@ -375,12 +401,9 @@ export default function GenerateProjectPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-5.1-2025-11-13">GPT-5.1 (Recommandé)</SelectItem>
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="gpt-4o">GPT-4o (Recommandé)</SelectItem>
                     <SelectItem value="gpt-4o-mini">GPT-4o Mini (Rapide)</SelectItem>
-                    <SelectItem value="gemini-3">Gemini 3</SelectItem>
-                    <SelectItem value="gemini-2-flash">Gemini 2 Flash</SelectItem>
-                    <SelectItem value="claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -443,7 +466,7 @@ export default function GenerateProjectPage() {
               <h2 className="text-lg font-semibold">Génération des médias</h2>
             </div>
 
-            {/* Génération automatique */}
+            {/* Options */}
             <div className="space-y-4">
               <div className="flex items-start gap-3 p-4 bg-muted/20 rounded-lg">
                 <Checkbox
@@ -459,8 +482,7 @@ export default function GenerateProjectPage() {
                     Générer les médias directement
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    L'IA génère automatiquement les images (personnages, lieux) et les vidéos,
-                    puis les envoie vers DaVinci Resolve.
+                    L'IA génère automatiquement images et vidéos après création du canvas.
                   </p>
                 </div>
               </div>
@@ -483,15 +505,15 @@ export default function GenerateProjectPage() {
                     🧪 Mode Test (Rapide)
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Limite la génération à 2 personnages max et 2 plans max pour tester rapidement le workflow.
+                    Limite à 2 personnages, 2 plans max, prompts courts (3 phrases).
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Options de génération (si activé) */}
+            {/* Options si génération activée */}
             {config.generateMediaDirectly && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-border/30">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 mt-6 border-t border-border/30">
                 <div>
                   <Label htmlFor="imageModel" className="mb-2 flex items-center gap-2">
                     <ImageIcon size={14} />
@@ -512,7 +534,6 @@ export default function GenerateProjectPage() {
                     <SelectContent>
                       <SelectItem value="nanobanana-pro">NanoBanana Pro</SelectItem>
                       <SelectItem value="flux-pro">Flux Pro</SelectItem>
-                      <SelectItem value="dall-e-3">DALL-E 3</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -535,39 +556,10 @@ export default function GenerateProjectPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="kling-o1">Kling O1 (via WaveSpeed)</SelectItem>
+                      <SelectItem value="kling-o1">Kling O1 (WaveSpeed)</SelectItem>
                       <SelectItem value="seedream">Seedream</SelectItem>
-                      <SelectItem value="kling-turbo">Kling Turbo</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <Label htmlFor="videoCopies" className="mb-2 block">
-                    Nombre de copies par vidéo
-                  </Label>
-                  <Select
-                    value={String(config.settings?.videoCopies || 4)}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, videoCopies: parseInt(value) } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="videoCopies">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 copie</SelectItem>
-                      <SelectItem value="2">2 copies</SelectItem>
-                      <SelectItem value="4">4 copies (recommandé)</SelectItem>
-                      <SelectItem value="8">8 copies</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Plusieurs variations seront générées pour chaque plan vidéo
-                  </p>
                 </div>
               </div>
             )}
@@ -590,7 +582,7 @@ export default function GenerateProjectPage() {
               {generating ? (
                 <>
                   <Loader2Icon size={16} className="animate-spin" />
-                  Génération en cours...
+                  Génération...
                 </>
               ) : (
                 <>
@@ -609,8 +601,7 @@ export default function GenerateProjectPage() {
           <DialogHeader>
             <DialogTitle>System Prompt</DialogTitle>
             <DialogDescription>
-              Ce prompt guide l'IA dans l'analyse du brief et la génération du scénario.
-              Vous pouvez l'éditer pour l'adapter à vos besoins.
+              Ce prompt guide l'IA dans l'analyse du brief.
             </DialogDescription>
           </DialogHeader>
           
@@ -629,27 +620,36 @@ export default function GenerateProjectPage() {
               Réinitialiser
             </Button>
             <Button onClick={() => setShowPromptDialog(false)}>
-              Sauvegarder
+              Fermer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Dialog Raisonnement IA */}
-      <Dialog open={showReasoningDialog} onOpenChange={setShowReasoningDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
+      <Dialog open={showReasoningDialog} onOpenChange={(open) => !generating && setShowReasoningDialog(open)}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              🧠 Raisonnement de l'IA
+              🧠 Génération du projet
               {generating && <Loader2Icon size={16} className="animate-spin" />}
             </DialogTitle>
             <DialogDescription>
-              Suivez le processus de réflexion de GPT-5.1 en temps réel
+              Suivez le processus de création en temps réel
             </DialogDescription>
           </DialogHeader>
+
+          {/* Indicateurs de phases */}
+          <div className="flex items-center gap-6 py-3 px-4 bg-muted/30 rounded-lg">
+            <PhaseIndicator phase="analysis" label="Analyse" />
+            <div className="h-px w-8 bg-border" />
+            <PhaseIndicator phase="canvas" label="Canvas" />
+            <div className="h-px w-8 bg-border" />
+            <PhaseIndicator phase="redirect" label="Terminé" />
+          </div>
           
-          <ScrollArea className="h-[60vh] w-full rounded-md border p-4">
-            <pre className="text-sm whitespace-pre-wrap font-mono">
+          <ScrollArea className="flex-1 min-h-[400px] w-full rounded-md border p-4 bg-black/20">
+            <pre className="text-sm whitespace-pre-wrap font-mono text-emerald-400/90">
               {reasoning || 'En attente...'}
               <div ref={reasoningEndRef} />
             </pre>
@@ -659,6 +659,7 @@ export default function GenerateProjectPage() {
             <Button 
               onClick={() => setShowReasoningDialog(false)}
               disabled={generating}
+              variant={generating ? 'outline' : 'default'}
             >
               {generating ? 'Génération en cours...' : 'Fermer'}
             </Button>
@@ -668,4 +669,3 @@ export default function GenerateProjectPage() {
     </div>
   );
 }
-
