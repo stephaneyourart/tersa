@@ -29,7 +29,6 @@ import { updateGenerationDVRStatus } from '@/lib/generations-store';
 import { useNodeOperations } from '@/providers/node-operations';
 import { useProject } from '@/providers/project';
 import { useCleanupMode } from '@/providers/cleanup-mode';
-import { useHoveredNodeOptional } from '@/providers/hovered-node';
 import { Handle, Position, useReactFlow, useStore } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
 import { type ReactNode, useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -42,28 +41,23 @@ import { SendToDVRModal, type DVRMediaMetadata } from './send-to-dvr-modal';
 import { toast } from 'sonner';
 
 // ========== OPTIMISATION ANTI-CLIGNOTEMENT ==========
-// Hook personnalisé pour le zoom avec PALIERS DISCRETS
-// Ne re-render que si le zoom change de palier (0.1, 0.2, 0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4)
-// Cela réduit drastiquement le nombre de re-renders pendant le zoom
-const ZOOM_BUCKETS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 1, 1.5, 2, 3, 4];
-
-function getZoomBucket(zoom: number): number {
-  // Trouver le bucket le plus proche
-  for (let i = 0; i < ZOOM_BUCKETS.length; i++) {
-    if (zoom <= ZOOM_BUCKETS[i]) {
-      return ZOOM_BUCKETS[i];
+// Hook personnalisé pour le zoom avec seuil de changement
+// Ne re-render que si le zoom change de plus de 0.1 (10%)
+function useThrottledZoom(): number {
+  const currentZoom = useStore((state) => state.transform[2]);
+  const lastZoomRef = useRef(currentZoom);
+  const [stableZoom, setStableZoom] = useState(currentZoom);
+  
+  useEffect(() => {
+    // Ne mettre à jour que si le changement est significatif (> 10%)
+    const diff = Math.abs(currentZoom - lastZoomRef.current);
+    if (diff > 0.1 || currentZoom < 0.3 !== lastZoomRef.current < 0.3) {
+      lastZoomRef.current = currentZoom;
+      setStableZoom(currentZoom);
     }
-  }
-  return ZOOM_BUCKETS[ZOOM_BUCKETS.length - 1];
-}
-
-function useStableZoom(): number {
-  // Sélecteur qui retourne le bucket de zoom - ne change que quand on passe à un autre bucket
-  return useStore(
-    (state) => getZoomBucket(state.transform[2]),
-    // Comparateur : re-render seulement si le bucket change
-    (prev, next) => prev === next
-  );
+  }, [currentZoom]);
+  
+  return stableZoom;
 }
 
 // Types de nodes qui supportent le batch/runs parallèles
@@ -142,8 +136,8 @@ export const NodeLayout = ({
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges, updateNodeData } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const project = useProject();
-  // OPTIMISÉ: Zoom stable avec debounce (200ms après fin du zoom)
-  const zoom = useStableZoom();
+  // OPTIMISÉ: Zoom avec seuil pour éviter les re-renders excessifs
+  const zoom = useThrottledZoom();
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
@@ -201,31 +195,12 @@ export const NodeLayout = ({
   const isCollection = type === 'collection';
   const isProtectedFromCleanup = isTransferredToDVR || isCollection;
   
-  // Hook pour le highlight au hover des connexions
-  const hoveredContext = useHoveredNodeOptional();
-  const isConnectionHighlighted = hoveredContext?.isNodeHighlighted(id) ?? false;
-  const isDirectlyHovered = hoveredContext?.hoveredNodeId === id;
-  
-  // Callback pour signaler le hover au provider
-  const handleConnectionHoverEnter = useCallback(() => {
-    hoveredContext?.onNodeHover(id);
-  }, [hoveredContext, id]);
-  
-  const handleConnectionHoverLeave = useCallback(() => {
-    hoveredContext?.onNodeHover(null);
-  }, [hoveredContext]);
-  
   // OPTIMISÉ: Mémoriser les styles dépendant du zoom pour éviter les recalculs
-  // Avec support du highlight des connexions (x3 pour la bordure)
-  const zoomDependentStyles = useMemo(() => {
-    const baseBorderWidth = Math.max(2, Math.min(6, Math.round(2 / zoom)));
-    return {
-      // Bordure x3 si le nœud est highlight (hover direct ou connexion)
-      borderWidth: isConnectionHighlighted ? baseBorderWidth * 3 : baseBorderWidth,
-      iconScale: 1 / zoom,
-      showZoomElements: zoom > 0.2,
-    };
-  }, [zoom, isConnectionHighlighted]);
+  const zoomDependentStyles = useMemo(() => ({
+    borderWidth: Math.max(2, Math.min(6, Math.round(2 / zoom))),
+    iconScale: 1 / zoom,
+    showZoomElements: zoom > 0.2,
+  }), [zoom]);
   
   // Handler pour clic en mode cleanup
   const handleCleanupClick = useCallback((e: React.MouseEvent) => {
@@ -619,16 +594,10 @@ export const NodeLayout = ({
       )}
       <ContextMenu onOpenChange={handleSelect}>
         <ContextMenuTrigger>
-            <div 
+          <div 
             className="relative size-full h-auto w-sm"
-            onMouseEnter={() => {
-              handleNodeMouseEnter();
-              handleConnectionHoverEnter();
-            }}
-            onMouseLeave={() => {
-              handleNodeMouseLeave();
-              handleConnectionHoverLeave();
-            }}
+            onMouseEnter={handleNodeMouseEnter}
+            onMouseLeave={handleNodeMouseLeave}
             onDoubleClick={(e) => e.stopPropagation()}
           >
             {type !== 'drop' && type !== 'collection' && (
@@ -736,15 +705,13 @@ export const NodeLayout = ({
                 // CODE COULEUR UNIFIÉ - Bordure colorée adaptative au zoom (OPTIMISÉ)
                 // Images = Vert Matrix (#00ff41)
                 // Vidéos = Fuchsia (#d946ef)
-                // HIGHLIGHT : opacité 1 et bordure x3 au hover des connexions
                 ...(type === 'video' || type === 'image' ? {
                   boxShadow: `0 0 0 ${zoomDependentStyles.borderWidth}px ${
                     type === 'video' 
-                      ? `rgba(217, 70, 239, ${isConnectionHighlighted ? 1 : 0.8})`  // Fuchsia
-                      : `rgba(0, 255, 65, ${isConnectionHighlighted ? 1 : 0.7})`    // Vert Matrix
+                      ? 'rgba(217, 70, 239, 0.8)'  // Fuchsia
+                      : 'rgba(0, 255, 65, 0.7)'    // Vert Matrix
                   }`,
                   borderRadius: '20px',
-                  transition: 'box-shadow 0.15s ease',
                 } : {}),
                 ...(isCleanupMode ? { cursor: isProtectedFromCleanup ? 'not-allowed' : 'pointer' } : {}),
               }}

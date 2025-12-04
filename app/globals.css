@@ -372,26 +372,32 @@ nextjs-portal {
    Fluidité type Figma pour scroll et zoom
    ============================================ */
 
-/* GPU acceleration pour le viewport */
+/* GPU acceleration pour le viewport - DÉSACTIVÉ (cause clignotement au zoom) */
+/*
 .react-flow__viewport {
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
 }
+*/
 
-/* GPU acceleration pour les nœuds */
+/* GPU acceleration pour les nœuds - DÉSACTIVÉ car cause clignotement */
+/* 
 .react-flow__node {
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: layout style;
 }
+*/
 
-/* GPU acceleration pour les edges */
+/* GPU acceleration pour les edges - DÉSACTIVÉ (cause clignotement au zoom) */
+/*
 .react-flow__edges {
   will-change: transform;
   transform: translateZ(0);
 }
+*/
 
 /* Optimisation du container principal */
 .react-flow {
@@ -442,5 +448,38 @@ html, body {
 .react-flow__background {
   will-change: transform;
   transform: translateZ(0);
+}
+
+/* ============================================
+   HOVER HIGHLIGHT - Connexions au survol
+   Géré par CSS pur (pas de re-render React)
+   ============================================ */
+
+/* Transition fluide sur les edges */
+.flora-edge-main,
+.flora-edge-shadow {
+  transition: stroke-width 0.15s ease, stroke 0.15s ease, filter 0.15s ease;
+}
+
+/* Quand un nœud est survolé : ses edges connectés grossissent x3 */
+.react-flow[data-hovered-node] .flora-edge-group.edge-highlighted .flora-edge-main {
+  stroke-width: 12 !important;  /* 4 x 3 = 12 */
+  stroke: rgba(255, 255, 255, 0.95) !important;
+}
+
+.react-flow[data-hovered-node] .flora-edge-group.edge-highlighted .flora-edge-shadow {
+  stroke-width: 20 !important;  /* Ombre proportionnelle */
+  stroke: rgba(255, 255, 255, 0.2) !important;
+  filter: blur(6px) !important;
+}
+
+/* Bordure des nœuds connectés - grossit x3 */
+.react-flow[data-hovered-node] .react-flow__node.node-highlighted .node-container {
+  box-shadow: 0 0 0 9px rgba(255, 255, 255, 0.9) !important;  /* 3 x 3 = 9 */
+}
+
+/* Le nœud survolé lui-même */
+.react-flow[data-hovered-node] .react-flow__node.node-hovered .node-container {
+  box-shadow: 0 0 0 9px rgba(255, 255, 255, 1) !important;
 }
 

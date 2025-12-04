@@ -7,7 +7,6 @@ import { handleError } from '@/lib/error/handle';
 import { isValidSourceTarget } from '@/lib/xyflow';
 import { NodeDropzoneProvider } from '@/providers/node-dropzone';
 import { NodeOperationsProvider } from '@/providers/node-operations';
-import { HoveredNodeProvider } from '@/providers/hovered-node';
 import { useProject } from '@/providers/project';
 import {
   Background,
@@ -73,6 +72,7 @@ import { ConnectionLine } from './connection-line';
 import { edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 import { ProximityHandles } from './proximity-handles';
+import { HoverHighlight } from './hover-highlight';
 import { SelectionToolbar } from './selection-toolbar';
 import { VideoSelectionToolbar } from './video-selection-toolbar';
 import { toast } from 'sonner';
@@ -1253,12 +1253,11 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   })();
 
   return (
-    <HoveredNodeProvider>
-      <NodeOperationsProvider addNode={addNode} duplicateNode={duplicateNode}>
-        <NodeDropzoneProvider>
-          <ContextMenu>
-            <ContextMenuTrigger onContextMenu={handleContextMenu}>
-              <ReactFlow
+    <NodeOperationsProvider addNode={addNode} duplicateNode={duplicateNode}>
+      <NodeDropzoneProvider>
+        <ContextMenu>
+          <ContextMenuTrigger onContextMenu={handleContextMenu}>
+            <ReactFlow
               deleteKeyCode={['Backspace', 'Delete']}
               nodes={nodes}
               onNodesChange={handleNodesChange}
@@ -1302,6 +1301,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                 gap={20}
               />
               <ProximityHandles />
+              <HoverHighlight />
               <SelectionToolbar
                 onCreateCollection={(nodeIds, category) => {
                   // Récupérer les nœuds sélectionnés
@@ -1516,16 +1516,15 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-          {/* Input file caché pour l'import de fichiers */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept="image/*,video/*,audio/*,text/*,.pdf,.json,.md,.txt"
-            onChange={handleFileImport}
-          />
-        </NodeDropzoneProvider>
-      </NodeOperationsProvider>
-    </HoveredNodeProvider>
+        {/* Input file caché pour l'import de fichiers */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,video/*,audio/*,text/*,.pdf,.json,.md,.txt"
+          onChange={handleFileImport}
+        />
+      </NodeDropzoneProvider>
+    </NodeOperationsProvider>
   );
 };
