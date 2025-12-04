@@ -10,7 +10,6 @@ import { uploadFile } from '@/lib/upload';
 import { useProject } from '@/providers/project';
 import { useReactFlow } from '@xyflow/react';
 import { Loader2Icon } from 'lucide-react';
-import Image from 'next/image';
 import { useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { ImageNodeProps } from '.';
@@ -242,11 +241,10 @@ export const ImagePrimitive = ({
                   upscaleCreativity={data.upscale.creativity}
                 />
               ) : (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={data.content.url}
                   alt="Image"
-                  width={data.width ?? 1024}
-                  height={data.height ?? 1024}
                   className="w-full h-auto rounded-b-xl block"
                   onError={() => markAsExpired()}
                 />

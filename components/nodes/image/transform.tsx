@@ -24,7 +24,6 @@ import {
   Loader2Icon,
   RotateCcwIcon,
 } from 'lucide-react';
-import Image from 'next/image';
 import {
   type ChangeEventHandler,
   type ComponentProps,
@@ -43,29 +42,44 @@ import { ImageCompareSlider } from './image-compare-slider';
 import type { UpscaleSettings } from './upscale-button';
 
 // Composant Image mémorisé pour éviter le clignotement
+// Utilise une img native pour garantir que l'image entière est visible
+// sans problème de ratio d'aspect causé par Next.js Image
 const StableImage = memo(function StableImage({
   src,
-  width,
-  height,
   onError,
 }: {
   src: string;
-  width: number;
-  height: number;
   onError?: () => void;
 }) {
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  
+  // Récupérer les dimensions réelles de l'image au chargement
+  const handleLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+    }
+  }, []);
+  
+  // Calculer l'aspect ratio réel de l'image
+  const aspectRatio = dimensions ? `${dimensions.width} / ${dimensions.height}` : undefined;
+  
   return (
-    <Image
-      src={src}
-      alt="Generated image"
-      width={width}
-      height={height}
-      className="w-full h-auto rounded-b-xl block bg-secondary"
-      onError={onError}
-      placeholder="empty"
-      priority // Charger en priorité pour éviter le flash
-      unoptimized // Évite le re-processing côté Next.js
-    />
+    <div 
+      className="w-full bg-secondary rounded-b-xl overflow-visible"
+      style={{ aspectRatio }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Generated image"
+        className="w-full h-full rounded-b-xl block object-contain"
+        onLoad={handleLoad}
+        onError={onError}
+        loading="eager"
+        decoding="async"
+      />
+    </div>
   );
 });
 
@@ -851,7 +865,8 @@ export const ImageTransform = ({
             />
           ) : (
             <div 
-              className="relative bg-secondary"
+              className="relative bg-secondary w-full"
+              style={{ minHeight: 'auto', height: 'auto' }}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
             >
@@ -870,8 +885,6 @@ export const ImageTransform = ({
               ) : (
                 <StableImage
                   src={stableImageUrl.current}
-                  width={data.width || 1024}
-                  height={data.height || 1024}
                   onError={() => markAsExpired()}
                 />
               )}

@@ -716,7 +716,11 @@ export const NodeLayout = ({
                 ...(isCleanupMode ? { cursor: isProtectedFromCleanup ? 'not-allowed' : 'pointer' } : {}),
               }}
             >
-              <div className="overflow-hidden rounded-[17px] bg-card">
+              <div className={cn(
+                "rounded-[17px] bg-card",
+                // Pour les images, permettre à l'overflow de dépasser pour éviter le crop
+                type === 'image' ? 'overflow-visible' : 'overflow-hidden'
+              )}>
                 {children}
               </div>
               

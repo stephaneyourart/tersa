@@ -285,9 +285,10 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   const [testMode, setTestMode] = useState(false);
   
   // Modèles pour le test mode (ultra rapide et pas cher)
+  // NOTE: nano-banana-edit (pas pro) pour éviter les problèmes de zoom avec FLUX Kontext
   const TEST_MODELS = {
     textToImage: 'flux-schnell-wavespeed',                      // 0.003$ - le plus rapide
-    edit: 'flux-kontext-dev-multi-ultra-fast-wavespeed',        // 0.025$ - edit ultra rapide multi-images
+    edit: 'nano-banana-edit-wavespeed',                         // nano-banana edit (pas pro) - plus stable
     video: 'kling-v2.6-pro-first-last',                         // Garder le même pour la vidéo
   };
   
@@ -686,8 +687,6 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
             ...baseParams, 
             model: models.edit, 
             sourceImages: images.map(i => i.url),
-            // Paramètres spécifiques pour flux-kontext-dev/multi-ultra-fast en mode test
-            ...(testMode && { numInferenceSteps: 5, guidanceScale: 2.5 }),
           }
         : { ...baseParams, model: models.textToImage };
       

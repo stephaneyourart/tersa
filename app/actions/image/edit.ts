@@ -175,8 +175,11 @@ async function editWaveSpeedImage(
   );
 
   // Certains modèles (flux-kontext-dev/multi-ultra-fast) utilisent "size" au format "widthxheight"
-  // D'autres utilisent "resolution" ('1k', '2k', '4k')
+  // nano-banana-pro-edit et ultra supportent "resolution" ('1k', '2k', '4k')
+  // nano-banana-edit (pas pro) ne supporte PAS de paramètre de taille
   const isFluxKontextMulti = modelId.includes('flux-kontext-dev-multi');
+  const isNanoBananaBasicEdit = modelId === 'nano-banana-edit-wavespeed';
+  const supportsResolution = modelId.includes('nano-banana-pro-edit');
   
   const params: WaveSpeedEditParams = {
     prompt,
@@ -189,9 +192,12 @@ async function editWaveSpeedImage(
     // Format "widthxheight" pour flux-kontext-dev/multi
     (params as Record<string, unknown>).size = size;
     console.log(`[WaveSpeed] Flux Kontext Multi - size: ${size}`);
-  } else {
-    // Format resolution pour les autres modèles
+  } else if (supportsResolution && size) {
+    // Format resolution pour nano-banana-pro-edit
     params.resolution = size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k';
+  } else if (isNanoBananaBasicEdit) {
+    // nano-banana-edit (pas pro) n'a pas de paramètre de taille - utilise la taille de l'image source
+    console.log(`[WaveSpeed] nano-banana-edit: pas de paramètre de taille, utilise la taille source`);
   }
   
   // Ajouter les paramètres optionnels si fournis
