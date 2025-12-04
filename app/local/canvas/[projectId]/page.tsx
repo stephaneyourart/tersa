@@ -93,25 +93,35 @@ export default function LocalCanvasPage() {
   }, []);
 
   // Bloquer les gestes de navigation du navigateur (swipe back/forward)
+  // ET le zoom du navigateur (Cmd+scroll) qui est souvent déclenché par erreur
   useEffect(() => {
-    // Bloquer le swipe horizontal pour navigation
+    // Bloquer le swipe horizontal pour navigation ET le zoom navigateur
     const preventNavigation = (e: WheelEvent) => {
+      // Bloquer le zoom navigateur (Cmd/Ctrl + scroll)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        return;
+      }
+      
       // Si c'est un scroll horizontal significatif, bloquer
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 10) {
         e.preventDefault();
       }
     };
 
-    // Bloquer aussi les touch events pour swipe
-    const preventTouchNavigation = (e: TouchEvent) => {
-      if (e.touches.length > 1) return; // Permettre pinch-to-zoom
-      // Le canvas gère ses propres touch events
+    // Bloquer aussi Cmd+Plus/Minus pour le zoom navigateur
+    const preventKeyboardZoom = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+        e.preventDefault();
+      }
     };
 
     document.addEventListener('wheel', preventNavigation, { passive: false });
+    document.addEventListener('keydown', preventKeyboardZoom);
     
     return () => {
       document.removeEventListener('wheel', preventNavigation);
+      document.removeEventListener('keydown', preventKeyboardZoom);
     };
   }, []);
 
