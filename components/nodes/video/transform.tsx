@@ -140,9 +140,20 @@ export const VideoTransform = ({
   const isLocal = videoUrl ? isLocalUrl(videoUrl) : true;
   const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(videoUrl, isLocal);
 
-  const handleGenerate = useCallback(async () => {
+  // Constante pour le nombre max de tentatives
+  const MAX_RETRY_ATTEMPTS = 2;
+
+  const handleGenerate = useCallback(async (isRetry = false) => {
     if (loading || !project?.id) {
       return;
+    }
+
+    // Récupérer le nombre de tentatives actuel
+    const currentAttempt = (data.retryCount ?? 0) + 1;
+    
+    // Si c'est un retry, mettre à jour le compteur
+    if (isRetry) {
+      updateNodeData(id, { retryCount: currentAttempt });
     }
 
     const startTime = Date.now();
@@ -190,8 +201,8 @@ export const VideoTransform = ({
         throw new Error(response.error);
       }
 
-      // Merger les nouvelles données avec les existantes (pour préserver instructions, advancedSettings, etc.)
-      updateNodeData(id, { ...data, ...response.nodeData });
+      // Succès ! Reset le compteur de retry et merger les données
+      updateNodeData(id, { ...data, ...response.nodeData, retryCount: 0 });
 
       // Calculer le temps écoulé et le coût
       const duration = Math.round((Date.now() - startTime) / 1000);
@@ -223,7 +234,45 @@ export const VideoTransform = ({
 
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Vérifier si on peut retry (tentative actuelle < max)
+      if (currentAttempt < MAX_RETRY_ATTEMPTS) {
+        console.log(`[Video Transform] Échec tentative ${currentAttempt}/${MAX_RETRY_ATTEMPTS}, retry automatique...`);
+        
+        toast.warning(`🔄 Retry automatique (${currentAttempt}/${MAX_RETRY_ATTEMPTS})`, {
+          description: `Erreur: ${errorMessage.substring(0, 100)}...`,
+          duration: 5000,
+        });
+        
+        // Mettre à jour le compteur et relancer après un court délai
+        updateNodeData(id, { retryCount: currentAttempt });
+        setLoading(false);
+        
+        // Attendre 2 secondes avant de retry
+        setTimeout(() => {
+          handleGenerate(true);
+        }, 2000);
+        return;
+      }
+      
+      // Max tentatives atteint - échec définitif
+      console.error(`[Video Transform] Échec après ${currentAttempt} tentatives`);
       handleError('Error generating video', error);
+      
+      toast.error(`❌ Échec après ${currentAttempt} tentatives`, {
+        description: errorMessage.substring(0, 150),
+        duration: Infinity,
+        closeButton: true,
+      });
+      
+      // Reset le compteur et marquer l'erreur
+      updateNodeData(id, { 
+        retryCount: 0, 
+        generating: false,
+        generatingStartTime: undefined,
+        error: errorMessage,
+      });
       
       // Tracker l'erreur
       trackGeneration({
@@ -234,7 +283,7 @@ export const VideoTransform = ({
         duration: Math.round((Date.now() - startTime) / 1000),
         cost: 0,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         nodeId: id,
         nodeName: (data as { customName?: string }).customName,
       });
@@ -362,6 +411,7 @@ export const VideoTransform = ({
       // Mettre à jour chaque nœud avec son résultat
       const results = batchResult.results || [];
       let successCount = 0;
+      const failedNodesToRetry: { nodeId: string; error: string; retryCount: number }[] = [];
       
       for (const result of results) {
         if (result.success && result.videoUrl) {
@@ -372,6 +422,7 @@ export const VideoTransform = ({
             },
             generating: false,
             generatingStartTime: undefined,
+            retryCount: 0,
           });
           successCount++;
           
@@ -390,28 +441,107 @@ export const VideoTransform = ({
             videoDuration,
           });
         } else {
-          updateNodeData(result.nodeId, { 
-            generating: false,
-            generatingStartTime: undefined,
-          });
-          if (result.error) {
-            toast.error(`Erreur nœud ${result.nodeId}: ${result.error}`);
-          }
+          // Récupérer le compteur de retry du nœud
+          const node = getNode(result.nodeId);
+          const currentRetryCount = (node?.data?.retryCount as number) ?? 0;
           
-          // Tracker l'erreur
-          trackGeneration({
-            type: 'video',
-            model: modelId,
-            modelLabel: selectedModel?.label,
-            prompt: promptText,
-            duration: Math.round(totalDuration / count),
-            cost: 0,
-            status: 'error',
-            error: result.error || 'Unknown error',
-            nodeId: result.nodeId,
-            nodeName: (data as { customName?: string }).customName,
-          });
+          if (currentRetryCount < MAX_RETRY_ATTEMPTS - 1) {
+            // On peut retry ce nœud
+            failedNodesToRetry.push({
+              nodeId: result.nodeId,
+              error: result.error || 'Unknown error',
+              retryCount: currentRetryCount + 1,
+            });
+            // Garder le nœud en état "generating" pour le retry
+            updateNodeData(result.nodeId, { 
+              retryCount: currentRetryCount + 1,
+            });
+          } else {
+            // Max tentatives atteint - échec définitif
+            updateNodeData(result.nodeId, { 
+              generating: false,
+              generatingStartTime: undefined,
+              retryCount: 0,
+              error: result.error,
+            });
+            
+            toast.error(`❌ Échec définitif nœud après ${MAX_RETRY_ATTEMPTS} tentatives`, {
+              description: result.error?.substring(0, 100),
+              duration: 10000,
+            });
+            
+            // Tracker l'erreur
+            trackGeneration({
+              type: 'video',
+              model: modelId,
+              modelLabel: selectedModel?.label,
+              prompt: promptText,
+              duration: Math.round(totalDuration / count),
+              cost: 0,
+              status: 'error',
+              error: result.error || 'Unknown error',
+              nodeId: result.nodeId,
+              nodeName: (data as { customName?: string }).customName,
+            });
+          }
         }
+      }
+      
+      // Retry automatique des nœuds échoués qui peuvent être retryés
+      if (failedNodesToRetry.length > 0) {
+        toast.warning(`🔄 Retry automatique de ${failedNodesToRetry.length} nœud(s) échoué(s)...`, {
+          description: failedNodesToRetry.map(n => `Tentative ${n.retryCount + 1}/${MAX_RETRY_ATTEMPTS}`).join(', '),
+          duration: 5000,
+        });
+        
+        // Relancer les jobs échoués après un délai
+        setTimeout(async () => {
+          const retryJobs = failedNodesToRetry.map(failed => ({
+            nodeId: failed.nodeId,
+            modelId,
+            prompt: promptText,
+            images: formattedImages,
+          }));
+          
+          console.log(`[Video Batch] Retrying ${retryJobs.length} failed jobs...`);
+          
+          try {
+            const retryResponse = await fetch('/api/batch-generate-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jobs: retryJobs, projectId: project.id }),
+            });
+            
+            if (retryResponse.ok) {
+              const retryResult = await retryResponse.json();
+              let retrySuccessCount = 0;
+              
+              for (const result of retryResult.results || []) {
+                if (result.success && result.videoUrl) {
+                  updateNodeData(result.nodeId, {
+                    generated: { url: result.videoUrl, type: 'video/mp4' },
+                    generating: false,
+                    generatingStartTime: undefined,
+                    retryCount: 0,
+                  });
+                  retrySuccessCount++;
+                } else {
+                  updateNodeData(result.nodeId, {
+                    generating: false,
+                    generatingStartTime: undefined,
+                    error: result.error,
+                  });
+                }
+              }
+              
+              if (retrySuccessCount > 0) {
+                toast.success(`✅ ${retrySuccessCount} vidéo(s) récupérée(s) après retry !`);
+              }
+            }
+          } catch (retryError) {
+            console.error('[Video Batch] Retry failed:', retryError);
+          }
+        }, 3000);
       }
 
       const totalCost = costPerVideo * successCount;
@@ -511,7 +641,12 @@ export const VideoTransform = ({
   const [isHovered, setIsHovered] = useState(false);
   // Mode collapsed par défaut pour les prompts longs
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
-  const isGenerating = loading || data.generating;
+  
+  // AMÉLIORATION: Considérer "en génération" si:
+  // 1. loading local est true, OU
+  // 2. data.generating est true, OU
+  // 3. generatingStartTime existe ET pas encore de vidéo (génération en cours après refresh)
+  const isGenerating = loading || data.generating || (data.generatingStartTime && !data.generated?.url);
   const hasContent = isGenerating || data.generated?.url;
   const hasPrompt = Boolean(data.instructions?.trim());
   // Tronquer le prompt à 80 caractères pour le mode collapsed

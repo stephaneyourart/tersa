@@ -1,11 +1,12 @@
 /**
  * Générateur de médias en parallèle pour les briefs
  * 
- * NOUVELLE ARCHITECTURE DE GÉNÉRATION :
+ * ARCHITECTURE TOUT EN // :
  * 1. TOUTES les images primaires (personnages + décors) sont lancées SIMULTANÉMENT
- * 2. Dès qu'une image primaire est prête, ses 3 variantes sont lancées EN PARALLÈLE
- * 3. NOUVEAU: Images de plan (départ 21:9 + fin 21:9) générées par EDIT depuis les collections
- * 4. Vidéos avec first frame (départ) + last frame (fin) + prompt action - KLING v2.6
+ * 2. Dès qu'une primaire est prête, ses variantes sont lancées IMMÉDIATEMENT en //
+ *    (pas d'attente que les autres primaires soient terminées)
+ * 3. Images de plan (départ 21:9 + fin 21:9) générées par EDIT depuis les collections
+ * 4. Vidéos avec first frame (départ) + last frame (fin) + prompt action
  */
 
 import type { QualityLevel } from '@/types/brief';
@@ -133,204 +134,156 @@ export async function generateAllMediaParallel(
   // Map pour suivre les collections prêtes (personnages et décors)
   const readyCollections = new Set<string>();
 
-  console.log('[ParallelGen] Démarrage génération parallèle (NOUVEAU WORKFLOW)');
+  console.log('[ParallelGen] Démarrage génération parallèle (TOUT EN //)');
   console.log(`[ParallelGen] ${characterImages.length} personnages, ${decorImages.length} décors`);
   console.log(`[ParallelGen] ${planImages?.length || 0} plans avec images départ/fin`);
   console.log(`[ParallelGen] ${videos.length} vidéos avec first+last frame`);
 
-  // ========== PHASE 1 : TOUTES LES IMAGES PRIMAIRES EN PARALLÈLE ==========
-  const primaryTasks: ImageGenerationTask[] = [];
+  // ========== COLLECTER TOUTES LES TÂCHES D'IMAGES (PRIMAIRES + VARIANTES) ==========
+  const allImageTasks: ImageGenerationTask[] = [];
 
-  // Collecter toutes les tâches d'images primaires
+  // Collecter TOUTES les tâches d'images personnages (primaires + variantes)
   for (const char of characterImages) {
-    const primaryKey = char.order[0]; // 'primary' ou 'fullBody'
-    const nodeIdIndex = char.order.indexOf(primaryKey);
-    if (nodeIdIndex >= 0 && char.imageNodeIds[nodeIdIndex]) {
-      primaryTasks.push({
-        nodeId: char.imageNodeIds[nodeIdIndex],
-        type: 'primary',
-        entityType: 'character',
-        entityId: char.characterId,
-        viewType: primaryKey,
-        prompt: char.prompts[primaryKey],
-        aspectRatio: char.aspectRatios[primaryKey] || IMAGE_RATIOS.character.primary,
-      });
-    }
-  }
-
-  for (const decor of decorImages) {
-    const primaryKey = decor.order[0]; // 'primary' ou 'angle1'
-    const nodeIdIndex = decor.order.indexOf(primaryKey);
-    if (nodeIdIndex >= 0 && decor.imageNodeIds[nodeIdIndex]) {
-      primaryTasks.push({
-        nodeId: decor.imageNodeIds[nodeIdIndex],
-        type: 'primary',
-        entityType: 'decor',
-        entityId: decor.decorId,
-        viewType: primaryKey,
-        prompt: decor.prompts[primaryKey],
-        aspectRatio: decor.aspectRatios[primaryKey] || IMAGE_RATIOS.decor.primary,
-      });
-    }
-  }
-
-  console.log(`[ParallelGen] Phase 1 : ${primaryTasks.length} images primaires à générer SIMULTANÉMENT`);
-  onProgress?.({
-    phase: 'primary_images',
-    total: primaryTasks.length,
-    completed: 0,
-    failed: 0,
-    currentTasks: primaryTasks.map(t => t.nodeId),
-  });
-
-  // Lancer TOUTES les images primaires EN PARALLÈLE
-  const primaryPromises = primaryTasks.map(async (task) => {
-    try {
-      const model = getTextToImageModel(quality);
-      const extraParams = getQualityParams(quality);
-      
-      console.log(`[ParallelGen] Génération primaire ${task.entityType}/${task.entityId}/${task.viewType}`);
-      
-      const result = await generateImage({
-        prompt: task.prompt,
-        model,
-        aspectRatio: task.aspectRatio,
-        ...extraParams,
-      });
-
-      if (result.success && result.url) {
-        imageUrlsMap.set(task.nodeId, result.url);
-        imageResults.push({ nodeId: task.nodeId, success: true, url: result.url });
-        onImageGenerated?.({ nodeId: task.nodeId, success: true, url: result.url });
-        console.log(`[ParallelGen] ✓ Primaire ${task.nodeId} générée`);
-      } else {
-        imageResults.push({ nodeId: task.nodeId, success: false, error: result.error });
-        onImageGenerated?.({ nodeId: task.nodeId, success: false, error: result.error });
-        console.error(`[ParallelGen] ✗ Primaire ${task.nodeId} échouée:`, result.error);
-      }
-
-      return { task, result };
-    } catch (error: any) {
-      imageResults.push({ nodeId: task.nodeId, success: false, error: error.message });
-      onImageGenerated?.({ nodeId: task.nodeId, success: false, error: error.message });
-      return { task, result: { success: false, error: error.message } };
-    }
-  });
-
-  // Attendre que toutes les images primaires soient générées
-  const primaryResults = await Promise.allSettled(primaryPromises);
-  
-  const successfulPrimaries = primaryResults.filter(
-    r => r.status === 'fulfilled' && r.value.result.success
-  ).length;
-  
-  console.log(`[ParallelGen] Phase 1 terminée : ${successfulPrimaries}/${primaryTasks.length} réussies`);
-
-  // ========== PHASE 2 : TOUTES LES VARIANTES EN PARALLÈLE ==========
-  const variantTasks: ImageGenerationTask[] = [];
-
-  for (const char of characterImages) {
-    const primaryNodeId = char.primaryNodeId || char.imageNodeIds[0];
-    const primaryUrl = imageUrlsMap.get(primaryNodeId);
-    
-    if (!primaryUrl) {
-      console.log(`[ParallelGen] Pas d'image primaire pour personnage ${char.characterId}, skip variantes`);
-      continue;
-    }
-
-    // Ajouter les variantes (tous sauf le premier qui est primaire)
-    for (let i = 1; i < char.order.length; i++) {
+    for (let i = 0; i < char.order.length; i++) {
       const viewType = char.order[i];
       const nodeId = char.imageNodeIds[i];
+      if (!nodeId) continue;
       
-      variantTasks.push({
+      const isPrimary = i === 0;
+      allImageTasks.push({
         nodeId,
-        type: 'variant',
+        type: isPrimary ? 'primary' : 'variant',
         entityType: 'character',
         entityId: char.characterId,
         viewType,
         prompt: char.prompts[viewType],
-        aspectRatio: char.aspectRatios[viewType] || '1:1',
-        referenceImageId: primaryNodeId,
-        referenceImageUrl: primaryUrl,
+        aspectRatio: char.aspectRatios[viewType] || (isPrimary ? IMAGE_RATIOS.character.primary : '1:1'),
+        referenceImageId: isPrimary ? undefined : (char.primaryNodeId || char.imageNodeIds[0]),
       });
     }
   }
 
+  // Collecter TOUTES les tâches d'images décors (primaires + variantes)
   for (const decor of decorImages) {
-    const primaryNodeId = decor.primaryNodeId || decor.imageNodeIds[0];
-    const primaryUrl = imageUrlsMap.get(primaryNodeId);
-    
-    if (!primaryUrl) {
-      console.log(`[ParallelGen] Pas d'image primaire pour décor ${decor.decorId}, skip variantes`);
-      continue;
-    }
-
-    // Ajouter les variantes (tous sauf le premier qui est primaire)
-    for (let i = 1; i < decor.order.length; i++) {
+    for (let i = 0; i < decor.order.length; i++) {
       const viewType = decor.order[i];
       const nodeId = decor.imageNodeIds[i];
+      if (!nodeId) continue;
       
-      variantTasks.push({
+      const isPrimary = i === 0;
+      allImageTasks.push({
         nodeId,
-        type: 'variant',
+        type: isPrimary ? 'primary' : 'variant',
         entityType: 'decor',
         entityId: decor.decorId,
         viewType,
         prompt: decor.prompts[viewType],
-        aspectRatio: decor.aspectRatios[viewType] || '16:9',
-        referenceImageId: primaryNodeId,
-        referenceImageUrl: primaryUrl,
+        aspectRatio: decor.aspectRatios[viewType] || (isPrimary ? IMAGE_RATIOS.decor.primary : '16:9'),
+        referenceImageId: isPrimary ? undefined : (decor.primaryNodeId || decor.imageNodeIds[0]),
       });
     }
   }
 
-  console.log(`[ParallelGen] Phase 2 : ${variantTasks.length} variantes à générer SIMULTANÉMENT`);
+  // Séparer primaires et variantes pour le workflow
+  const primaryTasks = allImageTasks.filter(t => t.type === 'primary');
+  const variantTasks = allImageTasks.filter(t => t.type === 'variant');
+
+  const totalImages = primaryTasks.length + variantTasks.length;
+  console.log(`[ParallelGen] TOUT EN // : ${totalImages} images (${primaryTasks.length} primaires + ${variantTasks.length} variantes)`);
+  
   onProgress?.({
-    phase: 'variant_images',
-    total: variantTasks.length,
+    phase: 'primary_images',
+    total: totalImages,
     completed: 0,
     failed: 0,
-    currentTasks: variantTasks.map(t => t.nodeId),
+    currentTasks: allImageTasks.map(t => t.nodeId),
   });
 
-  // Lancer TOUTES les variantes EN PARALLÈLE
-  const variantPromises = variantTasks.map(async (task) => {
+  // ========== LANCER TOUTES LES IMAGES EN PARALLÈLE ==========
+  // Chaque primaire lance immédiatement ses variantes dès qu'elle est prête
+  
+  const allImagePromises = primaryTasks.map(async (primaryTask) => {
+    const results: GenerationResult[] = [];
+    
     try {
-      const model = getEditModel(quality);
+      const model = getTextToImageModel(quality);
       const extraParams = getQualityParams(quality);
       
-      console.log(`[ParallelGen] Génération variante ${task.entityType}/${task.entityId}/${task.viewType}`);
+      console.log(`[ParallelGen] 🚀 Primaire ${primaryTask.entityType}/${primaryTask.entityId}/${primaryTask.viewType}`);
       
-      const result = await generateImageEdit({
-        prompt: task.prompt,
-        referenceImageUrl: task.referenceImageUrl!,
+      const result = await generateImage({
+        prompt: primaryTask.prompt,
         model,
-        aspectRatio: task.aspectRatio,
+        aspectRatio: primaryTask.aspectRatio,
         ...extraParams,
       });
 
       if (result.success && result.url) {
-        imageUrlsMap.set(task.nodeId, result.url);
-        imageResults.push({ nodeId: task.nodeId, success: true, url: result.url });
-        onImageGenerated?.({ nodeId: task.nodeId, success: true, url: result.url });
-        console.log(`[ParallelGen] ✓ Variante ${task.nodeId} générée`);
-      } else {
-        imageResults.push({ nodeId: task.nodeId, success: false, error: result.error });
-        onImageGenerated?.({ nodeId: task.nodeId, success: false, error: result.error });
-        console.error(`[ParallelGen] ✗ Variante ${task.nodeId} échouée:`, result.error);
-      }
+        imageUrlsMap.set(primaryTask.nodeId, result.url);
+        results.push({ nodeId: primaryTask.nodeId, success: true, url: result.url });
+        onImageGenerated?.({ nodeId: primaryTask.nodeId, success: true, url: result.url });
+        console.log(`[ParallelGen] ✓ Primaire ${primaryTask.nodeId} OK`);
+        
+        // IMMÉDIATEMENT lancer les variantes de cette primaire EN PARALLÈLE
+        const myVariants = variantTasks.filter(v => v.referenceImageId === primaryTask.nodeId);
+        if (myVariants.length > 0) {
+          console.log(`[ParallelGen] 🚀 ${myVariants.length} variantes pour ${primaryTask.entityId} lancées EN //`);
+          
+          const variantPromises = myVariants.map(async (variantTask) => {
+            try {
+              const editModel = getEditModel(quality);
+              const editParams = getQualityParams(quality);
+              
+              const variantResult = await generateImageEdit({
+                prompt: variantTask.prompt,
+                referenceImageUrl: result.url!,
+                model: editModel,
+                aspectRatio: variantTask.aspectRatio,
+                ...editParams,
+              });
 
-      return { task, result };
+              if (variantResult.success && variantResult.url) {
+                imageUrlsMap.set(variantTask.nodeId, variantResult.url);
+                results.push({ nodeId: variantTask.nodeId, success: true, url: variantResult.url });
+                onImageGenerated?.({ nodeId: variantTask.nodeId, success: true, url: variantResult.url });
+                console.log(`[ParallelGen] ✓ Variante ${variantTask.nodeId} OK`);
+              } else {
+                results.push({ nodeId: variantTask.nodeId, success: false, error: variantResult.error });
+                onImageGenerated?.({ nodeId: variantTask.nodeId, success: false, error: variantResult.error });
+              }
+            } catch (err: any) {
+              results.push({ nodeId: variantTask.nodeId, success: false, error: err.message });
+              onImageGenerated?.({ nodeId: variantTask.nodeId, success: false, error: err.message });
+            }
+          });
+          
+          await Promise.allSettled(variantPromises);
+        }
+      } else {
+        results.push({ nodeId: primaryTask.nodeId, success: false, error: result.error });
+        onImageGenerated?.({ nodeId: primaryTask.nodeId, success: false, error: result.error });
+        console.error(`[ParallelGen] ✗ Primaire ${primaryTask.nodeId} échouée:`, result.error);
+      }
     } catch (error: any) {
-      imageResults.push({ nodeId: task.nodeId, success: false, error: error.message });
-      onImageGenerated?.({ nodeId: task.nodeId, success: false, error: error.message });
-      return { task, result: { success: false, error: error.message } };
+      results.push({ nodeId: primaryTask.nodeId, success: false, error: error.message });
+      onImageGenerated?.({ nodeId: primaryTask.nodeId, success: false, error: error.message });
     }
+    
+    return results;
   });
 
-  // Attendre que toutes les variantes soient générées
-  await Promise.allSettled(variantPromises);
+  // Attendre que TOUT soit terminé (primaires + leurs variantes)
+  const allResults = await Promise.allSettled(allImagePromises);
+  
+  // Collecter tous les résultats
+  for (const result of allResults) {
+    if (result.status === 'fulfilled') {
+      imageResults.push(...result.value);
+    }
+  }
+  
+  const successCount = imageResults.filter(r => r.success).length;
+  console.log(`[ParallelGen] TOUTES images terminées : ${successCount}/${totalImages} réussies`);
 
   // Marquer toutes les collections comme prêtes
   for (const char of characterImages) {

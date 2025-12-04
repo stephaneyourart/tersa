@@ -1,11 +1,12 @@
 /**
- * Hook pour la génération PARALLÈLE des médias dans le canvas
+ * Hook pour la génération TOUT EN // des médias dans le canvas
  * 
- * ARCHITECTURE DE GÉNÉRATION EN PARALLÈLE :
- * 1. Lancer TOUTES les images primaires (personnages + décors) SIMULTANÉMENT
- * 2. Dès qu'une primaire est prête, lancer ses 3 variantes EN PARALLÈLE
+ * ARCHITECTURE TOUT EN // :
+ * 1. TOUTES les images primaires (personnages + décors) lancées SIMULTANÉMENT
+ * 2. Dès qu'une primaire est prête, ses variantes sont lancées IMMÉDIATEMENT
+ *    (pas d'attente que les autres primaires soient terminées)
  * 3. Une fois toutes les images terminées, populer les collections
- * 4. Lancer TOUTES les vidéos EN PARALLÈLE
+ * 4. TOUTES les vidéos lancées EN PARALLÈLE
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -555,13 +556,14 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
     };
 
     try {
-      // ========== PHASE 1 : TOUTES LES IMAGES PRIMAIRES EN PARALLÈLE ==========
+      // ========== TOUT EN // : PRIMAIRES + VARIANTES ==========
+      const totalImageTasks = primaryImageTasks.length + Array.from(variantImageTasks.values()).flat().length;
       setProgress(prev => ({ ...prev, currentPhase: 'primary_images' }));
-      toast.info(`🚀 Lancement de ${primaryImageTasks.length} images primaires EN PARALLÈLE...`);
-      console.log(`[ParallelGen] Phase 1: ${primaryImageTasks.length} images primaires EN PARALLÈLE`);
+      toast.info(`🚀 TOUT EN // : ${totalImageTasks} images lancées SIMULTANÉMENT`);
+      console.log(`[ParallelGen] TOUT EN // : ${primaryImageTasks.length} primaires + variantes`);
 
-      // Lancer TOUTES les images primaires SIMULTANÉMENT
-      const primaryPromises = primaryImageTasks.map(async (task) => {
+      // Lancer TOUTES les primaires, chacune lance ses variantes immédiatement
+      const allImagePromises = primaryImageTasks.map(async (task) => {
         if (abortRef.current) return { task, success: false };
 
         updateStep(task.stepId, { status: 'generating' });
@@ -573,14 +575,13 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
           summary.totalImages++;
           incrementCompletedSteps();
 
-          // Dès qu'une primaire est prête, lancer ses variantes EN PARALLÈLE
+          // IMMÉDIATEMENT lancer les variantes EN PARALLÈLE
           const variants = variantImageTasks.get(task.nodeId);
           if (variants && variants.length > 0) {
             const referenceUrl = generatedImagesRef.current.get(task.nodeId);
             if (referenceUrl) {
-              console.log(`[ParallelGen] Primaire ${task.nodeId} prête, lancement de ${variants.length} variantes EN PARALLÈLE`);
+              console.log(`[ParallelGen] 🚀 ${variants.length} variantes pour ${task.nodeId} lancées EN //`);
               
-              // Lancer toutes les variantes de cette primaire EN PARALLÈLE
               const variantPromises = variants.map(async (variant) => {
                 if (abortRef.current) return false;
 
@@ -606,7 +607,6 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
                 return variantSuccess;
               });
 
-              // Attendre toutes les variantes de cette primaire
               await Promise.all(variantPromises);
             }
           }
@@ -619,8 +619,8 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
         return { task, success };
       });
 
-      // Attendre que TOUTES les primaires (et leurs variantes) soient terminées
-      await Promise.all(primaryPromises);
+      // Attendre que TOUT soit terminé
+      await Promise.all(allImagePromises);
 
       if (abortRef.current) throw new Error('Génération annulée');
 

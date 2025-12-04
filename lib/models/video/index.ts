@@ -488,13 +488,15 @@ export const videoModels: Record<string, TersaVideoModel> = {
   },
 
   'kling-v2.6-pro-first-last': {
-    label: 'Kling v2.6 Pro First+Last Frame (Briefs)',
+    // NOTE: Utilise en réalité kling-v2.1-i2v-pro/start-end-frame car c'est
+    // le SEUL modèle WaveSpeed qui supporte first+last frame !
+    label: 'Kling Start-End Frame (First+Last)',
     chef: providers.kling,
     providers: [
       {
         ...providers.fal,
-        model: wavespeed.kling26ProFirstLast(),
-        getCost: ({ duration }) => 0.08 * duration,
+        model: wavespeed.klingStartEnd(), // kling-v2.1-i2v-pro/start-end-frame
+        getCost: ({ duration }) => 0.09 * duration, // 0.45$ / 5s
       },
     ],
     default: true, // Modèle par défaut pour les briefs avec first+last frame

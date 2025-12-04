@@ -11,9 +11,11 @@ const MODEL_PATH_MAP: Record<string, string> = {
   'kling-o1': 'kwaivgi/kling-video-o1/text-to-video',
   'kling-o1-i2v': 'kwaivgi/kling-video-o1/image-to-video',
   'kling-o1-ref': 'kwaivgi/kling-video-o1/reference-to-video', // NOUVEAU: reference-to-video avec images multiples
-  // Kling 2.6 Pro (nouveau)
+  // Kling 2.6 Pro
   'kling-v2.6-pro-t2v': 'kwaivgi/kling-v2.6-pro/text-to-video',
   'kling-v2.6-pro-i2v': 'kwaivgi/kling-v2.6-pro/image-to-video',
+  // Kling 2.1 Pro Start-End Frame (LE SEUL QUI SUPPORTE first+last frame !)
+  'kling-v2.1-start-end': 'kwaivgi/kling-v2.1-i2v-pro/start-end-frame',
   // Kling 2.5
   'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',
@@ -35,9 +37,10 @@ const MODEL_PATH_MAP: Record<string, string> = {
 type WaveSpeedVideoModel =
   | 'kling-o1'
   | 'kling-o1-i2v'
-  | 'kling-o1-ref'      // NOUVEAU: reference-to-video
-  | 'kling-v2.6-pro-t2v' // NOUVEAU
-  | 'kling-v2.6-pro-i2v' // NOUVEAU
+  | 'kling-o1-ref'      // reference-to-video
+  | 'kling-v2.6-pro-t2v'
+  | 'kling-v2.6-pro-i2v'
+  | 'kling-v2.1-start-end' // SEUL modèle qui supporte first+last frame !
   | 'kling-v2.5-turbo'
   | 'kling-v2.5-standard'
   | 'kling-v2.5-pro'
@@ -52,7 +55,8 @@ type WaveSpeedVideoModel =
 type WaveSpeedRequest = {
   prompt: string;
   image?: string;
-  last_image?: string;  // Last frame pour Kling (paramètre officiel)
+  last_image?: string;  // Ancien nom (certains modèles)
+  end_image?: string;   // Nom officiel pour kling-v2.1-i2v-pro/start-end-frame
   images?: string[];
   duration?: number;
   aspect_ratio?: string;
@@ -200,36 +204,44 @@ function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
 }
 
 /**
- * Crée un modèle vidéo KLING v2.6 optimisé pour first+last frame
- * IMPORTANT : Quand on utilise last_image, on ne doit PAS spécifier aspect_ratio
- * Le ratio est déduit des images d'entrée (21:9 → crop 16:9)
- * native_audio est désactivé car il bloque last_image
+ * Crée un modèle vidéo KLING optimisé pour first+last frame
+ * 
+ * IMPORTANT : Le SEUL modèle qui supporte first+last frame est :
+ * kwaivgi/kling-v2.1-i2v-pro/start-end-frame
+ * 
+ * Paramètres :
+ * - image : first frame (REQUIRED)
+ * - end_image : last frame (REQUIRED) - PAS "last_image" !
+ * - prompt, duration, guidance_scale
  */
-function createKling26FirstLastModel(modelId: WaveSpeedVideoModel): VideoModel {
+function createKlingStartEndModel(): VideoModel {
+  const modelId: WaveSpeedVideoModel = 'kling-v2.1-start-end';
+  
   return {
     modelId,
     generate: async ({ prompt, imagePrompt, lastFrameImage, duration }) => {
       const input: WaveSpeedRequest = {
         prompt,
         duration: duration || 5,
+        guidance_scale: 0.5, // Valeur par défaut recommandée
         // PAS de aspect_ratio - déduit des images d'entrée
-        // PAS de native_audio - bloque last_image
       };
 
-      // First frame (image de départ)
+      // First frame (image de départ) - REQUIRED
       if (imagePrompt) {
         input.image = imagePrompt;
-        console.log(`[WaveSpeed KLING 2.6] First frame: ${imagePrompt.substring(0, 50)}...`);
+        console.log(`[WaveSpeed KLING Start-End] First frame: ${imagePrompt.substring(0, 50)}...`);
       }
 
-      // Last frame (image de fin) - OBLIGATOIRE pour ce modèle
+      // Last frame (image de fin) - REQUIRED - PARAMÈTRE = end_image !
       if (lastFrameImage) {
-        input.last_image = lastFrameImage;
-        console.log(`[WaveSpeed KLING 2.6] Last frame: ${lastFrameImage.substring(0, 50)}...`);
+        input.end_image = lastFrameImage;  // PAS last_image !
+        console.log(`[WaveSpeed KLING Start-End] End frame: ${lastFrameImage.substring(0, 50)}...`);
       }
 
       if (!imagePrompt || !lastFrameImage) {
-        console.warn(`[WaveSpeed KLING 2.6] Attention: first ou last frame manquant`);
+        console.error(`[WaveSpeed KLING Start-End] ❌ ERREUR: first ET last frame sont OBLIGATOIRES !`);
+        throw new Error('Le modèle start-end-frame requiert image ET end_image');
       }
 
       return callWaveSpeedApi(modelId, input);
@@ -283,11 +295,15 @@ export const wavespeed = {
   klingO1I2V: (): VideoModel => createWaveSpeedModel('kling-o1-i2v'),
   klingO1Ref: (): VideoModel => createReferenceToVideoModel('kling-o1-ref'), // NOUVEAU: reference-to-video
 
-  // Kling 2.6 Pro
+  // Kling 2.6 Pro (PAS de support first+last frame !)
   kling26ProT2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-t2v'),
   kling26ProI2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-i2v'),
-  // NOUVEAU: Modèle optimisé pour first+last frame (briefs)
-  kling26ProFirstLast: (): VideoModel => createKling26FirstLastModel('kling-v2.6-pro-i2v'),
+  
+  // Kling 2.1 Pro Start-End Frame - LE SEUL qui supporte first+last frame !
+  klingStartEnd: (): VideoModel => createKlingStartEndModel(),
+  
+  // DEPRECATED: Ancien nom, redirige vers le bon modèle
+  kling26ProFirstLast: (): VideoModel => createKlingStartEndModel(),
 
   // Kling 2.5 via WaveSpeed
   kling25Turbo: (): VideoModel => createWaveSpeedModel('kling-v2.5-turbo'),

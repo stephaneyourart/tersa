@@ -299,7 +299,11 @@ export const ImageTransform = ({
 
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
       handleError('Error generating image', error);
+      
+      // IMPORTANT: Sauvegarder l'erreur dans le nœud pour l'afficher dans le canvas
+      updateNodeData(id, { error: errorMessage });
       
       // Tracker l'erreur
       trackGeneration({
@@ -310,7 +314,7 @@ export const ImageTransform = ({
         duration: Math.round((Date.now() - startTime) / 1000),
         cost: 0,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         nodeId: id,
         nodeName: (data as { customName?: string }).customName,
         size: sizeFromSettings,
@@ -849,10 +853,26 @@ export const ImageTransform = ({
           className="flex w-full items-center justify-center rounded-b-xl bg-secondary p-4"
           style={{ aspectRatio }}
         >
-          <p className="text-muted-foreground text-sm">
-            Press <ArrowUpIcon size={12} className="-translate-y-px inline" /> to
-            create an image
-          </p>
+          {/* Afficher l'erreur si présente - STYLE VISIBLE */}
+          {data.error ? (
+            <div className="p-3 text-center bg-red-900/30 border border-red-500/50 rounded-lg w-full">
+              <p className="text-red-400 text-sm font-bold mb-1">❌ ERREUR</p>
+              <p className="text-red-300 text-xs leading-tight max-w-full overflow-hidden break-words font-mono">
+                {typeof data.error === 'string' ? data.error : JSON.stringify(data.error)}
+              </p>
+              <button 
+                onClick={() => updateNodeData(id, { error: undefined })}
+                className="mt-2 text-xs text-red-400/70 hover:text-red-300 underline"
+              >
+                Effacer l'erreur
+              </button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Press <ArrowUpIcon size={12} className="-translate-y-px inline" /> to
+              create an image
+            </p>
+          )}
         </div>
       )}
       {!isGenerating && !isUpscaling && stableImageUrl.current && (
