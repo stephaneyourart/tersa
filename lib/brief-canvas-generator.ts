@@ -25,46 +25,53 @@ import type {
 import { getSceneColor } from '@/types/generated-project';
 import { IMAGE_RATIOS } from '@/lib/brief-defaults';
 
-// ========== CONSTANTES DE LAYOUT AMÉLIORÉES ==========
+// ========== CONSTANTES DE LAYOUT - CANVAS INFINI, TRÈS ESPACÉ ==========
 const LAYOUT = {
-  // Marges générales - TRÈS ESPACÉ
-  MARGIN: 300,
-  SECTION_GAP: 600,          // Espace entre sections (triplé)
+  // Marges générales - ÉNORME ESPACEMENT (canvas infini)
+  MARGIN: 500,
+  SECTION_GAP: 5000,         // Espace entre grandes sections (x50)
+  VERTICAL_GAP: 3000,        // Espace vertical entre sections
   
-  // Zone personnages/lieux (colonne gauche)
-  LEFT_COLUMN_WIDTH: 2800,   // Plus large
-  // IMPORTANT: Les images 9:16 font ~570px de haut pour 320px de large
-  // Donc on a besoin de ~800px minimum par ligne de personnage
-  CHARACTER_ROW_HEIGHT: 1800, // AUGMENTÉ: 800px pour images 9:16 + espace
-  LOCATION_ROW_HEIGHT: 800,   // Décors en 16:9 sont moins hauts
+  // Zone personnages/décors
+  CHARACTER_ROW_HEIGHT: 2500, // Énorme espace entre personnages
+  LOCATION_ROW_HEIGHT: 1500,  // Espace décors
   
-  // Tailles des nœuds - FIXE pour éviter clignotement
-  TEXT_NODE_WIDTH: 350,      // Compact
-  TEXT_NODE_HEIGHT: 200,     // Réduit (prompts collapsed par défaut)
-  IMAGE_NODE_WIDTH: 320,     // Largeur fixe
-  IMAGE_NODE_HEIGHT_1_1: 320,   // Hauteur 1:1
-  IMAGE_NODE_HEIGHT_9_16: 570,  // Hauteur 9:16 (320 * 16/9)
-  IMAGE_NODE_HEIGHT_16_9: 180,  // Hauteur 16:9 (320 * 9/16)
-  COLLECTION_NODE_WIDTH: 450,
-  COLLECTION_NODE_HEIGHT: 350,
-  VIDEO_NODE_WIDTH: 500,
-  VIDEO_NODE_HEIGHT: 400,
+  // Tailles des nœuds
+  TEXT_NODE_WIDTH: 400,
+  TEXT_NODE_HEIGHT: 300,
+  IMAGE_NODE_WIDTH: 400,     // Plus grand
+  IMAGE_NODE_HEIGHT_1_1: 400,
+  IMAGE_NODE_HEIGHT_9_16: 710,  // 400 * 16/9
+  IMAGE_NODE_HEIGHT_16_9: 225,  // 400 * 9/16
+  IMAGE_NODE_HEIGHT_21_9: 171,  // 400 * 9/21
+  COLLECTION_NODE_WIDTH: 500,
+  COLLECTION_NODE_HEIGHT: 400,
+  VIDEO_NODE_WIDTH: 600,
+  VIDEO_NODE_HEIGHT: 500,
   
-  // Espacement entre nœuds - TRÈS ESPACÉ
-  NODE_GAP_X: 250,           // Augmenté pour éviter chevauchement horizontal
-  NODE_GAP_Y: 250,           // Augmenté pour éviter chevauchement vertical
+  // Espacement entre nœuds - ÉNORME
+  NODE_GAP_X: 800,           // Énorme gap horizontal
+  NODE_GAP_Y: 600,           // Énorme gap vertical
   
-  // Zone scènes (colonne droite) - Plus loin
-  SCENES_START_X: 3200,      // Encore plus décalé à droite
-  SCENE_GAP: 900,            // Beaucoup plus d'espace entre scènes
-  SCENE_PADDING: 200,
-  PLAN_WIDTH: 1400,          // Plans plus larges
-  PLAN_HEIGHT: 700,          // Plans plus hauts
-  PLANS_PER_ROW: 1,          // 1 plan par ligne pour plus de clarté
+  // Dans une section
+  ITEM_GAP: 400,             // Gap entre items dans une section
   
-  // Titre de scène
+  // Sections rectangles
+  SECTION_PADDING: 400,
+  SECTION_BORDER_RADIUS: 48,
+  
+  // Labels géants
+  GIANT_LABEL_FONT_SIZE: 124, // Taille demandée
   SCENE_TITLE_FONT_SIZE: 120,
-  SCENE_TITLE_HEIGHT: 180,
+  SECTION_LABEL_OFFSET_Y: -200, // Au-dessus du rectangle
+  
+  // Plans (FIRST/LAST frames)
+  PLAN_ROW_HEIGHT: 1200,     // Hauteur d'une rangée de plan
+  PLAN_GAP: 2000,            // Gap entre plans (augmenté)
+  
+  // Videos dans scènes
+  VIDEO_ROW_HEIGHT: 800,
+  VIDEO_GAP: 400,
   
   // Z-Index
   SHAPE_Z_INDEX: -1000,
@@ -284,7 +291,7 @@ function createCharacterStructure(
       label: `Personnage ${character.name}`,
       items: [],
       headerColor: '#F6C744',
-      collapsed: true,
+      collapsed: false,  // Ouvert par défaut
     },
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
@@ -449,7 +456,7 @@ function createDecorStructure(
       label: `Décor ${decor.name}`,
       items: [],
       headerColor: '#22c55e',
-      collapsed: true,
+      collapsed: false,  // Ouvert par défaut
     },
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
@@ -488,60 +495,136 @@ function createLocationStructure(
   createDecorStructure(location, startX, startY, structure, testMode);
 }
 
-// ========== CRÉATION PLAN ==========
-// NOUVEAU WORKFLOW : Pour chaque plan, on crée :
-// - 1 nœud TEXT (prompt action)
-// - 1 nœud IMAGE départ (21:9) - généré par edit depuis collections
-// - 1 nœud IMAGE fin (21:9) - généré par edit depuis collections
-// - N nœuds VIDEO (copies) - générés avec first frame + last frame + prompt action
-function createPlanStructure(
+// ========== CRÉATION FRAMES (FIRST/LAST) POUR UN PLAN ==========
+// Crée les prompts + images de first/last frame dans la section FRAMES
+// Les vidéos sont créées séparément dans la section SCÈNES
+function createPlanFramesStructure(
   plan: GeneratedPlan,
   scene: GeneratedScene,
   startX: number,
   startY: number,
   structure: CanvasStructure
-): { width: number; height: number } {
-  const textNodeId = nodeId('text-plan');
+): { 
+  width: number; 
+  height: number;
+  textActionNodeId: string;
+  imageDepartNodeId: string;
+  imageFinNodeId: string;
+} {
+  const textActionNodeId = nodeId('text-action');
+  const textFirstFrameNodeId = nodeId('text-first-frame');
+  const textLastFrameNodeId = nodeId('text-last-frame');
   const imageDepartNodeId = nodeId('img-plan-depart');
   const imageFinNodeId = nodeId('img-plan-fin');
-  const videoCopies = structure.videoCopies || 4;
-  const videoNodeIds: string[] = [];
-  const { duration } = structure.videoSettings;
-  // NOTE: On n'utilise PAS aspectRatio car KLING v2.6 ne le supporte pas avec last_image
 
   // Ratio pour les images de plan (21:9 cinémascope)
   const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
-  // Hauteur approximative pour image 21:9 (basé sur largeur 320)
-  const IMAGE_NODE_HEIGHT_21_9 = 137; // 320 * 9/21 ≈ 137
 
-  // Texte du plan (prompt action)
+  // Layout constants - TRÈS ESPACÉ
+  const LABEL_OFFSET_Y = -200; // Plus haut pour éviter chevauchement
+  const COL_GAP = LAYOUT.NODE_GAP_X;
+  const ROW_GAP = LAYOUT.NODE_GAP_Y;
+
+  // Prompts déduits
+  const promptDepart = plan.promptImageDepart || `Début du plan : ${plan.prompt}`;
+  const promptFin = plan.promptImageFin || `Fin du plan : ${plan.prompt}`;
+
+  // ========== COLONNE 1 : PROMPT ACTION ==========
+  const col1X = startX;
   const textContent = `## Plan ${scene.sceneNumber}.${plan.planNumber}\n\n**Action:** ${plan.prompt}${plan.cameraMovement ? `\n\n📷 *${plan.cameraMovement}*` : ''}`;
 
-  // 1. Nœud TEXT (prompt action du plan)
-  structure.textNodes.push({
-    id: textNodeId,
-    type: 'text',
-    position: { x: startX, y: startY },
+  structure.labelNodes.push({
+    id: nodeId('label-prompt-action'),
+    type: 'label',
+    position: { x: col1X, y: startY + LABEL_OFFSET_Y },
     data: {
-      generated: {
-        text: textContent,
-      },
+      text: 'PROMPT ACTION',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: '#60a5fa',
+    },
+  });
+
+  structure.textNodes.push({
+    id: textActionNodeId,
+    type: 'text',
+    position: { x: col1X, y: startY },
+    data: {
+      generated: { text: textContent },
       updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœud IMAGE DÉPART (21:9)
-  const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  const promptDepart = plan.promptImageDepart || `Début du plan : ${plan.prompt}`;
+  // ========== COLONNE 2 : PROMPT FIRST + PROMPT LAST ==========
+  const col2X = col1X + LAYOUT.TEXT_NODE_WIDTH + COL_GAP;
+
+  // PROMPT FIRST FRAME
+  structure.labelNodes.push({
+    id: nodeId('label-prompt-first'),
+    type: 'label',
+    position: { x: col2X, y: startY + LABEL_OFFSET_Y },
+    data: {
+      text: 'PROMPT FIRST',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: '#60a5fa',
+    },
+  });
+
+  structure.textNodes.push({
+    id: textFirstFrameNodeId,
+    type: 'text',
+    position: { x: col2X, y: startY },
+    data: {
+      generated: { text: `**First Frame:**\n${promptDepart}` },
+      updatedAt: new Date().toISOString(),
+    },
+    width: LAYOUT.TEXT_NODE_WIDTH,
+  });
+
+  // PROMPT LAST FRAME (en dessous)
+  const row2Y = startY + LAYOUT.TEXT_NODE_HEIGHT + ROW_GAP;
+
+  structure.labelNodes.push({
+    id: nodeId('label-prompt-last'),
+    type: 'label',
+    position: { x: col2X, y: row2Y + LABEL_OFFSET_Y },
+    data: {
+      text: 'PROMPT LAST',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: '#60a5fa',
+    },
+  });
+
+  structure.textNodes.push({
+    id: textLastFrameNodeId,
+    type: 'text',
+    position: { x: col2X, y: row2Y },
+    data: {
+      generated: { text: `**Last Frame:**\n${promptFin}` },
+      updatedAt: new Date().toISOString(),
+    },
+    width: LAYOUT.TEXT_NODE_WIDTH,
+  });
+
+  // ========== COLONNE 3 : FIRST FRAME + LAST FRAME ==========
+  const col3X = col2X + LAYOUT.TEXT_NODE_WIDTH + COL_GAP;
+
+  // FIRST FRAME IMAGE
+  structure.labelNodes.push({
+    id: nodeId('label-first-frame'),
+    type: 'label',
+    position: { x: col3X, y: startY + LABEL_OFFSET_Y },
+    data: {
+      text: 'FIRST FRAME',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: '#60a5fa',
+    },
+  });
   
   structure.imageNodes.push({
     id: imageDepartNodeId,
     type: 'image',
-    position: { 
-      x: imageStartX, 
-      y: startY 
-    },
+    position: { x: col3X, y: startY },
     data: {
       label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Départ`,
       instructions: promptDepart,
@@ -549,24 +632,30 @@ function createPlanStructure(
       isPlanImage: true,
       planId: plan.id,
       frameType: 'depart',
-      generationType: 'edit', // Généré par edit depuis les collections
+      generationType: 'edit',
       characterRefs: plan.characterRefs,
       decorRef: plan.decorRef || plan.locationRef,
     },
     width: LAYOUT.IMAGE_NODE_WIDTH,
-    height: IMAGE_NODE_HEIGHT_21_9,
+    height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
   });
 
-  // 3. Nœud IMAGE FIN (21:9)
-  const promptFin = plan.promptImageFin || `Fin du plan : ${plan.prompt}`;
+  // LAST FRAME IMAGE (en dessous)
+  structure.labelNodes.push({
+    id: nodeId('label-last-frame'),
+    type: 'label',
+    position: { x: col3X, y: row2Y + LABEL_OFFSET_Y },
+    data: {
+      text: 'LAST FRAME',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: '#60a5fa',
+    },
+  });
   
   structure.imageNodes.push({
     id: imageFinNodeId,
     type: 'image',
-    position: { 
-      x: imageStartX, 
-      y: startY + IMAGE_NODE_HEIGHT_21_9 + LAYOUT.NODE_GAP_Y / 2 
-    },
+    position: { x: col3X, y: row2Y },
     data: {
       label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Fin`,
       instructions: promptFin,
@@ -574,27 +663,39 @@ function createPlanStructure(
       isPlanImage: true,
       planId: plan.id,
       frameType: 'fin',
-      generationType: 'edit', // Généré par edit depuis les collections
+      generationType: 'edit',
       characterRefs: plan.characterRefs,
       decorRef: plan.decorRef || plan.locationRef,
     },
     width: LAYOUT.IMAGE_NODE_WIDTH,
-    height: IMAGE_NODE_HEIGHT_21_9,
+    height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
   });
 
-  // 4. Edges : Collections → Images de plan
-  // Collections personnages → images départ/fin
+  // ========== EDGES : Prompts → Images ==========
+  structure.edges.push({
+    id: `edge-${textFirstFrameNodeId}-${imageDepartNodeId}-${nanoid(4)}`,
+    source: textFirstFrameNodeId,
+    target: imageDepartNodeId,
+    type: 'default',
+  });
+
+  structure.edges.push({
+    id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
+    source: textLastFrameNodeId,
+    target: imageFinNodeId,
+    type: 'default',
+  });
+
+  // ========== EDGES : Collections → Images de plan ==========
   for (const charRef of plan.characterRefs) {
     const collectionId = structure.characterCollectionIds[charRef];
     if (collectionId) {
-      // Collection → image départ
       structure.edges.push({
         id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
         source: collectionId,
         target: imageDepartNodeId,
         type: 'default',
       });
-      // Collection → image fin
       structure.edges.push({
         id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
         source: collectionId,
@@ -604,7 +705,6 @@ function createPlanStructure(
     }
   }
 
-  // Collection décor → images départ/fin
   const decorRef = plan.decorRef || plan.locationRef;
   if (decorRef) {
     const collectionId = structure.locationCollectionIds[decorRef];
@@ -624,64 +724,7 @@ function createPlanStructure(
     }
   }
 
-  // 5. Créer N nœuds VIDEO (copies)
-  const videoStartX = imageStartX + LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  const videoGap = LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  
-  for (let copyIndex = 0; copyIndex < videoCopies; copyIndex++) {
-    const videoNodeId = nodeId(`video-plan-${copyIndex + 1}`);
-    videoNodeIds.push(videoNodeId);
-    
-    structure.videoNodes.push({
-      id: videoNodeId,
-      type: 'video',
-      position: { 
-        x: videoStartX + (copyIndex * videoGap), 
-        y: startY 
-      },
-      data: {
-        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Copie ${copyIndex + 1}`,
-        instructions: plan.prompt,
-        copyIndex: copyIndex + 1,
-        totalCopies: videoCopies,
-        duration,
-        // PAS de aspectRatio - KLING v2.6 ne le supporte pas avec last_image
-        // Le modèle déduira le ratio des images d'entrée (21:9 → crop 16:9)
-        model: 'kling-v2.6-pro-i2v', // Forcer KLING v2.6
-        usesFirstLastFrame: true, // Flag pour indiquer le nouveau workflow
-      },
-      width: LAYOUT.VIDEO_NODE_WIDTH,
-      height: LAYOUT.VIDEO_NODE_HEIGHT,
-    });
-
-    // 6. Edges : Images plan → Vidéo + Text → Vidéo
-    // Image départ → vidéo (first frame)
-    structure.edges.push({
-      id: `edge-${imageDepartNodeId}-${videoNodeId}-${nanoid(4)}`,
-      source: imageDepartNodeId,
-      target: videoNodeId,
-      type: 'default',
-    });
-
-    // Image fin → vidéo (last frame)
-    structure.edges.push({
-      id: `edge-${imageFinNodeId}-${videoNodeId}-${nanoid(4)}`,
-      source: imageFinNodeId,
-      target: videoNodeId,
-      type: 'default',
-    });
-
-    // Text (prompt action) → vidéo
-    structure.edges.push({
-      id: `edge-${textNodeId}-${videoNodeId}-${nanoid(4)}`,
-      source: textNodeId,
-      target: videoNodeId,
-      type: 'default',
-    });
-  }
-
-  // 7. Tracking
-  structure.planVideoMap[plan.id] = videoNodeIds;
+  // ========== TRACKING ==========
   structure.planImageMap[plan.id] = {
     planId: plan.id,
     imageDepartNodeId,
@@ -693,35 +736,111 @@ function createPlanStructure(
     decorRef: decorRef || undefined,
   };
 
-  // Largeur totale : text + images + N vidéos
-  const totalWidth = LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X + LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X + (videoCopies * videoGap);
-  // Hauteur : images empilées (2 x 21:9) ou vidéo (plus haute)
-  const totalHeight = Math.max(LAYOUT.PLAN_HEIGHT, IMAGE_NODE_HEIGHT_21_9 * 2 + LAYOUT.NODE_GAP_Y / 2);
+  // Calcul dimensions
+  const totalWidth = col3X - startX + LAYOUT.IMAGE_NODE_WIDTH;
+  const totalHeight = row2Y - startY + LAYOUT.IMAGE_NODE_HEIGHT_21_9;
+  
+  return { 
+    width: totalWidth, 
+    height: totalHeight,
+    textActionNodeId,
+    imageDepartNodeId,
+    imageFinNodeId,
+  };
+}
+
+// ========== CRÉATION VIDÉOS POUR UN PLAN ==========
+// Crée UNIQUEMENT les nœuds vidéo (dans la section SCÈNES)
+function createPlanVideosStructure(
+  plan: GeneratedPlan,
+  scene: GeneratedScene,
+  startX: number,
+  startY: number,
+  frameNodeIds: { textActionNodeId: string; imageDepartNodeId: string; imageFinNodeId: string },
+  structure: CanvasStructure
+): { width: number; height: number } {
+  const videoCopies = structure.videoCopies || 4;
+  const videoNodeIds: string[] = [];
+  const { duration } = structure.videoSettings;
+  
+  const videoGap = LAYOUT.VIDEO_GAP;
+  
+  for (let copyIndex = 0; copyIndex < videoCopies; copyIndex++) {
+    const videoId = nodeId(`video-plan-${copyIndex + 1}`);
+    videoNodeIds.push(videoId);
+    
+    structure.videoNodes.push({
+      id: videoId,
+      type: 'video',
+      position: { 
+        x: startX + (copyIndex * (LAYOUT.VIDEO_NODE_WIDTH + videoGap)), 
+        y: startY,
+      },
+      data: {
+        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Copie ${copyIndex + 1}`,
+        instructions: plan.prompt,
+        copyIndex: copyIndex + 1,
+        totalCopies: videoCopies,
+        duration,
+        model: 'kling-v2.6-pro-i2v',
+        usesFirstLastFrame: true,
+      },
+      width: LAYOUT.VIDEO_NODE_WIDTH,
+      height: LAYOUT.VIDEO_NODE_HEIGHT,
+    });
+
+    // Edges : Images + Prompt Action → Vidéo
+    structure.edges.push({
+      id: `edge-${frameNodeIds.imageDepartNodeId}-${videoId}-${nanoid(4)}`,
+      source: frameNodeIds.imageDepartNodeId,
+      target: videoId,
+      type: 'default',
+    });
+
+    structure.edges.push({
+      id: `edge-${frameNodeIds.imageFinNodeId}-${videoId}-${nanoid(4)}`,
+      source: frameNodeIds.imageFinNodeId,
+      target: videoId,
+      type: 'default',
+    });
+
+    structure.edges.push({
+      id: `edge-${frameNodeIds.textActionNodeId}-${videoId}-${nanoid(4)}`,
+      source: frameNodeIds.textActionNodeId,
+      target: videoId,
+      type: 'default',
+    });
+  }
+
+  structure.planVideoMap[plan.id] = videoNodeIds;
+
+  const totalWidth = videoCopies * (LAYOUT.VIDEO_NODE_WIDTH + videoGap) - videoGap;
+  const totalHeight = LAYOUT.VIDEO_NODE_HEIGHT;
+  
   return { width: totalWidth, height: totalHeight };
 }
 
-// ========== CRÉATION SCÈNE ==========
+// ========== CRÉATION SCÈNE (VIDÉOS UNIQUEMENT) ==========
+// Cette fonction crée le rectangle de scène avec UNIQUEMENT les nœuds vidéo
+// Les frames sont créés séparément dans la section FIRST AND LAST FRAMES
 function createSceneStructure(
   scene: GeneratedScene,
   startX: number,
   startY: number,
+  frameNodeIdsMap: Map<string, { textActionNodeId: string; imageDepartNodeId: string; imageFinNodeId: string }>,
   structure: CanvasStructure
 ): { width: number; height: number } {
   const shapeNodeId = nodeId('shape-scene');
   const labelNodeId = nodeId('label-scene');
 
-  // Calculer les dimensions de la scène
-  // IMPORTANT: La largeur dépend du nombre de copies vidéo + images de plan
+  // Calculer les dimensions de la scène (UNIQUEMENT vidéos)
   const videoCopies = structure.videoCopies || 4;
-  const videoGap = LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  // Nouvelle formule avec images départ/fin : text + images + N vidéos
-  const planWidth = LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X + LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X + (videoCopies * videoGap);
+  const videoRowWidth = videoCopies * (LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.VIDEO_GAP) - LAYOUT.VIDEO_GAP;
   
   const plansCount = scene.plans.length;
-  const rows = Math.ceil(plansCount / LAYOUT.PLANS_PER_ROW);
-  const contentHeight = rows * (LAYOUT.PLAN_HEIGHT + LAYOUT.NODE_GAP_Y);
-  const sceneWidth = planWidth + LAYOUT.SCENE_PADDING * 2;
-  const sceneHeight = LAYOUT.SCENE_TITLE_HEIGHT + contentHeight + LAYOUT.SCENE_PADDING * 2;
+  const contentHeight = plansCount * (LAYOUT.VIDEO_NODE_HEIGHT + LAYOUT.NODE_GAP_Y);
+  const sceneWidth = videoRowWidth + LAYOUT.SECTION_PADDING * 2;
+  const sceneHeight = 250 + contentHeight + LAYOUT.SECTION_PADDING * 2; // 250 pour le titre
 
   // 1. Shape de fond
   structure.shapeNodes.push({
@@ -731,7 +850,7 @@ function createSceneStructure(
     data: {
       color: scene.color,
       opacity: 12,
-      borderRadius: 24,
+      borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
     },
     style: {
       width: sceneWidth,
@@ -745,8 +864,8 @@ function createSceneStructure(
     id: labelNodeId,
     type: 'label',
     position: {
-      x: startX + LAYOUT.SCENE_PADDING,
-      y: startY + 30,
+      x: startX + LAYOUT.SECTION_PADDING,
+      y: startY + 50,
     },
     data: {
       text: `SCÈNE ${scene.sceneNumber}: ${scene.title.toUpperCase()}`,
@@ -756,18 +875,22 @@ function createSceneStructure(
     zIndex: LAYOUT.TITLE_Z_INDEX,
   });
 
-  // 3. Plans
-  let planY = startY + LAYOUT.SCENE_TITLE_HEIGHT + LAYOUT.SCENE_PADDING;
+  // 3. Vidéos UNIQUEMENT (les frames sont ailleurs)
+  let planY = startY + 250 + LAYOUT.SECTION_PADDING;
   
   for (const plan of scene.plans) {
-    createPlanStructure(
-      plan,
-      scene,
-      startX + LAYOUT.SCENE_PADDING,
-      planY,
-      structure
-    );
-    planY += LAYOUT.PLAN_HEIGHT + LAYOUT.NODE_GAP_Y;
+    const frameIds = frameNodeIdsMap.get(plan.id);
+    if (frameIds) {
+      createPlanVideosStructure(
+        plan,
+        scene,
+        startX + LAYOUT.SECTION_PADDING,
+        planY,
+        frameIds,
+        structure
+      );
+    }
+    planY += LAYOUT.VIDEO_NODE_HEIGHT + LAYOUT.NODE_GAP_Y;
   }
 
   return { width: sceneWidth, height: sceneHeight };
@@ -795,10 +918,8 @@ export function generateCanvasFromProject(
   config?: GenerationConfig
 ): GeneratedCanvasData {
   // Paramètres vidéo
-  const videoDuration = config?.videoDuration || 10; // 10 secondes par défaut
-  const videoAspectRatio = config?.videoAspectRatio || '16:9'; // 16:9 par défaut
-  
-  // TOUJOURS créer N copies vidéo (même en mode test)
+  const videoDuration = config?.videoDuration || 10;
+  const videoAspectRatio = config?.videoAspectRatio || '16:9';
   const effectiveVideoCopies = videoCopies;
   
   // Structure pour tracking
@@ -815,7 +936,7 @@ export function generateCanvasFromProject(
     characterImageMap: {},
     locationImageMap: {},
     planVideoMap: {},
-    planImageMap: {},  // Nouveau : images de départ/fin par plan
+    planImageMap: {},
     videoCopies: effectiveVideoCopies,
     videoSettings: {
       duration: videoDuration,
@@ -823,56 +944,221 @@ export function generateCanvasFromProject(
     },
   };
 
-  let currentY = LAYOUT.MARGIN;
+  // Couleurs des sections
+  const SECTION_COLORS = {
+    primaryImages: '#F6C744',    // Jaune doré
+    frames: '#60a5fa',           // Bleu
+    scenes: '#22c55e',           // Vert
+  };
 
-  // ========== SECTION PERSONNAGES ==========
+  // ================================================================================
+  // SECTION 1 : IMAGES PRIMAIRES ET SECONDAIRES (tout à gauche)
+  // Contient : Personnages + Décors avec leurs collections
+  // ================================================================================
+  
+  let section1StartX = LAYOUT.MARGIN;
+  let section1StartY = LAYOUT.MARGIN;
+  let section1ContentY = section1StartY + 200; // Après le label géant
+  let section1MaxX = section1StartX;
+  let section1MaxY = section1ContentY;
+
+  // Label géant de section
+  structure.labelNodes.push({
+    id: nodeId('label-section-primary'),
+    type: 'label',
+    position: { x: section1StartX, y: section1StartY },
+    data: {
+      text: '🖼️ IMAGES PRIMAIRES ET SECONDAIRES',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: SECTION_COLORS.primaryImages,
+    },
+  });
+
+  // Personnages
   if (project.characters.length > 0) {
-    // Titre section
     structure.labelNodes.push({
-      id: nodeId('label-section-perso'),
+      id: nodeId('label-personnages'),
       type: 'label',
-      position: { x: LAYOUT.MARGIN, y: currentY },
+      position: { x: section1StartX, y: section1ContentY },
       data: {
         text: '👤 PERSONNAGES',
         fontSize: 72,
-        color: '#F6C744',
+        color: SECTION_COLORS.primaryImages,
       },
     });
-    currentY += 100;
+    section1ContentY += 120;
 
     for (const character of project.characters) {
-      createCharacterStructure(character, LAYOUT.MARGIN, currentY, structure, testMode);
-      currentY += LAYOUT.CHARACTER_ROW_HEIGHT;
+      createCharacterStructure(character, section1StartX, section1ContentY, structure, testMode);
+      section1ContentY += LAYOUT.CHARACTER_ROW_HEIGHT;
     }
   }
 
-  // ========== SECTION DÉCORS (anciennement LIEUX) ==========
-  // Supporter les deux formats : project.decors (nouveau) ou project.locations (ancien)
+  // Décors
   const decors = project.decors || project.locations || [];
   if (decors.length > 0) {
-    currentY += LAYOUT.SECTION_GAP;
+    section1ContentY += LAYOUT.VERTICAL_GAP / 2;
 
-    // Titre section
     structure.labelNodes.push({
-      id: nodeId('label-section-decors'),
+      id: nodeId('label-decors'),
       type: 'label',
-      position: { x: LAYOUT.MARGIN, y: currentY },
+      position: { x: section1StartX, y: section1ContentY },
       data: {
         text: '🎬 DÉCORS',
         fontSize: 72,
-        color: '#22c55e',
+        color: SECTION_COLORS.primaryImages,
       },
     });
-    currentY += 100;
+    section1ContentY += 120;
 
     for (const decor of decors) {
-      createDecorStructure(decor, LAYOUT.MARGIN, currentY, structure, testMode);
-      currentY += LAYOUT.LOCATION_ROW_HEIGHT;
+      createDecorStructure(decor, section1StartX, section1ContentY, structure, testMode);
+      section1ContentY += LAYOUT.LOCATION_ROW_HEIGHT;
     }
   }
 
-  // ========== SECTION SCÈNES (à droite) ==========
-  let sceneY = LAYOUT.MARGIN;
+  // Calcul taille section 1
+  section1MaxY = section1ContentY;
+  // Estimer la largeur basée sur le nombre d'images (4) + collection + marge
+  section1MaxX = section1StartX + (4 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X)) + LAYOUT.COLLECTION_NODE_WIDTH + LAYOUT.SECTION_PADDING;
+
+  // Rectangle de fond section 1
+  const section1Width = section1MaxX - section1StartX + LAYOUT.SECTION_PADDING;
+  const section1Height = section1MaxY - section1StartY + LAYOUT.SECTION_PADDING;
+  
+  structure.shapeNodes.push({
+    id: nodeId('shape-section-primary'),
+    type: 'shape',
+    position: { x: section1StartX - LAYOUT.SECTION_PADDING/2, y: section1StartY - LAYOUT.SECTION_PADDING/2 },
+    data: {
+      color: SECTION_COLORS.primaryImages,
+      opacity: 5,
+      borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
+    },
+    style: {
+      width: section1Width,
+      height: section1Height,
+    },
+    zIndex: LAYOUT.SHAPE_Z_INDEX,
+  });
+
+  // ================================================================================
+  // SECTION 2 : FIRST AND LAST FRAMES (au milieu)
+  // Contient : Prompts action + Prompts first/last + Images first/last
+  // ================================================================================
+  
+  const section2StartX = section1StartX + section1Width + LAYOUT.SECTION_GAP;
+  let section2StartY = LAYOUT.MARGIN;
+  let section2ContentY = section2StartY + 200;
+  let section2MaxX = section2StartX;
+  let section2MaxY = section2ContentY;
+
+  // Map pour stocker les IDs des frames par plan (pour les connecter aux vidéos)
+  const frameNodeIdsMap = new Map<string, { 
+    textActionNodeId: string; 
+    imageDepartNodeId: string; 
+    imageFinNodeId: string; 
+  }>();
+
+  // Label géant de section
+  structure.labelNodes.push({
+    id: nodeId('label-section-frames'),
+    type: 'label',
+    position: { x: section2StartX, y: section2StartY },
+    data: {
+      text: '🎬 FIRST AND LAST FRAMES',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: SECTION_COLORS.frames,
+    },
+  });
+
+  // GRAND ESPACE après le label géant
+  section2ContentY = section2StartY + 400;
+
+  // Créer les frames pour chaque scène/plan
+  for (let i = 0; i < project.scenes.length; i++) {
+    const scene = project.scenes[i];
+    scene.color = getSceneColor(i);
+
+    // Label de scène dans la section frames
+    structure.labelNodes.push({
+      id: nodeId(`label-frames-scene-${i}`),
+      type: 'label',
+      position: { x: section2StartX, y: section2ContentY },
+      data: {
+        text: `SCÈNE ${scene.sceneNumber}: ${scene.title.toUpperCase()}`,
+        fontSize: 72,
+        color: SECTION_COLORS.frames,
+      },
+    });
+    section2ContentY += 200; // Plus d'espace après le label de scène
+
+    // Frames de chaque plan
+    for (const plan of scene.plans) {
+      const result = createPlanFramesStructure(
+        plan,
+        scene,
+        section2StartX,
+        section2ContentY,
+        structure
+      );
+      
+      frameNodeIdsMap.set(plan.id, {
+        textActionNodeId: result.textActionNodeId,
+        imageDepartNodeId: result.imageDepartNodeId,
+        imageFinNodeId: result.imageFinNodeId,
+      });
+      
+      section2ContentY += result.height + LAYOUT.PLAN_GAP;
+      section2MaxX = Math.max(section2MaxX, section2StartX + result.width);
+    }
+
+    section2ContentY += LAYOUT.VERTICAL_GAP / 2;
+  }
+
+  section2MaxY = section2ContentY;
+
+  // Rectangle de fond section 2
+  const section2Width = section2MaxX - section2StartX + LAYOUT.SECTION_PADDING * 2;
+  const section2Height = section2MaxY - section2StartY + LAYOUT.SECTION_PADDING;
+  
+  structure.shapeNodes.push({
+    id: nodeId('shape-section-frames'),
+    type: 'shape',
+    position: { x: section2StartX - LAYOUT.SECTION_PADDING/2, y: section2StartY - LAYOUT.SECTION_PADDING/2 },
+    data: {
+      color: SECTION_COLORS.frames,
+      opacity: 5,
+      borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
+    },
+    style: {
+      width: section2Width,
+      height: section2Height,
+    },
+    zIndex: LAYOUT.SHAPE_Z_INDEX,
+  });
+
+  // ================================================================================
+  // SECTION 3 : SCÈNES - VIDÉOS UNIQUEMENT (à droite)
+  // Contient : Uniquement les nœuds vidéo
+  // ================================================================================
+  
+  const section3StartX = section2StartX + section2Width + LAYOUT.SECTION_GAP;
+  let section3StartY = LAYOUT.MARGIN;
+
+  // Label géant de section
+  structure.labelNodes.push({
+    id: nodeId('label-section-scenes'),
+    type: 'label',
+    position: { x: section3StartX, y: section3StartY },
+    data: {
+      text: '🎥 SCÈNES - VIDÉOS',
+      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+      color: SECTION_COLORS.scenes,
+    },
+  });
+
+  let sceneY = section3StartY + 200;
 
   for (let i = 0; i < project.scenes.length; i++) {
     const scene = project.scenes[i];
@@ -880,29 +1166,29 @@ export function generateCanvasFromProject(
 
     const { height } = createSceneStructure(
       scene,
-      LAYOUT.SCENES_START_X,
+      section3StartX,
       sceneY,
+      frameNodeIdsMap,
       structure
     );
 
-    sceneY += height + LAYOUT.SCENE_GAP;
+    sceneY += height + LAYOUT.NODE_GAP_Y * 2;
   }
 
   // ========== ASSEMBLER LES NŒUDS ==========
-  // Ordre important pour le z-index visuel
   const allNodes: Node[] = [
-    ...structure.shapeNodes,     // Fond en premier (z-index négatif)
-    ...structure.labelNodes,     // Labels
-    ...structure.textNodes,      // Textes
-    ...structure.imageNodes,     // Images
-    ...structure.collectionNodes, // Collections
-    ...structure.videoNodes,     // Vidéos
+    ...structure.shapeNodes,
+    ...structure.labelNodes,
+    ...structure.textNodes,
+    ...structure.imageNodes,
+    ...structure.collectionNodes,
+    ...structure.videoNodes,
   ];
 
   return {
     nodes: allNodes,
     edges: structure.edges,
-    viewport: { x: 50, y: 50, zoom: 0.6 },
+    viewport: { x: 50, y: 50, zoom: 0.15 }, // Zoom arrière pour voir l'ensemble
     structure,
   };
 }

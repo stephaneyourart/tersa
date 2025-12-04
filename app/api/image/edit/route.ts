@@ -37,8 +37,10 @@ export async function POST(request: NextRequest) {
       '16:9': '1024x576',
       '3:4': '768x1024',
       '4:3': '1024x768',
+      '21:9': '1344x576',  // Cinémascope pour les images de plan
     };
     const size = sizeMap[aspectRatio] || '1024x1024';
+    console.log(`[API Image Edit] aspectRatio=${aspectRatio} -> size=${size}`);
 
     const result = await editImageAction({
       images: sourceImages.map((url: string) => ({ url, type: 'image/png' })),

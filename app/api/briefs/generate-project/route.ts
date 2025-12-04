@@ -278,6 +278,7 @@ export async function POST(request: NextRequest) {
             completion = await openai.chat.completions.create({
               model: modelToUse,
               reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high',
+              max_completion_tokens: 16000, // Augmenté pour les projets avec beaucoup de plans
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
@@ -293,6 +294,7 @@ export async function POST(request: NextRequest) {
                 { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
               ],
               temperature: 0.7,
+              max_tokens: 16000, // Augmenté pour les projets avec beaucoup de plans
               stream: true,
             });
           }

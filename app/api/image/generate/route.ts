@@ -14,6 +14,7 @@ function aspectRatioToSize(aspectRatio: string): string {
     '16:9': '1024x576',
     '3:4': '768x1024',
     '4:3': '1024x768',
+    '21:9': '1344x576',  // Cinémascope pour les images de plan
   };
   return sizeMap[aspectRatio] || '1024x1024';
 }

@@ -120,7 +120,7 @@ const LabelNodeComponent = ({ id, data, selected }: LabelNodeProps) => {
       <ContextMenuTrigger>
         <div
           className={cn(
-            'cursor-move select-none whitespace-pre-wrap',
+            'cursor-move select-none whitespace-nowrap',
             selected && 'outline outline-2 outline-primary outline-offset-4'
           )}
           style={{
