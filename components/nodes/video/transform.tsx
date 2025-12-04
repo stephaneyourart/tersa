@@ -10,23 +10,55 @@ import { download } from '@/lib/download';
 import { handleError } from '@/lib/error/handle';
 import { useAvailableModels } from '@/hooks/use-available-models';
 import { useModelParamsSidebar } from '@/components/model-params-sidebar';
-import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
+import { getImagesFromImageNodes, getTextFromTextNodes, getAllImagesFromNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
-import { ClockIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, ClockIcon, XIcon } from 'lucide-react';
 import {
   type ChangeEventHandler,
   type ComponentProps,
   useCallback,
   useMemo,
   useState,
+  useRef,
+  memo,
 } from 'react';
 import { toast } from 'sonner';
 import { mutate } from 'swr';
 import type { VideoNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { DurationBadge } from './video-indicators';
+
+// Composant vidéo stabilisé pour éviter le flickering
+// Utilise useRef pour éviter les re-renders mais accepte les nouvelles URLs
+const StableVideo = memo(function StableVideo({ 
+  src, 
+  onError,
+  className 
+}: { 
+  src: string; 
+  onError?: () => void;
+  className?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      className={className}
+      onError={onError}
+    />
+  );
+}, (prevProps, nextProps) => {
+  // Re-render seulement si l'URL change
+  return prevProps.src === nextProps.src;
+});
 
 type VideoTransformProps = VideoNodeProps & {
   title: string;
@@ -67,18 +99,41 @@ export const VideoTransform = ({
     return modelObj?.modelId || '';
   }, [selectedModel]);
 
-  // Récupérer les images connectées (réactif via useStore)
-  const nodes = useStore((s) => s.nodes);
-  const edges = useStore((s) => s.edges);
+  // OPTIMISÉ: Sélecteur stable - ne re-render que si les images connectées changent réellement
+  // Au lieu d'observer tous les nodes/edges, on calcule un hash des URLs d'images connectées
+  const allConnectedImages = useStore(
+    useCallback((s) => {
+      const incomers = getIncomers({ id }, s.nodes, s.edges);
+      const images = getAllImagesFromNodes(incomers);
+      return images
+        .map((img) => (typeof img === 'string' ? img : img?.url))
+        .filter((url): url is string => typeof url === 'string' && url.length > 0);
+    }, [id]),
+    // Comparateur personnalisé : ne re-render que si le tableau d'URLs change
+    (prev, next) => {
+      if (prev.length !== next.length) return false;
+      return prev.every((url, i) => url === next[i]);
+    }
+  );
   
+  // Images exclues (stockées dans data.excludedImages)
+  const excludedImages = (data.excludedImages as string[]) || [];
+  
+  // Filtrer les images exclues
   const connectedImages = useMemo(() => {
-    const incomers = getIncomers({ id }, nodes, edges);
-    const images = getImagesFromImageNodes(incomers);
-    // Extraire les URLs et filtrer les vides
-    return images
-      .map((img) => (typeof img === 'string' ? img : img?.url))
-      .filter((url): url is string => typeof url === 'string' && url.length > 0);
-  }, [id, nodes, edges]);
+    return allConnectedImages.filter(url => !excludedImages.includes(url));
+  }, [allConnectedImages, excludedImages]);
+  
+  // Fonction pour exclure une image
+  const handleExcludeImage = useCallback((imageUrl: string) => {
+    const newExcluded = [...excludedImages, imageUrl];
+    updateNodeData(id, { excludedImages: newExcluded });
+  }, [id, excludedImages, updateNodeData]);
+  
+  // Fonction pour réinclure toutes les images
+  const handleResetExcluded = useCallback(() => {
+    updateNodeData(id, { excludedImages: [] });
+  }, [id, updateNodeData]);
   
   // Hook pour détecter si la vidéo est expirée (URL WaveSpeed plus accessible)
   const videoUrl = data.generated?.url;
@@ -95,7 +150,10 @@ export const VideoTransform = ({
     try {
       const incomers = getIncomers({ id }, getNodes(), getEdges());
       const textPrompts = getTextFromTextNodes(incomers);
-      const images = getImagesFromImageNodes(incomers);
+      // Utiliser getAllImagesFromNodes pour inclure les images des collections
+      const images = getAllImagesFromNodes(incomers);
+
+      console.log(`[Video Transform] Found ${incomers.length} incomers, ${images.length} images from nodes/collections`);
 
       if (!textPrompts.length && !images.length) {
         throw new Error('No prompts found');
@@ -200,7 +258,8 @@ export const VideoTransform = ({
 
     const incomers = getIncomers({ id }, getNodes(), getEdges());
     const textNodes = getTextFromTextNodes(incomers);
-    const images = getImagesFromImageNodes(incomers);
+    // Utiliser getAllImagesFromNodes pour inclure les images des collections
+    const images = getAllImagesFromNodes(incomers);
 
     // Collecter tous les nœuds (original + à dupliquer)
     const nodeIds: string[] = [id];
@@ -450,39 +509,72 @@ export const VideoTransform = ({
   ) => updateNodeData(id, { instructions: event.target.value });
 
   const [isHovered, setIsHovered] = useState(false);
+  // Mode collapsed par défaut pour les prompts longs
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const isGenerating = loading || data.generating;
   const hasContent = isGenerating || data.generated?.url;
   const hasPrompt = Boolean(data.instructions?.trim());
+  // Tronquer le prompt à 80 caractères pour le mode collapsed
+  const truncatedPrompt = useMemo(() => {
+    const text = data.instructions ?? '';
+    if (text.length <= 80) return text;
+    return text.substring(0, 77) + '...';
+  }, [data.instructions]);
 
   return (
     <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar} onBatchRun={handleBatchRun}>
       {/* Vignettes first/last frame des images connectées */}
-      {connectedImages.length > 0 && !isGenerating && !data.generated?.url && (
-        <div className="flex items-center gap-2 p-3 bg-secondary/50 border-b border-border/50">
-          {connectedImages.map((imageUrl, index) => (
-            <div key={`frame-${index}`} className="relative">
-              <div className="w-14 h-14 rounded-lg overflow-hidden border-2 border-primary/50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={imageUrl}
-                  alt={`Frame ${index + 1}`}
-                  className="object-cover w-full h-full"
-                />
-              </div>
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-background/90 rounded text-[9px] font-medium whitespace-nowrap border border-border/50">
-                {connectedImages.length === 1 
-                  ? 'Frame' 
-                  : index === 0 
+      {/* Vignettes des images connectées */}
+      {allConnectedImages.length > 0 && !isGenerating && !data.generated?.url && (
+        <div className="p-2 bg-secondary/50 border-b border-border/50">
+          {/* Header avec compteur et bouton reset */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs text-muted-foreground">
+              {connectedImages.length}/{allConnectedImages.length} images
+              {connectedImages.length > 10 && (
+                <span className="text-amber-500 ml-1">(max 10 pour Kling)</span>
+              )}
+            </span>
+            {excludedImages.length > 0 && (
+              <button
+                onClick={handleResetExcluded}
+                className="text-xs text-blue-400 hover:text-blue-300 underline"
+              >
+                Tout réafficher
+              </button>
+            )}
+          </div>
+          {/* Grille de vignettes */}
+          <div className="flex flex-wrap gap-1">
+            {connectedImages.map((imageUrl, index) => (
+              <div key={`frame-${index}`} className="relative group">
+                {/* Bouton X pour supprimer */}
+                <button
+                  onClick={() => handleExcludeImage(imageUrl)}
+                  className="absolute -top-1 -right-1 z-10 w-4 h-4 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <XIcon className="w-3 h-3 text-white" />
+                </button>
+                {/* Vignette */}
+                <div className="w-10 h-10 rounded overflow-hidden border border-primary/30 hover:border-primary/60 transition-colors">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageUrl}
+                    alt={`Frame ${index + 1}`}
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+                {/* Label */}
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 px-1 py-0 bg-background/90 rounded text-[7px] font-medium whitespace-nowrap">
+                  {index === 0 
                     ? 'First' 
                     : index === connectedImages.length - 1 
                       ? 'Last' 
                       : `#${index + 1}`}
-              </span>
-            </div>
-          ))}
-          <span className="text-xs text-muted-foreground ml-1">
-            {connectedImages.length === 1 ? 'Image → Video' : 'First → Last'}
-          </span>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -491,10 +583,12 @@ export const VideoTransform = ({
           {/* Badge durée en haut à droite */}
           <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
           
+          {/* Code couleur unifié : Vidéos = Fuchsia */}
           <GeneratingSkeleton 
             className="rounded-b-xl"
-            estimatedDuration={60} // Vidéo ~60 secondes
+            estimatedDuration={300} // Kling prend ~5 minutes (300s)
             startTime={data.generatingStartTime}
+            color="video"
           />
         </div>
       )}
@@ -503,11 +597,21 @@ export const VideoTransform = ({
           {/* Badge durée en haut à droite */}
           <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
           
-          <p className="text-muted-foreground text-sm text-center">
-            {connectedImages.length > 0 
-              ? `${connectedImages.length} image${connectedImages.length > 1 ? 's' : ''} connectée${connectedImages.length > 1 ? 's' : ''}`
-              : 'Press ▷ to generate video'}
-          </p>
+          {/* Afficher l'erreur si présente */}
+          {data.error ? (
+            <div className="p-3 text-center">
+              <p className="text-red-400 text-xs font-medium mb-1">❌ Erreur</p>
+              <p className="text-red-300/80 text-[10px] leading-tight max-w-full overflow-hidden break-words">
+                {typeof data.error === 'string' ? data.error : JSON.stringify(data.error)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm text-center">
+              {connectedImages.length > 0 
+                ? `${connectedImages.length} image${connectedImages.length > 1 ? 's' : ''} connectée${connectedImages.length > 1 ? 's' : ''}`
+                : 'Press ▷ to generate video'}
+            </p>
+          )}
         </div>
       )}
       {data.generated?.url && !isGenerating && (
@@ -527,12 +631,8 @@ export const VideoTransform = ({
               {/* Badge durée en haut à droite */}
               <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
               
-              <video
+              <StableVideo
                 src={data.generated.url}
-                autoPlay
-                muted
-                loop
-                playsInline
                 className="w-full rounded-b-xl block"
                 onError={() => markAsExpired()}
               />
@@ -548,14 +648,37 @@ export const VideoTransform = ({
           )}
         </>
       )}
-      {/* Textarea visible uniquement quand pas de contenu */}
+      {/* Prompt section - collapsable par défaut */}
       {!hasContent && (
-        <Textarea
-          value={data.instructions ?? ''}
-          onChange={handleInstructionsChange}
-          placeholder="Promptez..."
-          className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
-        />
+        <div className="flex flex-col">
+          {/* Header avec toggle */}
+          {hasPrompt && (
+            <button
+              type="button"
+              onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-white/5 transition-colors border-t border-white/10"
+            >
+              <span className="truncate flex-1 text-left">
+                {isPromptExpanded ? 'Prompt' : truncatedPrompt}
+              </span>
+              {isPromptExpanded ? (
+                <ChevronUpIcon className="h-4 w-4 ml-2 shrink-0" />
+              ) : (
+                <ChevronDownIcon className="h-4 w-4 ml-2 shrink-0" />
+              )}
+            </button>
+          )}
+          {/* Textarea - visible quand expanded ou quand pas de prompt */}
+          {(isPromptExpanded || !hasPrompt) && (
+            <Textarea
+              value={data.instructions ?? ''}
+              onChange={handleInstructionsChange}
+              placeholder="Promptez..."
+              className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
+              rows={isPromptExpanded ? 6 : 2}
+            />
+          )}
+        </div>
       )}
     </NodeLayout>
   );

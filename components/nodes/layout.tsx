@@ -31,7 +31,7 @@ import { useProject } from '@/providers/project';
 import { useCleanupMode } from '@/providers/cleanup-mode';
 import { Handle, Position, useReactFlow, useStore } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
-import { type ReactNode, useState, useRef, useEffect, useCallback } from 'react';
+import { type ReactNode, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { NodeToolbar } from './toolbar';
 import { BatchRunsControl } from './batch-runs-control';
 import { ReplaceMediaButton } from './replace-media-button';
@@ -39,6 +39,26 @@ import { UpscaleButton, type UpscaleSettings, type UpscaleStatus } from './image
 import { SendToDVRButton } from './send-to-dvr-button';
 import { SendToDVRModal, type DVRMediaMetadata } from './send-to-dvr-modal';
 import { toast } from 'sonner';
+
+// ========== OPTIMISATION ANTI-CLIGNOTEMENT ==========
+// Hook personnalisé pour le zoom avec seuil de changement
+// Ne re-render que si le zoom change de plus de 0.1 (10%)
+function useThrottledZoom(): number {
+  const currentZoom = useStore((state) => state.transform[2]);
+  const lastZoomRef = useRef(currentZoom);
+  const [stableZoom, setStableZoom] = useState(currentZoom);
+  
+  useEffect(() => {
+    // Ne mettre à jour que si le changement est significatif (> 10%)
+    const diff = Math.abs(currentZoom - lastZoomRef.current);
+    if (diff > 0.1 || currentZoom < 0.3 !== lastZoomRef.current < 0.3) {
+      lastZoomRef.current = currentZoom;
+      setStableZoom(currentZoom);
+    }
+  }, [currentZoom]);
+  
+  return stableZoom;
+}
 
 // Types de nodes qui supportent le batch/runs parallèles
 const BATCH_SUPPORTED_TYPES = ['image', 'video', 'audio', 'generate-image', 'generate-video'];
@@ -116,8 +136,8 @@ export const NodeLayout = ({
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges, updateNodeData } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const project = useProject();
-  // Utiliser useStore avec un sélecteur stable pour éviter les re-renders pendant le pan
-  const zoom = useStore((state) => Math.round(state.transform[2] * 100) / 100);
+  // OPTIMISÉ: Zoom avec seuil pour éviter les re-renders excessifs
+  const zoom = useThrottledZoom();
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
@@ -174,6 +194,13 @@ export const NodeLayout = ({
   // En mode cleanup : protéger les collections et les nœuds DVR
   const isCollection = type === 'collection';
   const isProtectedFromCleanup = isTransferredToDVR || isCollection;
+  
+  // OPTIMISÉ: Mémoriser les styles dépendant du zoom pour éviter les recalculs
+  const zoomDependentStyles = useMemo(() => ({
+    borderWidth: Math.max(2, Math.min(6, Math.round(2 / zoom))),
+    iconScale: 1 / zoom,
+    showZoomElements: zoom > 0.2,
+  }), [zoom]);
   
   // Handler pour clic en mode cleanup
   const handleCleanupClick = useCallback((e: React.MouseEvent) => {
@@ -581,12 +608,12 @@ export const NodeLayout = ({
               </div>
             )}
             
-            {/* Badge DVR si transféré - visible seulement si zoom suffisant (> 0.4) */}
-            {isTransferredToDVR && zoom > 0.2 && (
+            {/* Badge DVR si transféré - visible seulement si zoom suffisant */}
+            {isTransferredToDVR && zoomDependentStyles.showZoomElements && (
               <div 
                 className="absolute -top-4 left-1/2 z-50"
                 style={{
-                  transform: `translateX(-50%) translateY(-100%) scale(${1 / zoom})`,
+                  transform: `translateX(-50%) translateY(-100%) scale(${zoomDependentStyles.iconScale})`,
                   transformOrigin: 'center bottom',
                 }}
               >
@@ -651,12 +678,12 @@ export const NodeLayout = ({
               </div>
             )}
             
-            {/* Bouton SEND vers DVR - visible seulement si zoom suffisant (> 0.4) */}
-            {supportsDVR && !isTransferredToDVR && zoom > 0.2 && (
+            {/* Bouton SEND vers DVR - visible seulement si zoom suffisant */}
+            {supportsDVR && !isTransferredToDVR && zoomDependentStyles.showZoomElements && (
               <div 
                 className="absolute -top-4 left-1/2 z-50"
                 style={{
-                  transform: `translateX(-50%) translateY(-100%) scale(${1 / zoom})`,
+                  transform: `translateX(-50%) translateY(-100%) scale(${zoomDependentStyles.iconScale})`,
                   transformOrigin: 'center bottom',
                 }}
               >
@@ -675,13 +702,14 @@ export const NodeLayout = ({
               )}
               onClick={isCleanupMode ? handleCleanupClick : undefined}
               style={{
-                // Bordure colorée qui grossit légèrement quand on zoom out (reste visible)
-                // Video = rose/magenta, Image = violet/bleu
+                // CODE COULEUR UNIFIÉ - Bordure colorée adaptative au zoom (OPTIMISÉ)
+                // Images = Vert Matrix (#00ff41)
+                // Vidéos = Fuchsia (#d946ef)
                 ...(type === 'video' || type === 'image' ? {
-                  boxShadow: `0 0 0 ${Math.max(2, Math.min(6, Math.round(2 / zoom)))}px ${
+                  boxShadow: `0 0 0 ${zoomDependentStyles.borderWidth}px ${
                     type === 'video' 
-                      ? 'rgba(244, 63, 94, 0.7)'  // rose-500
-                      : 'rgba(139, 92, 246, 0.7)' // violet-500
+                      ? 'rgba(217, 70, 239, 0.8)'  // Fuchsia
+                      : 'rgba(0, 255, 65, 0.7)'    // Vert Matrix
                   }`,
                   borderRadius: '20px',
                 } : {}),
