@@ -47,28 +47,68 @@ async function fetchImageContent(url: string): Promise<{ blob: Blob; buffer: Buf
   return { blob, buffer };
 }
 
+// Lit originalUrl depuis le fichier .meta.json d'une image locale
+function getOriginalUrlFromMeta(localUrl: string): string | null {
+  if (!localUrl.startsWith('/api/storage/')) return null;
+  
+  const relativePath = localUrl.replace('/api/storage/', '');
+  const storagePath = process.env.LOCAL_STORAGE_PATH || './storage';
+  const filePath = path.join(storagePath, relativePath);
+  const metaPath = `${filePath}.meta.json`;
+  
+  try {
+    if (fs.existsSync(metaPath)) {
+      const metaContent = fs.readFileSync(metaPath, 'utf-8');
+      const meta = JSON.parse(metaContent);
+      if (meta.originalUrl && (meta.originalUrl.startsWith('http://') || meta.originalUrl.startsWith('https://'))) {
+        console.log(`[WaveSpeed] Found originalUrl in .meta.json: ${meta.originalUrl.substring(0, 60)}...`);
+        return meta.originalUrl;
+      }
+    }
+  } catch (e) {
+    console.warn(`[WaveSpeed] Could not read .meta.json for ${localUrl}:`, e);
+  }
+  return null;
+}
+
 // Convertit un fichier local en URL publique pour WaveSpeed
-async function getPublicImageUrl(url: string): Promise<string> {
-  // Si c'est déjà une URL absolue, la retourner
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+// IMPORTANT: Utilise originalUrl (CloudFront) en priorité pour éviter base64 et limite 30MB
+async function getPublicImageUrl(img: { url: string; originalUrl?: string }): Promise<string> {
+  // Priorité 1: URL CloudFront originale (depuis données du nœud)
+  if (img.originalUrl && (img.originalUrl.startsWith('http://') || img.originalUrl.startsWith('https://'))) {
+    console.log(`[WaveSpeed] Using originalUrl from node data: ${img.originalUrl.substring(0, 60)}...`);
+    return img.originalUrl;
+  }
+  
+  // Priorité 2: URL publique directe
+  if (img.url.startsWith('http://') || img.url.startsWith('https://')) {
+    console.log(`[WaveSpeed] Using public URL: ${img.url.substring(0, 60)}...`);
+    return img.url;
   }
 
-  // Si c'est une URL locale, convertir en base64 data URL
-  if (url.startsWith('/api/storage/')) {
-    const { buffer } = await fetchImageContent(url);
-    const ext = url.split('.').pop()?.toLowerCase();
+  // Priorité 3: Lire originalUrl depuis le fichier .meta.json
+  if (img.url.startsWith('/api/storage/')) {
+    const metaOriginalUrl = getOriginalUrlFromMeta(img.url);
+    if (metaOriginalUrl) {
+      return metaOriginalUrl;
+    }
+    
+    // FALLBACK: URL locale sans originalUrl - AVERTISSEMENT car peut dépasser 30MB
+    console.warn(`[WaveSpeed] ⚠️ No originalUrl for local image (not in node data nor .meta.json), converting to base64 (may exceed 30MB limit): ${img.url}`);
+    const { buffer } = await fetchImageContent(img.url);
+    const ext = img.url.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
     return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
 
-  return url;
+  return img.url;
 }
 
 type EditImageActionProps = {
   images: {
     url: string;
     type: string;
+    originalUrl?: string; // URL CloudFront pour WaveSpeed (évite conversion base64)
   }[];
   modelId: string;
   instructions?: string;
@@ -136,7 +176,7 @@ const generateGptImage1Image = async ({
 // Édite une image via WaveSpeed API
 async function editWaveSpeedImage(
   modelId: string,
-  images: { url: string; type: string }[],
+  images: { url: string; type: string; originalUrl?: string }[],
   prompt: string,
   size?: string,
   options?: { numInferenceSteps?: number; guidanceScale?: number }
@@ -182,9 +222,9 @@ async function editWaveSpeedImage(
     console.log(`[WaveSpeed] Limitation: ${images.length} images -> ${maxImages} max pour ${modelId}`);
   }
   
-  // Convertir les images en URLs publiques ou base64
+  // Convertir les images en URLs publiques (utilise originalUrl CloudFront en priorité)
   const imageUrls = await Promise.all(
-    imagesToUse.map(img => getPublicImageUrl(img.url))
+    imagesToUse.map(img => getPublicImageUrl({ url: img.url, originalUrl: img.originalUrl }))
   );
   
   const params: WaveSpeedEditParams = {
@@ -261,6 +301,7 @@ export const editImageAction = async ({
 
     let imageBuffer: Buffer;
     let mediaType: string = 'image/png';
+    let cloudFrontOriginalUrl: string | undefined; // URL CloudFront pour réutilisation dans WaveSpeed
 
     const defaultPrompt =
       images.length > 1
@@ -277,6 +318,9 @@ export const editImageAction = async ({
         numInferenceSteps,
         guidanceScale,
       });
+      
+      // IMPORTANT: Stocker l'URL CloudFront originale pour éviter base64 lors des réutilisations
+      cloudFrontOriginalUrl = result.url;
       
       // Télécharger l'image depuis l'URL WaveSpeed
       const response = await fetch(result.url);
@@ -344,6 +388,7 @@ export const editImageAction = async ({
 
     // Sauvegarder les métadonnées dans un fichier sidecar .meta.json
     // Cela permet à la Media Library d'afficher le modèle utilisé
+    // IMPORTANT: Inclure originalUrl pour permettre réutilisation sans conversion base64
     if (stored.path) {
       saveMediaMetadata(stored.path, {
         isGenerated: true,
@@ -354,6 +399,7 @@ export const editImageAction = async ({
         // Marquer comme image secondaire (edit) pour le tracking
         generationType: 'edit',
         sourceImagesCount: images.length,
+        originalUrl: cloudFrontOriginalUrl, // URL CloudFront WaveSpeed pour réutilisation
       });
     }
 
@@ -376,6 +422,7 @@ export const editImageAction = async ({
         url: stored.url,
         type: contentType,
         model: modelId, // Ajouter le modèle utilisé pour les métadonnées
+        originalUrl: cloudFrontOriginalUrl, // URL CloudFront pour WaveSpeed (évite base64)
       },
       // Stocker les dimensions réelles pour un affichage correct dans les nœuds
       width,

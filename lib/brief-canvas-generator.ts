@@ -110,16 +110,29 @@ export interface ImageGenerationInfo {
   primaryNodeId?: string;
 }
 
-// Info pour les images de plan (départ/fin)
-export interface PlanImageInfo {
-  planId: string;
+// Info pour UN couple d'images de plan (départ/fin)
+export interface PlanCoupleInfo {
+  coupleIndex: number;  // Index du couple (0, 1, 2, ...)
   imageDepartNodeId: string;
   imageFinNodeId: string;
   promptDepart: string;
   promptFin: string;
   aspectRatio: string;  // 21:9
+  videoNodeIds: string[];  // IDs des vidéos générées pour ce couple
+}
+
+// Info pour les images de plan (départ/fin) - NOUVEAU: supporte N couples
+export interface PlanImageInfo {
+  planId: string;
+  couples: PlanCoupleInfo[];  // N couples par plan
   characterRefs: string[];
   decorRef?: string;
+  // Rétrocompatibilité : premier couple
+  imageDepartNodeId: string;
+  imageFinNodeId: string;
+  promptDepart: string;
+  promptFin: string;
+  aspectRatio: string;  // 21:9
 }
 
 export interface CanvasStructure {
@@ -146,8 +159,10 @@ export interface CanvasStructure {
   planVideoMap: Record<string, string[]>;       // planId -> videoNodeIds (TABLEAU pour les copies)
   planImageMap: Record<string, PlanImageInfo>;  // planId -> info images départ/fin
   
-  // Config vidéos
-  videoCopies: number;                          // Nombre de copies par plan
+  // Config vidéos - NOUVEAU: N couples × M vidéos
+  couplesPerPlan: number;                       // N = Nombre de couples (first/last) par plan
+  videosPerCouple: number;                      // M = Nombre de vidéos par couple
+  videoCopies?: number;                         // DEPRECATED: utiliser couplesPerPlan × videosPerCouple
   videoSettings: { duration: number; aspectRatio: string }; // Paramètres vidéo
 }
 
@@ -519,8 +534,9 @@ function createLocationStructure(
 }
 
 // ========== CRÉATION FRAMES (FIRST/LAST) POUR UN PLAN ==========
-// Crée les prompts + images de first/last frame dans la section FRAMES
+// Crée les prompts + N couples d'images de first/last frame dans la section FRAMES
 // Les vidéos sont créées séparément dans la section SCÈNES
+// NOUVEAU: Supporte N couples par plan pour plus de variété de mises en scène
 function createPlanFramesStructure(
   plan: GeneratedPlan,
   scene: GeneratedScene,
@@ -531,14 +547,17 @@ function createPlanFramesStructure(
   width: number; 
   height: number;
   textActionNodeId: string;
+  couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+  // Rétrocompatibilité
   imageDepartNodeId: string;
   imageFinNodeId: string;
 } {
   const textActionNodeId = nodeId('text-action');
   const textFirstFrameNodeId = nodeId('text-first-frame');
   const textLastFrameNodeId = nodeId('text-last-frame');
-  const imageDepartNodeId = nodeId('img-plan-depart');
-  const imageFinNodeId = nodeId('img-plan-fin');
+
+  // N = Nombre de couples par plan
+  const couplesPerPlan = structure.couplesPerPlan || 1;
 
   // Ratio pour les images de plan (21:9 cinémascope)
   const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
@@ -547,6 +566,7 @@ function createPlanFramesStructure(
   const LABEL_OFFSET_Y = -200; // Plus haut pour éviter chevauchement
   const COL_GAP = LAYOUT.NODE_GAP_X;
   const ROW_GAP = LAYOUT.NODE_GAP_Y;
+  const COUPLE_GAP = 300; // Gap entre les couples
 
   // Prompts déduits
   const promptDepart = plan.promptImageDepart || `Début du plan : ${plan.prompt}`;
@@ -629,216 +649,314 @@ function createPlanFramesStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // ========== COLONNE 3 : FIRST FRAME + LAST FRAME ==========
-  const col3X = col2X + LAYOUT.TEXT_NODE_WIDTH + COL_GAP;
-
-  // FIRST FRAME IMAGE
-  structure.labelNodes.push({
-    id: nodeId('label-first-frame'),
-    type: 'label',
-    position: { x: col3X, y: startY + LABEL_OFFSET_Y },
-    data: {
-      text: 'FIRST FRAME',
-      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
-      color: '#60a5fa',
-    },
-  });
+  // ========== COLONNES 3+ : N COUPLES DE FRAMES (FIRST + LAST) ==========
+  const col3StartX = col2X + LAYOUT.TEXT_NODE_WIDTH + COL_GAP;
   
-  structure.imageNodes.push({
-    id: imageDepartNodeId,
-    type: 'image',
-    position: { x: col3X, y: startY },
-    data: {
-      label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Départ`,
-      instructions: promptDepart,
-      aspectRatio: planImageRatio,
-      isPlanImage: true,
-      planId: plan.id,
-      frameType: 'depart',
-      generationType: 'edit',
-      characterRefs: plan.characterRefs,
-      decorRef: plan.decorRef || plan.locationRef,
-    },
-    width: LAYOUT.IMAGE_NODE_WIDTH,
-    height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
-  });
+  const couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[] = [];
+  const planCouples: PlanCoupleInfo[] = [];
 
-  // LAST FRAME IMAGE (en dessous)
-  structure.labelNodes.push({
-    id: nodeId('label-last-frame'),
-    type: 'label',
-    position: { x: col3X, y: row2Y + LABEL_OFFSET_Y },
-    data: {
-      text: 'LAST FRAME',
-      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
-      color: '#60a5fa',
-    },
-  });
-  
-  structure.imageNodes.push({
-    id: imageFinNodeId,
-    type: 'image',
-    position: { x: col3X, y: row2Y },
-    data: {
-      label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Fin`,
-      instructions: promptFin,
-      aspectRatio: planImageRatio,
-      isPlanImage: true,
-      planId: plan.id,
-      frameType: 'fin',
-      generationType: 'edit',
-      characterRefs: plan.characterRefs,
-      decorRef: plan.decorRef || plan.locationRef,
-    },
-    width: LAYOUT.IMAGE_NODE_WIDTH,
-    height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
-  });
+  for (let coupleIdx = 0; coupleIdx < couplesPerPlan; coupleIdx++) {
+    const coupleX = col3StartX + coupleIdx * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP);
+    const imageDepartNodeId = nodeId(`img-plan-depart-${coupleIdx}`);
+    const imageFinNodeId = nodeId(`img-plan-fin-${coupleIdx}`);
+    
+    // Variante du prompt pour différentes mises en scène (sauf premier couple = prompt original)
+    const couplePromptSuffix = coupleIdx > 0 
+      ? ` [Variante ${coupleIdx + 1}: mise en scène alternative]` 
+      : '';
+    const couplePromptDepart = promptDepart + couplePromptSuffix;
+    const couplePromptFin = promptFin + couplePromptSuffix;
+    
+    couples.push({ coupleIndex: coupleIdx, imageDepartNodeId, imageFinNodeId });
 
-  // ========== EDGES : Prompts → Images ==========
-  structure.edges.push({
-    id: `edge-${textFirstFrameNodeId}-${imageDepartNodeId}-${nanoid(4)}`,
-    source: textFirstFrameNodeId,
-    target: imageDepartNodeId,
-    type: 'default',
-  });
-
-  structure.edges.push({
-    id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
-    source: textLastFrameNodeId,
-    target: imageFinNodeId,
-    type: 'default',
-  });
-
-  // ========== EDGES : Collections → Images de plan ==========
-  for (const charRef of plan.characterRefs) {
-    const collectionId = structure.characterCollectionIds[charRef];
-    if (collectionId) {
-      structure.edges.push({
-        id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: imageDepartNodeId,
-        type: 'default',
-      });
-      structure.edges.push({
-        id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: imageFinNodeId,
-        type: 'default',
+    // Label COUPLE si plusieurs couples
+    if (couplesPerPlan > 1) {
+      structure.labelNodes.push({
+        id: nodeId(`label-couple-${coupleIdx}`),
+        type: 'label',
+        position: { x: coupleX, y: startY + LABEL_OFFSET_Y - 60 },
+        data: {
+          text: `COUPLE ${coupleIdx + 1}`,
+          fontSize: 48,
+          color: coupleIdx === 0 ? '#60a5fa' : '#a78bfa', // Premier en bleu, autres en violet
+        },
       });
     }
+
+    // FIRST FRAME IMAGE
+    structure.labelNodes.push({
+      id: nodeId(`label-first-frame-${coupleIdx}`),
+      type: 'label',
+      position: { x: coupleX, y: startY + LABEL_OFFSET_Y },
+      data: {
+        text: couplesPerPlan > 1 ? 'FIRST' : 'FIRST FRAME',
+        fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
+        color: '#60a5fa',
+      },
+    });
+    
+    structure.imageNodes.push({
+      id: imageDepartNodeId,
+      type: 'image',
+      position: { x: coupleX, y: startY },
+      data: {
+        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Départ${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
+        instructions: couplePromptDepart,
+        aspectRatio: planImageRatio,
+        isPlanImage: true,
+        planId: plan.id,
+        frameType: 'depart',
+        coupleIndex: coupleIdx,
+        generationType: 'edit',
+        characterRefs: plan.characterRefs,
+        decorRef: plan.decorRef || plan.locationRef,
+      },
+      width: LAYOUT.IMAGE_NODE_WIDTH,
+      height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
+    });
+
+    // LAST FRAME IMAGE (en dessous)
+    structure.labelNodes.push({
+      id: nodeId(`label-last-frame-${coupleIdx}`),
+      type: 'label',
+      position: { x: coupleX, y: row2Y + LABEL_OFFSET_Y },
+      data: {
+        text: couplesPerPlan > 1 ? 'LAST' : 'LAST FRAME',
+        fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
+        color: '#60a5fa',
+      },
+    });
+    
+    structure.imageNodes.push({
+      id: imageFinNodeId,
+      type: 'image',
+      position: { x: coupleX, y: row2Y },
+      data: {
+        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Fin${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
+        instructions: couplePromptFin,
+        aspectRatio: planImageRatio,
+        isPlanImage: true,
+        planId: plan.id,
+        frameType: 'fin',
+        coupleIndex: coupleIdx,
+        generationType: 'edit',
+        characterRefs: plan.characterRefs,
+        decorRef: plan.decorRef || plan.locationRef,
+      },
+      width: LAYOUT.IMAGE_NODE_WIDTH,
+      height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
+    });
+
+    // ========== EDGES : Prompts → Images de ce couple ==========
+    structure.edges.push({
+      id: `edge-${textFirstFrameNodeId}-${imageDepartNodeId}-${nanoid(4)}`,
+      source: textFirstFrameNodeId,
+      target: imageDepartNodeId,
+      type: 'default',
+    });
+
+    structure.edges.push({
+      id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
+      source: textLastFrameNodeId,
+      target: imageFinNodeId,
+      type: 'default',
+    });
+
+    // ========== EDGES : Collections → Images de ce couple ==========
+    for (const charRef of plan.characterRefs) {
+      const collectionId = structure.characterCollectionIds[charRef];
+      if (collectionId) {
+        structure.edges.push({
+          id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: imageDepartNodeId,
+          type: 'default',
+        });
+        structure.edges.push({
+          id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: imageFinNodeId,
+          type: 'default',
+        });
+      }
+    }
+
+    const decorRef = plan.decorRef || plan.locationRef;
+    if (decorRef) {
+      const collectionId = structure.locationCollectionIds[decorRef];
+      if (collectionId) {
+        structure.edges.push({
+          id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: imageDepartNodeId,
+          type: 'default',
+        });
+        structure.edges.push({
+          id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+          source: collectionId,
+          target: imageFinNodeId,
+          type: 'default',
+        });
+      }
+    }
+
+    // Tracking pour ce couple
+    planCouples.push({
+      coupleIndex: coupleIdx,
+      imageDepartNodeId,
+      imageFinNodeId,
+      promptDepart: couplePromptDepart,
+      promptFin: couplePromptFin,
+      aspectRatio: planImageRatio,
+      videoNodeIds: [], // Sera rempli par createPlanVideosStructure
+    });
   }
 
   const decorRef = plan.decorRef || plan.locationRef;
-  if (decorRef) {
-    const collectionId = structure.locationCollectionIds[decorRef];
-    if (collectionId) {
-      structure.edges.push({
-        id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: imageDepartNodeId,
-        type: 'default',
-      });
-      structure.edges.push({
-        id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
-        source: collectionId,
-        target: imageFinNodeId,
-        type: 'default',
-      });
-    }
-  }
 
   // ========== TRACKING ==========
   structure.planImageMap[plan.id] = {
     planId: plan.id,
-    imageDepartNodeId,
-    imageFinNodeId,
+    couples: planCouples,
+    characterRefs: plan.characterRefs,
+    decorRef: decorRef || undefined,
+    // Rétrocompatibilité : premier couple
+    imageDepartNodeId: couples[0].imageDepartNodeId,
+    imageFinNodeId: couples[0].imageFinNodeId,
     promptDepart,
     promptFin,
     aspectRatio: planImageRatio,
-    characterRefs: plan.characterRefs,
-    decorRef: decorRef || undefined,
   };
 
-  // Calcul dimensions
-  const totalWidth = col3X - startX + LAYOUT.IMAGE_NODE_WIDTH;
+  // Calcul dimensions (avec N couples)
+  const totalWidth = col3StartX - startX + couplesPerPlan * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP) - COUPLE_GAP;
   const totalHeight = row2Y - startY + LAYOUT.IMAGE_NODE_HEIGHT_21_9;
   
   return { 
     width: totalWidth, 
     height: totalHeight,
     textActionNodeId,
-    imageDepartNodeId,
-    imageFinNodeId,
+    couples,
+    // Rétrocompatibilité
+    imageDepartNodeId: couples[0].imageDepartNodeId,
+    imageFinNodeId: couples[0].imageFinNodeId,
   };
 }
 
 // ========== CRÉATION VIDÉOS POUR UN PLAN ==========
-// Crée UNIQUEMENT les nœuds vidéo (dans la section SCÈNES)
+// Crée les nœuds vidéo (dans la section SCÈNES)
+// NOUVEAU: Crée M vidéos par couple × N couples = N×M vidéos par plan
 function createPlanVideosStructure(
   plan: GeneratedPlan,
   scene: GeneratedScene,
   startX: number,
   startY: number,
-  frameNodeIds: { textActionNodeId: string; imageDepartNodeId: string; imageFinNodeId: string },
+  frameNodeIds: { 
+    textActionNodeId: string; 
+    couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    // Rétrocompatibilité
+    imageDepartNodeId?: string; 
+    imageFinNodeId?: string;
+  },
   structure: CanvasStructure
 ): { width: number; height: number } {
-  const videoCopies = structure.videoCopies || 4;
+  const couplesPerPlan = structure.couplesPerPlan || 1;  // N
+  const videosPerCouple = structure.videosPerCouple || 4;  // M
   const videoNodeIds: string[] = [];
   const { duration } = structure.videoSettings;
   
   const videoGap = LAYOUT.VIDEO_GAP;
+  const coupleRowGap = 100; // Gap entre rangées de vidéos de couples différents
   
-  for (let copyIndex = 0; copyIndex < videoCopies; copyIndex++) {
-    const videoId = nodeId(`video-plan-${copyIndex + 1}`);
-    videoNodeIds.push(videoId);
+  // Pour chaque couple, créer M vidéos
+  const couples = frameNodeIds.couples || [{ 
+    coupleIndex: 0, 
+    imageDepartNodeId: frameNodeIds.imageDepartNodeId!, 
+    imageFinNodeId: frameNodeIds.imageFinNodeId! 
+  }];
+
+  let currentY = startY;
+  let maxRowWidth = 0;
+
+  for (let coupleIdx = 0; coupleIdx < couples.length; coupleIdx++) {
+    const couple = couples[coupleIdx];
+    const coupleVideoIds: string[] = [];
     
-    structure.videoNodes.push({
-      id: videoId,
-      type: 'video',
-      position: { 
-        x: startX + (copyIndex * (LAYOUT.VIDEO_NODE_WIDTH + videoGap)), 
-        y: startY,
-      },
-      data: {
-        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Copie ${copyIndex + 1}`,
-        instructions: plan.prompt,
-        copyIndex: copyIndex + 1,
-        totalCopies: videoCopies,
-        duration,
-        model: 'kling-v2.6-pro-i2v',
-        usesFirstLastFrame: true,
-      },
-      width: LAYOUT.VIDEO_NODE_WIDTH,
-      height: LAYOUT.VIDEO_NODE_HEIGHT,
-    });
+    // Créer M vidéos pour ce couple
+    for (let videoIdx = 0; videoIdx < videosPerCouple; videoIdx++) {
+      const globalVideoIndex = coupleIdx * videosPerCouple + videoIdx;
+      const videoId = nodeId(`video-plan-c${coupleIdx}-v${videoIdx}`);
+      videoNodeIds.push(videoId);
+      coupleVideoIds.push(videoId);
+      
+      // Label pour le couple si N > 1
+      const coupleLabel = couplesPerPlan > 1 ? `C${coupleIdx + 1}-` : '';
+      
+      structure.videoNodes.push({
+        id: videoId,
+        type: 'video',
+        position: { 
+          x: startX + (videoIdx * (LAYOUT.VIDEO_NODE_WIDTH + videoGap)), 
+          y: currentY,
+        },
+        data: {
+          label: `Plan ${scene.sceneNumber}.${plan.planNumber} - ${coupleLabel}V${videoIdx + 1}`,
+          instructions: plan.prompt,
+          coupleIndex: coupleIdx,
+          videoIndex: videoIdx,
+          copyIndex: globalVideoIndex + 1,  // Rétrocompatibilité
+          totalCopies: couplesPerPlan * videosPerCouple,
+          duration,
+          model: 'kling-v2.6-pro-first-last',
+          usesFirstLastFrame: true,
+        },
+        width: LAYOUT.VIDEO_NODE_WIDTH,
+        height: LAYOUT.VIDEO_NODE_HEIGHT,
+      });
 
-    // Edges : Images + Prompt Action → Vidéo
-    structure.edges.push({
-      id: `edge-${frameNodeIds.imageDepartNodeId}-${videoId}-${nanoid(4)}`,
-      source: frameNodeIds.imageDepartNodeId,
-      target: videoId,
-      type: 'default',
-    });
+      // Edges : Images du couple + Prompt Action → Vidéo
+      structure.edges.push({
+        id: `edge-${couple.imageDepartNodeId}-${videoId}-${nanoid(4)}`,
+        source: couple.imageDepartNodeId,
+        target: videoId,
+        type: 'default',
+      });
 
-    structure.edges.push({
-      id: `edge-${frameNodeIds.imageFinNodeId}-${videoId}-${nanoid(4)}`,
-      source: frameNodeIds.imageFinNodeId,
-      target: videoId,
-      type: 'default',
-    });
+      structure.edges.push({
+        id: `edge-${couple.imageFinNodeId}-${videoId}-${nanoid(4)}`,
+        source: couple.imageFinNodeId,
+        target: videoId,
+        type: 'default',
+      });
 
-    structure.edges.push({
-      id: `edge-${frameNodeIds.textActionNodeId}-${videoId}-${nanoid(4)}`,
-      source: frameNodeIds.textActionNodeId,
-      target: videoId,
-      type: 'default',
-    });
+      structure.edges.push({
+        id: `edge-${frameNodeIds.textActionNodeId}-${videoId}-${nanoid(4)}`,
+        source: frameNodeIds.textActionNodeId,
+        target: videoId,
+        type: 'default',
+      });
+    }
+
+    // Mettre à jour les vidéoNodeIds dans le planImageMap pour ce couple
+    const planImageInfo = structure.planImageMap[plan.id];
+    if (planImageInfo && planImageInfo.couples[coupleIdx]) {
+      planImageInfo.couples[coupleIdx].videoNodeIds = coupleVideoIds;
+    }
+
+    // Calculer largeur de cette rangée
+    const rowWidth = videosPerCouple * (LAYOUT.VIDEO_NODE_WIDTH + videoGap) - videoGap;
+    maxRowWidth = Math.max(maxRowWidth, rowWidth);
+    
+    // Avancer à la rangée suivante si plusieurs couples
+    if (coupleIdx < couples.length - 1) {
+      currentY += LAYOUT.VIDEO_NODE_HEIGHT + coupleRowGap;
+    }
   }
 
   structure.planVideoMap[plan.id] = videoNodeIds;
 
-  const totalWidth = videoCopies * (LAYOUT.VIDEO_NODE_WIDTH + videoGap) - videoGap;
-  const totalHeight = LAYOUT.VIDEO_NODE_HEIGHT;
+  const totalWidth = maxRowWidth;
+  const totalHeight = couplesPerPlan * LAYOUT.VIDEO_NODE_HEIGHT + (couplesPerPlan - 1) * coupleRowGap;
   
   return { width: totalWidth, height: totalHeight };
 }
@@ -846,22 +964,33 @@ function createPlanVideosStructure(
 // ========== CRÉATION SCÈNE (VIDÉOS UNIQUEMENT) ==========
 // Cette fonction crée le rectangle de scène avec UNIQUEMENT les nœuds vidéo
 // Les frames sont créés séparément dans la section FIRST AND LAST FRAMES
+// NOUVEAU: Supporte N couples × M vidéos par plan
 function createSceneStructure(
   scene: GeneratedScene,
   startX: number,
   startY: number,
-  frameNodeIdsMap: Map<string, { textActionNodeId: string; imageDepartNodeId: string; imageFinNodeId: string }>,
+  frameNodeIdsMap: Map<string, { 
+    textActionNodeId: string; 
+    couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    imageDepartNodeId: string; 
+    imageFinNodeId: string;
+  }>,
   structure: CanvasStructure
 ): { width: number; height: number } {
   const shapeNodeId = nodeId('shape-scene');
   const labelNodeId = nodeId('label-scene');
 
   // Calculer les dimensions de la scène (UNIQUEMENT vidéos)
-  const videoCopies = structure.videoCopies || 4;
-  const videoRowWidth = videoCopies * (LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.VIDEO_GAP) - LAYOUT.VIDEO_GAP;
+  // NOUVEAU: N couples × M vidéos par plan
+  const couplesPerPlan = structure.couplesPerPlan || 1;
+  const videosPerCouple = structure.videosPerCouple || 4;
+  const videoRowWidth = videosPerCouple * (LAYOUT.VIDEO_NODE_WIDTH + LAYOUT.VIDEO_GAP) - LAYOUT.VIDEO_GAP;
   
   const plansCount = scene.plans.length;
-  const contentHeight = plansCount * (LAYOUT.VIDEO_NODE_HEIGHT + LAYOUT.NODE_GAP_Y);
+  // Hauteur: N couples de vidéos par plan (avec gap entre couples)
+  const coupleRowGap = 100;
+  const videoBlockHeight = couplesPerPlan * LAYOUT.VIDEO_NODE_HEIGHT + (couplesPerPlan - 1) * coupleRowGap;
+  const contentHeight = plansCount * (videoBlockHeight + LAYOUT.NODE_GAP_Y);
   const sceneWidth = videoRowWidth + LAYOUT.SECTION_PADDING * 2;
   const sceneHeight = 250 + contentHeight + LAYOUT.SECTION_PADDING * 2; // 250 pour le titre
 
@@ -899,6 +1028,7 @@ function createSceneStructure(
   });
 
   // 3. Vidéos UNIQUEMENT (les frames sont ailleurs)
+  // NOUVEAU: chaque plan a N couples × M vidéos
   let planY = startY + 250 + LAYOUT.SECTION_PADDING;
   
   for (const plan of scene.plans) {
@@ -913,7 +1043,8 @@ function createSceneStructure(
         structure
       );
     }
-    planY += LAYOUT.VIDEO_NODE_HEIGHT + LAYOUT.NODE_GAP_Y;
+    // Avancer de la hauteur du bloc vidéo (N couples × hauteur vidéo + gaps)
+    planY += videoBlockHeight + LAYOUT.NODE_GAP_Y;
   }
 
   return { width: sceneWidth, height: sceneHeight };
@@ -928,7 +1059,9 @@ export interface GeneratedCanvasData {
 }
 
 export interface GenerationConfig {
-  videoCopies?: number;
+  couplesPerPlan?: number;    // N = Nombre de couples (first/last) par plan (défaut: 1)
+  videosPerCouple?: number;   // M = Nombre de vidéos par couple (défaut: 4)
+  videoCopies?: number;       // DEPRECATED: pour rétrocompatibilité
   videoDuration?: number;
   videoAspectRatio?: string;
   testMode?: boolean;
@@ -937,13 +1070,16 @@ export interface GenerationConfig {
 export function generateCanvasFromProject(
   project: GeneratedProjectStructure,
   testMode: boolean = false,
-  videoCopies: number = 4,
+  videoCopies: number = 4,  // DEPRECATED: utiliser config.couplesPerPlan et config.videosPerCouple
   config?: GenerationConfig
 ): GeneratedCanvasData {
-  // Paramètres vidéo
+  // Paramètres vidéo - NOUVEAU: N couples × M vidéos par couple
   const videoDuration = config?.videoDuration || 10;
   const videoAspectRatio = config?.videoAspectRatio || '16:9';
-  const effectiveVideoCopies = videoCopies;
+  
+  // Rétrocompatibilité: si couplesPerPlan/videosPerCouple ne sont pas définis, utiliser videoCopies
+  const couplesPerPlan = config?.couplesPerPlan || 1;  // N = nombre de couples par plan
+  const videosPerCouple = config?.videosPerCouple || videoCopies || 4;  // M = vidéos par couple
   
   // Structure pour tracking
   const structure: CanvasStructure = {
@@ -960,7 +1096,9 @@ export function generateCanvasFromProject(
     locationImageMap: {},
     planVideoMap: {},
     planImageMap: {},
-    videoCopies: effectiveVideoCopies,
+    couplesPerPlan,
+    videosPerCouple,
+    videoCopies: couplesPerPlan * videosPerCouple,  // Total vidéos par plan (rétrocompat)
     videoSettings: {
       duration: videoDuration,
       aspectRatio: videoAspectRatio,
@@ -1077,8 +1215,11 @@ export function generateCanvasFromProject(
   let section2MaxY = section2ContentY;
 
   // Map pour stocker les IDs des frames par plan (pour les connecter aux vidéos)
+  // NOUVEAU: inclut N couples par plan
   const frameNodeIdsMap = new Map<string, { 
-    textActionNodeId: string; 
+    textActionNodeId: string;
+    couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    // Rétrocompatibilité
     imageDepartNodeId: string; 
     imageFinNodeId: string; 
   }>();
@@ -1116,7 +1257,7 @@ export function generateCanvasFromProject(
     });
     section2ContentY += 200; // Plus d'espace après le label de scène
 
-    // Frames de chaque plan
+    // Frames de chaque plan (N couples par plan)
     for (const plan of scene.plans) {
       const result = createPlanFramesStructure(
         plan,
@@ -1126,8 +1267,11 @@ export function generateCanvasFromProject(
         structure
       );
       
+      // Stocker tous les couples pour ce plan
       frameNodeIdsMap.set(plan.id, {
         textActionNodeId: result.textActionNodeId,
+        couples: result.couples,
+        // Rétrocompatibilité : premier couple
         imageDepartNodeId: result.imageDepartNodeId,
         imageFinNodeId: result.imageFinNodeId,
       });
@@ -1297,14 +1441,17 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
     decorCollections: Object.entries(structure.locationCollectionIds),
     locationCollections: Object.entries(structure.locationCollectionIds), // Alias
     
-    // Config vidéo
-    videoCopies: structure.videoCopies || 4,
+    // Config vidéo - NOUVEAU: N couples × M vidéos
+    couplesPerPlan: structure.couplesPerPlan || 1,
+    videosPerCouple: structure.videosPerCouple || 4,
+    videoCopies: structure.videoCopies || 4,  // Total (N×M) pour rétrocompat
     videoSettings: structure.videoSettings,
     
     // NOUVEAU - Étape 4 : Images de plan (départ/fin) à générer
     // Ces images sont générées par EDIT à partir des collections
     // Elles doivent être générées APRÈS que les collections soient remplies
-    planImages: Object.entries(structure.planImageMap).map(([planId, info]) => {
+    // MISE À JOUR: Supporte N couples par plan
+    planImages: Object.entries(structure.planImageMap).flatMap(([planId, info]) => {
       // Résoudre les IDs de collections pour les images de plan
       const characterCollectionIds: string[] = [];
       for (const charRef of info.characterRefs) {
@@ -1319,21 +1466,33 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
         decorCollectionId = structure.locationCollectionIds[info.decorRef];
       }
 
-      return {
-        planId,
+      // Retourner une entrée pour chaque couple
+      return (info.couples || [{ 
+        coupleIndex: 0,
         imageDepartNodeId: info.imageDepartNodeId,
         imageFinNodeId: info.imageFinNodeId,
         promptDepart: info.promptDepart,
         promptFin: info.promptFin,
-        aspectRatio: info.aspectRatio, // 21:9
+        aspectRatio: info.aspectRatio,
+        videoNodeIds: [],
+      }]).map(couple => ({
+        planId,
+        coupleIndex: couple.coupleIndex,
+        imageDepartNodeId: couple.imageDepartNodeId,
+        imageFinNodeId: couple.imageFinNodeId,
+        promptDepart: couple.promptDepart,
+        promptFin: couple.promptFin,
+        aspectRatio: couple.aspectRatio || info.aspectRatio, // 21:9
         characterCollectionIds,
         decorCollectionId,
-      };
+        videoNodeIds: couple.videoNodeIds,
+      }));
     }),
     
     // Étape 5 : Vidéos à générer (NOUVEAU WORKFLOW)
     // Les vidéos attendent que leurs images de plan (départ/fin) soient prêtes
     // Elles utilisent first frame (départ) + last frame (fin) + prompt action
+    // MISE À JOUR: Organisées par couple pour N×M génération
     videos: Object.entries(structure.planVideoMap).map(([planId, videoNodeIds]) => {
       const planInfo = plansMap.get(planId);
       const planImageInfo = structure.planImageMap[planId];
@@ -1355,11 +1514,20 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
         decorCollectionId = structure.locationCollectionIds[decorRef];
       }
 
+      // Info sur les couples pour ce plan
+      const couples = planImageInfo?.couples?.map(couple => ({
+        coupleIndex: couple.coupleIndex,
+        imageDepartNodeId: couple.imageDepartNodeId,
+        imageFinNodeId: couple.imageFinNodeId,
+        videoNodeIds: couple.videoNodeIds,
+      })) || [];
+
       return {
         planId,
-        videoNodeIds: videoNodeIds, // TABLEAU pour les copies
+        videoNodeIds: videoNodeIds, // TABLEAU pour toutes les vidéos (N×M)
+        couples, // Info détaillée par couple
         prompt: planInfo?.prompt || '',
-        // NOUVEAU : IDs des images de plan pour first/last frame
+        // Rétrocompatibilité : premier couple
         imageDepartNodeId: planImageInfo?.imageDepartNodeId,
         imageFinNodeId: planImageInfo?.imageFinNodeId,
         // Garder les collections pour référence (même si on utilise les images de plan)

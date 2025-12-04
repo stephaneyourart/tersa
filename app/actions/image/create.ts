@@ -288,7 +288,11 @@ export const generateImageAction = async ({
       
       console.log(`[WaveSpeed] Fichier sauvegardé: ${stored.path}`);
       
+      // Calculer le coût pour cette génération
+      const generationCost = provider.getCost({ size });
+      
       // Sauvegarder les métadonnées dans un fichier sidecar .meta.json
+      // IMPORTANT: Inclure originalUrl pour permettre réutilisation sans conversion base64
       if (stored.path) {
         saveMediaMetadata(stored.path, {
           isGenerated: true,
@@ -298,6 +302,9 @@ export const generateImageAction = async ({
           format: mediaType,
           smartTitle: smartTitle,
           generatedAt: new Date().toISOString(),
+          originalUrl: result.url, // URL CloudFront WaveSpeed pour réutilisation
+          cost: generationCost,
+          service: 'wavespeed',
         });
       }
 
@@ -341,6 +348,7 @@ export const generateImageAction = async ({
         instructions: instructions,
         aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
         description: `Generated from prompt: ${prompt}`,
+        cost: generationCost, // Coût de la génération pour les stats
       };
 
       // En mode local, on ne met pas à jour la BDD
@@ -496,6 +504,9 @@ export const generateImageAction = async ({
       console.warn('[LOCAL MODE] Description auto échouée, utilisation du prompt:', descError);
     }
 
+    // Calculer le coût pour cette génération
+    const generationCostOther = provider.getCost({ size });
+    
     const newData = {
       updatedAt: new Date().toISOString(),
       generated: {
@@ -505,6 +516,9 @@ export const generateImageAction = async ({
       },
       description,
       model: modelId, // Pour l'affichage dans la media library
+      modelId: modelId,
+      isGenerated: true,
+      cost: generationCostOther, // Coût de la génération pour les stats
     };
 
     // En mode local, on ne met pas à jour la BDD

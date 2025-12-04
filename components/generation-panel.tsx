@@ -568,12 +568,13 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       console.log(`[Collections] ${label}: ${imageNodes.length} images sources trouvées`);
       
       // Vérifier chaque image et collecter les URLs avec le bon format
-      const items: Array<{ id: string; url: string; type: 'image'; enabled: boolean; name?: string }> = [];
+      // IMPORTANT: inclure originalUrl (CloudFront) pour éviter conversion base64 dans WaveSpeed
+      const items: Array<{ id: string; url: string; type: 'image'; enabled: boolean; name?: string; originalUrl?: string }> = [];
       const missingImages: string[] = [];
       
       for (const imgNode of imageNodes) {
         const imgData = imgNode.data as Record<string, unknown>;
-        const generated = imgData.generated as { url?: string } | undefined;
+        const generated = imgData.generated as { url?: string; originalUrl?: string } | undefined;
         const content = imgData.content as { url?: string } | undefined;
         const directUrl = imgData.url as string | undefined;
         
@@ -581,7 +582,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         const imageUrl = generated?.url || content?.url || directUrl;
         const imgLabel = getNodeLabel(imgNode);
         
-        console.log(`[Collections]   → ${imgLabel}: generated.url=${generated?.url?.slice(0, 40) || 'null'}, url=${directUrl?.slice(0, 40) || 'null'}`);
+        console.log(`[Collections]   → ${imgLabel}: generated.url=${generated?.url?.slice(0, 40) || 'null'}, originalUrl=${generated?.originalUrl?.slice(0, 40) || 'null'}`);
         
         if (imageUrl) {
           items.push({
@@ -590,6 +591,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
             type: 'image',  // DOIT être 'image' et non 'image/png'
             enabled: true,
             name: imgLabel,
+            originalUrl: generated?.originalUrl, // URL CloudFront pour WaveSpeed
           });
         } else {
           missingImages.push(imgLabel);
@@ -693,11 +695,12 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       const baseParams = { nodeId, prompt, projectId, aspectRatio, testMode };
       
       // Paramètres spécifiques selon le type (edit ou generate)
+      // IMPORTANT: Envoyer originalUrl (CloudFront) avec url pour éviter conversion base64
       const body = images.length > 0 
         ? { 
             ...baseParams, 
             model: models.edit, 
-            sourceImages: images.map(i => i.url),
+            sourceImages: images.map(i => ({ url: i.url, originalUrl: i.originalUrl })),
           }
         : { ...baseParams, model: models.textToImage };
       
@@ -859,8 +862,15 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     const data = node?.data as Record<string, unknown>;
     const generated = data?.generated as { url?: string } | undefined;
     const url = generated?.url || (data?.url as string);
+    const nodeLabel = node ? getNodeLabel(node) : nodeId;
 
-    if (!url) return false;
+    if (!url) {
+      console.log(`[DVR] ❌ ${nodeLabel}: Pas d'URL à envoyer`);
+      return false;
+    }
+
+    console.log(`[DVR] 📤 Envoi ${nodeLabel} vers DaVinci Resolve...`);
+    console.log(`[DVR]   URL: ${url.slice(0, 60)}...`);
 
     try {
       const response = await fetch('/api/davinci-resolve', {
@@ -869,13 +879,42 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         body: JSON.stringify({
           action: 'import',
           filePath: url,
-          clipName: getNodeLabel(node!),
+          clipName: nodeLabel,
         }),
       });
-      return response.ok;
-    } catch {
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[DVR] ✅ ${nodeLabel}: Importé avec succès`, result);
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.error(`[DVR] ❌ ${nodeLabel}: Erreur ${response.status}:`, errorText);
+        return false;
+      }
+    } catch (error) {
+      console.error(`[DVR] ❌ ${nodeLabel}: Exception:`, error);
       return false;
     }
+  };
+
+  // Envoie TOUTES les vidéos générées à DVR (à appeler à la fin du traitement)
+  const sendAllVideosToDVR = async (videoNodeIds: string[]): Promise<number> => {
+    if (videoNodeIds.length === 0) {
+      console.log(`[DVR] Aucune vidéo à envoyer`);
+      return 0;
+    }
+
+    console.log(`[DVR] ========== ENVOI GROUPÉ DE ${videoNodeIds.length} VIDÉOS À DVR ==========`);
+    
+    let successCount = 0;
+    for (const nodeId of videoNodeIds) {
+      const success = await sendVideoToDVR(nodeId);
+      if (success) successCount++;
+    }
+    
+    console.log(`[DVR] ========== FIN: ${successCount}/${videoNodeIds.length} vidéos envoyées ==========`);
+    return successCount;
   };
 
 
@@ -905,6 +944,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     let errorCount = 0;
     const inProgress = new Set<string>(); // IDs des nœuds en cours de génération
     const completed = new Set<string>(); // IDs des nœuds terminés
+    const generatedVideoIds: string[] = []; // IDs des vidéos générées avec succès (pour DVR à la fin)
     let abortedRef = false;
     
     // Fonction pour générer un nœud et lancer les suivants dès qu'il finit
@@ -924,8 +964,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         } else {
           const url = await generateVideo(nodeId);
           success = url !== null;
-          if (success && sendToDVR) {
-            await sendVideoToDVR(nodeId);
+          if (success) {
+            // Collecter l'ID pour l'envoi DVR groupé à la fin
+            generatedVideoIds.push(nodeId);
+            console.log(`[Generation] 📹 Vidéo ${nodeLabel} ajoutée à la liste DVR (${generatedVideoIds.length} vidéos)`);
           }
         }
         
@@ -1056,8 +1098,22 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         setNodeList(currentList);
       }
       
+      // ========== ENVOI GROUPÉ À DVR À LA FIN ==========
+      if (sendToDVR && generatedVideoIds.length > 0) {
+        setCurrentPhase('📤 Envoi vers DaVinci Resolve...');
+        toast.info(`📤 Envoi de ${generatedVideoIds.length} vidéos vers DaVinci Resolve...`);
+        
+        const dvrSuccessCount = await sendAllVideosToDVR(generatedVideoIds);
+        
+        if (dvrSuccessCount > 0) {
+          toast.success(`📤 ${dvrSuccessCount}/${generatedVideoIds.length} vidéos envoyées à DVR`);
+        } else if (dvrSuccessCount === 0 && generatedVideoIds.length > 0) {
+          toast.warning(`⚠️ Aucune vidéo envoyée à DVR (vérifiez que DaVinci Resolve est lancé)`);
+        }
+      }
+      
       setCurrentPhase('✅ Terminé');
-      toast.success(`🎉 Génération terminée ! ✅ ${successCount} succès${errorCount > 0 ? ` • ❌ ${errorCount} erreurs` : ''}`);
+      toast.success(`🎉 Génération terminée ! ✅ ${successCount} succès${errorCount > 0 ? ` • ❌ ${errorCount} erreurs` : ''}${sendToDVR && generatedVideoIds.length > 0 ? ` • 📤 ${generatedVideoIds.length} vidéos DVR` : ''}`);
       
     } catch (error) {
       console.error('[GenerationPanel] Erreur:', error);

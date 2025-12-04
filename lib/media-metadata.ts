@@ -29,6 +29,10 @@ export interface MediaMetadata {
   inputImages?: string[];
   generatedAt?: string;
   
+  // Coût de génération
+  cost?: number;
+  service?: string; // 'wavespeed', 'fal', 'replicate', etc.
+  
   // DVR
   dvrTransferred?: boolean;
   dvrTransferDate?: string;

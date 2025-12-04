@@ -1434,7 +1434,7 @@ export function MediaLibrarySidebar() {
                       {medias.filter(m => m.type === 'image').length}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Video size={fontSize} className="text-blue-400" />
+                      <Video size={fontSize} className="text-fuchsia-400" />
                       {medias.filter(m => m.type === 'video').length}
                     </span>
                   </div>

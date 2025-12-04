@@ -33,6 +33,10 @@ import {
   VideoIcon,
   CheckCircle2Icon,
   CircleDotIcon,
+  EuroIcon,
+  LayersIcon,
+  CopyIcon,
+  InfoIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
@@ -191,7 +195,8 @@ export default function GenerateProjectPage() {
     settings: {
       videoModel: 'kling-v2.6-pro-first-last', // KLING v2.6 pour first+last frame
       imageModel: 'nano-banana-pro-ultra-wavespeed',
-      videoCopies: 4,
+      couplesPerPlan: 1, // N = nombre de couples (first/last) par plan
+      videosPerCouple: 4, // M = nombre de vidéos par couple
       videoDuration: 10, // 10 secondes par défaut
       videoAspectRatio: '16:9', // 16:9 par défaut
       testMode: false,
@@ -694,94 +699,229 @@ export default function GenerateProjectPage() {
                 </div>
               </div>
 
-              {/* Paramètres Vidéo */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border/30">
-                <div>
-                  <Label htmlFor="videoCopies" className="mb-2 flex items-center gap-2 text-sm">
-                    <VideoIcon size={14} />
-                    Copies vidéo
-                  </Label>
-                  <Select
-                    value={String(config.settings?.videoCopies || 4)}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, videoCopies: parseInt(value) } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="videoCopies">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 copie</SelectItem>
-                      <SelectItem value="2">2 copies</SelectItem>
-                      <SelectItem value="4">4 copies</SelectItem>
-                      <SelectItem value="8">8 copies</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Paramètres Vidéo - Nouvelle logique N × M */}
+              <div className="pt-4 border-t border-border/30 space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <LayersIcon size={16} className="text-blue-400" />
+                  <span className="text-sm font-medium">Configuration par plan</span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* N = Couples par plan */}
+                  <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                    <Label htmlFor="couplesPerPlan" className="mb-2 flex items-center gap-2 text-sm font-medium text-blue-400">
+                      <ImageIcon size={14} />
+                      N = Couples d'images par plan
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Chaque couple = 1 first-frame + 1 last-frame (mises en scène différentes)
+                    </p>
+                    <Select
+                      value={String(config.settings?.couplesPerPlan || 1)}
+                      onValueChange={(value) => 
+                        setConfig({ 
+                          ...config, 
+                          settings: { ...config.settings, couplesPerPlan: parseInt(value) } 
+                        })
+                      }
+                    >
+                      <SelectTrigger id="couplesPerPlan" className="border-blue-500/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 couple (défaut)</SelectItem>
+                        <SelectItem value="2">2 couples</SelectItem>
+                        <SelectItem value="3">3 couples</SelectItem>
+                        <SelectItem value="4">4 couples</SelectItem>
+                        <SelectItem value="5">5 couples</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* M = Vidéos par couple */}
+                  <div className="p-4 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                    <Label htmlFor="videosPerCouple" className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-400">
+                      <VideoIcon size={14} />
+                      M = Vidéos par couple
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Nombre de variations vidéo générées pour chaque couple d'images
+                    </p>
+                    <Select
+                      value={String(config.settings?.videosPerCouple || 4)}
+                      onValueChange={(value) => 
+                        setConfig({ 
+                          ...config, 
+                          settings: { ...config.settings, videosPerCouple: parseInt(value) } 
+                        })
+                      }
+                    >
+                      <SelectTrigger id="videosPerCouple" className="border-violet-500/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 vidéo</SelectItem>
+                        <SelectItem value="2">2 vidéos</SelectItem>
+                        <SelectItem value="4">4 vidéos (défaut)</SelectItem>
+                        <SelectItem value="6">6 vidéos</SelectItem>
+                        <SelectItem value="8">8 vidéos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="videoDuration" className="mb-2 flex items-center gap-2 text-sm">
-                    ⏱️ Durée vidéo
-                  </Label>
-                  <Select
-                    value={String(config.settings?.videoDuration || 10)}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, videoDuration: parseInt(value) } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="videoDuration">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5 secondes</SelectItem>
-                      <SelectItem value="10">10 secondes</SelectItem>
-                      <SelectItem value="15">15 secondes</SelectItem>
-                      <SelectItem value="20">20 secondes</SelectItem>
-                    </SelectContent>
-                  </Select>
+                {/* Résumé visuel N × M */}
+                <div className="p-3 bg-muted/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm">
+                    <InfoIcon size={14} className="text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      Pour chaque plan : <span className="text-blue-400 font-medium">{config.settings?.couplesPerPlan || 1}</span> couple(s) × <span className="text-violet-400 font-medium">{config.settings?.videosPerCouple || 4}</span> vidéo(s) = <span className="text-emerald-400 font-semibold">{(config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4)}</span> vidéos/plan
+                    </span>
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="videoAspectRatio" className="mb-2 flex items-center gap-2 text-sm">
-                    📐 Format vidéo
-                  </Label>
-                  <Select
-                    value={config.settings?.videoAspectRatio || '16:9'}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, videoAspectRatio: value } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="videoAspectRatio">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="16:9">16:9 (Paysage)</SelectItem>
-                      <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
-                      <SelectItem value="1:1">1:1 (Carré)</SelectItem>
-                      <SelectItem value="4:3">4:3 (Standard)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                {/* Autres paramètres vidéo */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <Label htmlFor="videoDuration" className="mb-2 flex items-center gap-2 text-sm">
+                      ⏱️ Durée vidéo
+                    </Label>
+                    <Select
+                      value={String(config.settings?.videoDuration || 10)}
+                      onValueChange={(value) => 
+                        setConfig({ 
+                          ...config, 
+                          settings: { ...config.settings, videoDuration: parseInt(value) } 
+                        })
+                      }
+                    >
+                      <SelectTrigger id="videoDuration">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 secondes</SelectItem>
+                        <SelectItem value="10">10 secondes</SelectItem>
+                        <SelectItem value="15">15 secondes</SelectItem>
+                        <SelectItem value="20">20 secondes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="videoAspectRatio" className="mb-2 flex items-center gap-2 text-sm">
+                      📐 Format vidéo
+                    </Label>
+                    <Select
+                      value={config.settings?.videoAspectRatio || '16:9'}
+                      onValueChange={(value) => 
+                        setConfig({ 
+                          ...config, 
+                          settings: { ...config.settings, videoAspectRatio: value } 
+                        })
+                      }
+                    >
+                      <SelectTrigger id="videoAspectRatio">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="16:9">16:9 (Paysage)</SelectItem>
+                        <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
+                        <SelectItem value="1:1">1:1 (Carré)</SelectItem>
+                        <SelectItem value="4:3">4:3 (Standard)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Estimation du budget */}
+          <Card className="p-6 border-emerald-500/30 bg-emerald-500/5">
+            <div className="flex items-center gap-2 mb-4">
+              <EuroIcon size={20} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold">Estimation du budget</h2>
+            </div>
+
+            {/* Modèles utilisés */}
+            <div className="space-y-3 mb-6">
+              <div className="text-sm font-medium text-muted-foreground">Modèles utilisés :</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 bg-background/50 rounded-lg border border-border/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <ImageIcon size={14} className="text-blue-400" />
+                    <span className="text-sm font-medium">Text-to-Image (primaires)</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Nano Banana Pro Ultra (WaveSpeed)</p>
+                  <p className="text-xs text-emerald-400 font-mono">0.02€ / image</p>
+                </div>
+                <div className="p-3 bg-background/50 rounded-lg border border-border/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CopyIcon size={14} className="text-violet-400" />
+                    <span className="text-sm font-medium">Edit (variantes + frames)</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Nano Banana Pro Edit Ultra (WaveSpeed)</p>
+                  <p className="text-xs text-emerald-400 font-mono">0.025€ / image</p>
+                </div>
+                <div className="p-3 bg-background/50 rounded-lg border border-border/30 md:col-span-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <VideoIcon size={14} className="text-amber-400" />
+                    <span className="text-sm font-medium">Vidéo First+Last Frame</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Kling v2.6 Pro First+Last (WaveSpeed)</p>
+                  <p className="text-xs text-emerald-400 font-mono">0.08€ × durée (secondes) / vidéo</p>
                 </div>
               </div>
             </div>
 
-            {/* Info modèles automatiques */}
-            {config.generateMediaDirectly && (
-              <div className="pt-4 mt-4 border-t border-border/30">
-                <p className="text-xs text-muted-foreground">
-                  📸 Images : nano-banana-pro (2K) • 🎬 Vidéos : Kling O1 reference-to-video (max 7 images)
-                </p>
+            {/* Calcul dynamique */}
+            <div className="p-4 bg-background/80 rounded-lg border border-emerald-500/20">
+              <div className="text-sm font-medium mb-3">Estimation pour un projet type :</div>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                {/* Hypothèses */}
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Personnages estimés : <span className="text-white">~3</span></p>
+                  <p className="text-muted-foreground">Décors estimés : <span className="text-white">~3</span></p>
+                  <p className="text-muted-foreground">Plans estimés : <span className="text-white">~6</span></p>
+                </div>
+                {/* Détails */}
+                <div className="space-y-1 border-l border-border/30 pl-4">
+                  <p className="text-blue-400">
+                    Images primaires : {3 + 3} × 0.02€ = <span className="font-mono">{((3 + 3) * 0.02).toFixed(2)}€</span>
+                  </p>
+                  <p className="text-violet-400">
+                    Variantes : {(3 + 3) * 3} × 0.025€ = <span className="font-mono">{((3 + 3) * 3 * 0.025).toFixed(2)}€</span>
+                  </p>
+                  <p className="text-blue-400">
+                    Frames (N={config.settings?.couplesPerPlan || 1}) : {6 * (config.settings?.couplesPerPlan || 1) * 2} × 0.025€ = <span className="font-mono">{(6 * (config.settings?.couplesPerPlan || 1) * 2 * 0.025).toFixed(2)}€</span>
+                  </p>
+                  <p className="text-amber-400">
+                    Vidéos (N×M={config.settings?.couplesPerPlan || 1}×{config.settings?.videosPerCouple || 4}) : {6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4)} × {(config.settings?.videoDuration || 10) * 0.08}€ = <span className="font-mono">{(6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4) * (config.settings?.videoDuration || 10) * 0.08).toFixed(2)}€</span>
+                  </p>
+                </div>
               </div>
-            )}
+              
+              {/* Total estimé */}
+              <div className="mt-4 pt-4 border-t border-emerald-500/20 flex items-center justify-between">
+                <span className="text-sm font-medium">Budget estimé total :</span>
+                <span className="text-2xl font-bold text-emerald-400">
+                  ~{(
+                    // Primaires (perso + décors)
+                    (3 + 3) * 0.02 +
+                    // Variantes (3 par perso/décor)
+                    (3 + 3) * 3 * 0.025 +
+                    // Frames first/last (2 × N couples × plans)
+                    6 * (config.settings?.couplesPerPlan || 1) * 2 * 0.025 +
+                    // Vidéos (N × M × plans × durée × coût)
+                    6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4) * (config.settings?.videoDuration || 10) * 0.08
+                  ).toFixed(2)}€
+                </span>
+              </div>
+              
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 Ce budget varie selon le nombre réel de personnages, décors et plans analysés par l'IA.
+              </p>
+            </div>
           </Card>
 
           {/* Action */}

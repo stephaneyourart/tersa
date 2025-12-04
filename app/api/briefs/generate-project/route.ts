@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
             completion = await openai.chat.completions.create({
               model: modelToUse,
               reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high',
-              max_completion_tokens: 16000, // Augmenté pour les projets avec beaucoup de plans
+              max_completion_tokens: 65536, // Augmenté significativement pour éviter la troncature des projets complexes
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
                 { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
               ],
               temperature: 0.7,
-              max_tokens: 16000, // Augmenté pour les projets avec beaucoup de plans
+              max_tokens: 32000, // Augmenté pour les projets avec beaucoup de plans
               stream: true,
             });
           }
@@ -350,7 +350,35 @@ export async function POST(request: NextRequest) {
             if (!jsonMatch) {
               throw new Error('Aucun JSON trouvé dans la réponse');
             }
-            projectStructure = JSON.parse(jsonMatch[0]);
+            
+            let jsonStr = jsonMatch[0];
+            
+            // Détecter si le JSON est tronqué (ne finit pas par un } valide ou contient des propriétés incomplètes)
+            const openBraces = (jsonStr.match(/\{/g) || []).length;
+            const closeBraces = (jsonStr.match(/\}/g) || []).length;
+            const openBrackets = (jsonStr.match(/\[/g) || []).length;
+            const closeBrackets = (jsonStr.match(/\]/g) || []).length;
+            
+            if (openBraces !== closeBraces || openBrackets !== closeBrackets) {
+              console.error(`[API] JSON tronqué détecté: { = ${openBraces}, } = ${closeBraces}, [ = ${openBrackets}, ] = ${closeBrackets}`);
+              
+              // Tenter de réparer le JSON tronqué en ajoutant les fermetures manquantes
+              const missingBrackets = closeBrackets < openBrackets ? ']'.repeat(openBrackets - closeBrackets) : '';
+              const missingBraces = closeBraces < openBraces ? '}'.repeat(openBraces - closeBraces) : '';
+              
+              // Trouver la dernière propriété complète et couper là
+              // Pattern: chercher la dernière virgule ou le dernier ":" suivi de données complètes
+              const lastValidPoint = jsonStr.lastIndexOf('",');
+              if (lastValidPoint > 0) {
+                jsonStr = jsonStr.substring(0, lastValidPoint + 1) + missingBrackets + missingBraces;
+                console.log(`[API] Tentative de réparation du JSON tronqué...`);
+              } else {
+                // Si on ne peut pas réparer, lever une erreur explicite
+                throw new Error(`JSON tronqué par l'IA (limite de tokens atteinte). Réponse reçue: ${fullResponse.length} caractères. Essayez de simplifier le brief ou réduire le nombre de personnages/plans.`);
+              }
+            }
+            
+            projectStructure = JSON.parse(jsonStr);
             
             // Sauvegarder le reasoning de GPT-5.1 dans la structure
             if (reasoningContent && reasoningContent.length > 0) {
@@ -359,9 +387,18 @@ export async function POST(request: NextRequest) {
             }
           } catch (parseError) {
             console.error('Erreur parsing JSON:', parseError);
+            
+            // Message d'erreur plus détaillé
+            const errorMessage = parseError instanceof Error ? parseError.message : 'Erreur inconnue';
+            const isTruncated = fullResponse.length > 0 && !fullResponse.trim().endsWith('}');
+            
             controller.enqueue(encoder.encode(sseEvent('error', { 
-              error: 'Erreur de parsing du JSON généré par l\'IA',
+              error: isTruncated 
+                ? `JSON tronqué par l'IA (limite de tokens probablement atteinte). Essayez de simplifier le brief ou réduire le nombre de personnages/scènes.`
+                : `Erreur de parsing du JSON généré par l'IA: ${errorMessage}`,
               details: fullResponse.substring(0, 500),
+              responseLength: fullResponse.length,
+              hint: isTruncated ? 'Le modèle a généré une réponse trop longue qui a été coupée.' : undefined,
             })));
             controller.close();
             return;
@@ -374,12 +411,17 @@ export async function POST(request: NextRequest) {
           })));
 
           // Récupérer les paramètres vidéo depuis la config
-          const videoCopies = config?.settings?.videoCopies || 4;
+          // NOUVEAU: N couples × M vidéos par plan
+          const couplesPerPlan = config?.settings?.couplesPerPlan || 1;  // N
+          const videosPerCouple = config?.settings?.videosPerCouple || 4;  // M
+          const videoCopies = config?.settings?.videoCopies || couplesPerPlan * videosPerCouple;  // Rétrocompat
           const videoDuration = config?.settings?.videoDuration || 10;
           const videoAspectRatio = config?.settings?.videoAspectRatio || '16:9';
 
-          // Générer les nœuds du canvas (avec N nœuds vidéo par plan et paramètres)
+          // Générer les nœuds du canvas (avec N couples × M vidéos par plan)
           const canvasData = generateCanvasFromProject(projectStructure, isTestMode, videoCopies, {
+            couplesPerPlan,
+            videosPerCouple,
             videoDuration,
             videoAspectRatio,
           });
@@ -422,6 +464,13 @@ export async function POST(request: NextRequest) {
           // Supporter les deux formats : decors (nouveau) ou locations (ancien)
           const decorsCount = projectStructure.decors?.length || projectStructure.locations?.length || 0;
           
+          // Calcul des images et vidéos à générer
+          const characterAndDecorImages = generationSequence.characterImages.reduce((acc, c) => acc + c.imageNodeIds.length, 0) +
+                              (generationSequence.decorImages?.reduce((acc, d) => acc + d.imageNodeIds.length, 0) || 
+                               generationSequence.locationImages.reduce((acc, l) => acc + l.imageNodeIds.length, 0));
+          const planFrameImages = generationSequence.planImages.length; // N couples × 2 images par plan
+          const totalVideos = generationSequence.videos.reduce((acc, v) => acc + v.videoNodeIds.length, 0);
+          
           const summary = {
             projectName,
             characters: projectStructure.characters.length,
@@ -433,10 +482,12 @@ export async function POST(request: NextRequest) {
             edges: canvasData.edges.length,
             // Infos pour génération parallèle
             // Note: chaque personnage/décor a 1 image primaire + 3 variantes = 4 images
-            imagesToGenerate: generationSequence.characterImages.reduce((acc, c) => acc + c.imageNodeIds.length, 0) +
-                              (generationSequence.decorImages?.reduce((acc, d) => acc + d.imageNodeIds.length, 0) || 
-                               generationSequence.locationImages.reduce((acc, l) => acc + l.imageNodeIds.length, 0)),
-            videosToGenerate: generationSequence.videos.length,
+            imagesToGenerate: characterAndDecorImages + planFrameImages,
+            planImagesCount: planFrameImages, // Images first/last frames (N couples × 2)
+            videosToGenerate: totalVideos,  // N couples × M vidéos par plan
+            // Config vidéo
+            couplesPerPlan,
+            videosPerCouple,
             quality: config?.quality || 'elevee',
           };
 

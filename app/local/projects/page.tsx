@@ -23,8 +23,8 @@ import {
   formatProjectDate,
   getLocalProjects,
   renameLocalProject,
+  rebuildAllProjectsStats,
   type LocalProject,
-  type ProjectStats as StoredProjectStats,
 } from '@/lib/local-projects-store';
 import { 
   BarChart3Icon, 
@@ -41,10 +41,9 @@ import {
   HardDriveIcon,
   SparklesIcon,
   CheckCircle2Icon,
-  TrendingUpIcon,
   DatabaseIcon,
-  Trash2Icon,
   FileTextIcon,
+  CalculatorIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -192,6 +191,7 @@ export default function LocalProjectsPage() {
   const [newName, setNewName] = useState('');
   const [storageByProject, setStorageByProject] = useState<Record<string, StorageBreakdown>>({});
   const [globalStorage, setGlobalStorage] = useState<StorageBreakdown | null>(null);
+  const [isRebuildingStats, setIsRebuildingStats] = useState(false);
 
   // Charger les projets au montage
   useEffect(() => {
@@ -328,6 +328,17 @@ export default function LocalProjectsPage() {
     setSelectedProject(null);
   }, [selectedProject]);
 
+  // Reconstruire les stats de tous les projets
+  const handleRebuildAllStats = useCallback(() => {
+    setIsRebuildingStats(true);
+    try {
+      rebuildAllProjectsStats();
+      setProjects(getLocalProjects()); // Recharger les projets avec les nouvelles stats
+    } finally {
+      setIsRebuildingStats(false);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       {/* Header */}
@@ -368,9 +379,22 @@ export default function LocalProjectsPage() {
                 <StatBadge icon={<CheckCircle2Icon size={14} />} value={globalStats.totalDVR} label="dans DVR" color="text-orange-400" />
                 <StatBadge icon={<HardDriveIcon size={14} />} value={formatSize(globalStats.totalStorage)} label="sur disque" color="text-cyan-400" />
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-mono text-emerald-400 text-lg">{formatCost(globalStats.totalCost)}</span>
-                <span className="text-zinc-500">coût total</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-mono text-emerald-400 text-lg">{formatCost(globalStats.totalCost)}</span>
+                  <span className="text-zinc-500">coût total</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRebuildAllStats}
+                  disabled={isRebuildingStats}
+                  className="gap-1.5 text-xs text-zinc-400 hover:text-white"
+                  title="Recalculer les stats de tous les projets à partir des éléments existants"
+                >
+                  <CalculatorIcon size={14} className={isRebuildingStats ? 'animate-spin' : ''} />
+                  {isRebuildingStats ? 'Calcul...' : 'Recalculer stats'}
+                </Button>
               </div>
             </div>
           </div>
@@ -727,7 +751,7 @@ function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDu
           {/* Note si pas de stats historiques */}
           {!storedStats && (
             <p className="text-[10px] text-zinc-600 italic text-center">
-              Les stats seront enregistrées à partir de maintenant
+              Cliquez sur &quot;Recalculer stats&quot; pour récupérer les données
             </p>
           )}
         </div>

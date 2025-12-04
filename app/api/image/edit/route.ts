@@ -57,8 +57,17 @@ export async function POST(request: NextRequest) {
     const size = sizeMap[aspectRatio] || (testMode ? '256x256' : '1024x1024');
     console.log(`[API Image Edit] aspectRatio=${aspectRatio} -> size=${size}${testMode ? ' (test)' : ''}`);
 
+    // Support ancien format (string[]) et nouveau format ({ url, originalUrl }[])
+    // IMPORTANT: originalUrl est l'URL CloudFront publique pour WaveSpeed (évite base64)
+    const normalizedImages = sourceImages.map((img: string | { url: string; originalUrl?: string }) => {
+      if (typeof img === 'string') {
+        return { url: img, type: 'image/png' };
+      }
+      return { url: img.url, type: 'image/png', originalUrl: img.originalUrl };
+    });
+
     const result = await editImageAction({
-      images: sourceImages.map((url: string) => ({ url, type: 'image/png' })),
+      images: normalizedImages,
       modelId: model,
       instructions: prompt,
       nodeId,

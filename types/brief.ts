@@ -94,7 +94,9 @@ export interface ProjectGenerationConfig {
   settings?: {
     videoModel?: string; // 'kling-o1', 'seedream', etc.
     imageModel?: string; // 'nanobanana-pro', 'flux', etc.
-    videoCopies?: number; // Nombre de copies à générer (défaut: 4)
+    videoCopies?: number; // DEPRECATED: utiliser couplesPerPlan × videosPerCouple
+    couplesPerPlan?: number; // N = Nombre de couples (first/last frame) par plan (défaut: 1)
+    videosPerCouple?: number; // M = Nombre de vidéos à générer par couple (défaut: 4)
     videoDuration?: number;
     videoAspectRatio?: string;
     testMode?: boolean;
