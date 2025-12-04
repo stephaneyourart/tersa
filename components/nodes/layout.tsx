@@ -42,23 +42,28 @@ import { SendToDVRModal, type DVRMediaMetadata } from './send-to-dvr-modal';
 import { toast } from 'sonner';
 
 // ========== OPTIMISATION ANTI-CLIGNOTEMENT ==========
-// Hook personnalisé pour le zoom avec seuil de changement
-// Ne re-render que si le zoom change de plus de 0.1 (10%)
-function useThrottledZoom(): number {
-  const currentZoom = useStore((state) => state.transform[2]);
-  const lastZoomRef = useRef(currentZoom);
-  const [stableZoom, setStableZoom] = useState(currentZoom);
-  
-  useEffect(() => {
-    // Ne mettre à jour que si le changement est significatif (> 10%)
-    const diff = Math.abs(currentZoom - lastZoomRef.current);
-    if (diff > 0.1 || currentZoom < 0.3 !== lastZoomRef.current < 0.3) {
-      lastZoomRef.current = currentZoom;
-      setStableZoom(currentZoom);
+// Hook personnalisé pour le zoom avec PALIERS DISCRETS
+// Ne re-render que si le zoom change de palier (0.1, 0.2, 0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4)
+// Cela réduit drastiquement le nombre de re-renders pendant le zoom
+const ZOOM_BUCKETS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 1, 1.5, 2, 3, 4];
+
+function getZoomBucket(zoom: number): number {
+  // Trouver le bucket le plus proche
+  for (let i = 0; i < ZOOM_BUCKETS.length; i++) {
+    if (zoom <= ZOOM_BUCKETS[i]) {
+      return ZOOM_BUCKETS[i];
     }
-  }, [currentZoom]);
-  
-  return stableZoom;
+  }
+  return ZOOM_BUCKETS[ZOOM_BUCKETS.length - 1];
+}
+
+function useStableZoom(): number {
+  // Sélecteur qui retourne le bucket de zoom - ne change que quand on passe à un autre bucket
+  return useStore(
+    (state) => getZoomBucket(state.transform[2]),
+    // Comparateur : re-render seulement si le bucket change
+    (prev, next) => prev === next
+  );
 }
 
 // Types de nodes qui supportent le batch/runs parallèles
@@ -137,8 +142,8 @@ export const NodeLayout = ({
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges, updateNodeData } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const project = useProject();
-  // OPTIMISÉ: Zoom avec seuil pour éviter les re-renders excessifs
-  const zoom = useThrottledZoom();
+  // OPTIMISÉ: Zoom stable avec debounce (200ms après fin du zoom)
+  const zoom = useStableZoom();
   const [showData, setShowData] = useState(false);
   const [isNodeHovered, setIsNodeHovered] = useState(false);
   const [isBatchControlHovered, setIsBatchControlHovered] = useState(false);
