@@ -244,6 +244,15 @@ export default function GenerateProjectPage() {
 
     try {
       // ========== PHASE 1 : ANALYSE ==========
+      const isTestModeEnabled = config.settings?.testMode === true;
+      console.log('[Generate] Mode Test:', isTestModeEnabled, 'config.settings:', config.settings);
+      
+      // Message initial clair sur le mode
+      setReasoning(isTestModeEnabled 
+        ? '🧪 MODE TEST ACTIVÉ\n   → LLM: GPT-4o (rapide)\n   → Images: petites résolutions\n   → Prompts: simplifiés\n\n'
+        : `🎬 MODE PRODUCTION\n   → LLM: ${config.aiModel || 'GPT-5.1'}\n   → Images: haute résolution\n\n`
+      );
+      
       const response = await fetch('/api/briefs/generate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -251,7 +260,7 @@ export default function GenerateProjectPage() {
           briefId: params.id,
           projectName,
           config,
-          isTestMode: config.settings?.testMode || false,
+          isTestMode: isTestModeEnabled,
         }),
       });
 
@@ -676,7 +685,7 @@ export default function GenerateProjectPage() {
                     🧪 Mode Test (Rapide)
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Limite à 2 personnages, 2 plans max, prompts courts (3 phrases).
+                    GPT-4o au lieu de GPT-5.1, limite à 2 personnages, 2 plans max, prompts courts.
                   </p>
                 </div>
               </div>
@@ -863,32 +872,36 @@ export default function GenerateProjectPage() {
       <Dialog open={showReasoningDialog} onOpenChange={(open) => !generating && setShowReasoningDialog(open)}>
         <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col overflow-hidden bg-zinc-950 border-zinc-800">
           {/* Header minimaliste */}
-          <div className="flex-shrink-0 flex items-center justify-between pb-4 border-b border-zinc-800">
-            <div className="flex items-center gap-3">
-              {generating ? (
-                <div className="w-8 h-8 rounded-full bg-[#00ff41]/20 flex items-center justify-center">
-                  <Loader2Icon size={18} className="animate-spin text-[#00ff41]" />
+          <div className="flex-shrink-0 pb-4 border-b border-zinc-800">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                {generating ? (
+                  <div className="w-10 h-10 rounded-full bg-[#00ff41]/20 flex items-center justify-center flex-shrink-0">
+                    <Loader2Icon size={20} className="animate-spin text-[#00ff41]" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2Icon size={20} className="text-emerald-400" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-white">
+                    {generating ? 'Génération en cours' : 'Génération terminée'}
+                  </h2>
+                  <p className="text-xs text-zinc-500 whitespace-nowrap">
+                    {config.settings?.testMode ? 'GPT-4o (Mode Test)' : config.aiModel} • Reasoning {config.reasoningLevel || 'high'}
+                  </p>
                 </div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <CheckCircle2Icon size={18} className="text-emerald-400" />
-                </div>
-              )}
-              <div>
-                <h2 className="text-lg font-semibold text-white">
-                  {generating ? 'Génération en cours' : 'Génération terminée'}
-                </h2>
-                <p className="text-xs text-zinc-500">GPT-5.1 • Reasoning High</p>
               </div>
-            </div>
-            
-            {/* Phases en mode compact */}
-            <div className="flex items-center gap-1">
-              <PhaseIndicator phase="analysis" label="Analyse" />
-              <div className="w-4 h-px bg-zinc-700" />
-              <PhaseIndicator phase="canvas" label="Canvas" />
-              <div className="w-4 h-px bg-zinc-700" />
-              <PhaseIndicator phase="redirect" label="OK" />
+              
+              {/* Phases en mode compact */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <PhaseIndicator phase="analysis" label="Analyse" />
+                <div className="w-6 h-px bg-zinc-700" />
+                <PhaseIndicator phase="canvas" label="Canvas" />
+                <div className="w-6 h-px bg-zinc-700" />
+                <PhaseIndicator phase="redirect" label="OK" />
+              </div>
             </div>
           </div>
           

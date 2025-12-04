@@ -2,7 +2,7 @@
  * API de génération de projet à partir d'un brief
  * 
  * Flow en 3 phases :
- * 1. Analyse du brief avec GPT-5.1 → JSON structuré
+ * 1. Analyse du brief avec LLM (GPT-5.1 ou GPT-4o en mode test) → JSON structuré
  * 2. Création du projet + nœuds canvas
  * 3. (Optionnel) Génération des médias
  * 
@@ -250,10 +250,14 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          // Déterminer le modèle à utiliser
+          // En mode test, forcer GPT-4o pour aller vite
+          const modelToUse = isTestMode ? 'gpt-4o' : (config?.aiModel || 'gpt-5.1-2025-11-13');
+          
           // ========== PHASE 1 : ANALYSE ==========
           controller.enqueue(encoder.encode(sseEvent('phase_start', { 
             phase: 'analysis',
-            message: '🧠 Phase 1 : Analyse du brief avec GPT-5.1...',
+            message: `🧠 Phase 1 : Analyse du brief avec ${modelToUse}...`,
           })));
 
           const openai = new OpenAI({ apiKey });
@@ -264,9 +268,8 @@ export async function POST(request: NextRequest) {
             systemPrompt += SYSTEM_PROMPT_TEST_MODE;
           }
 
-          // Appel GPT-5.1 avec streaming et reasoning HIGH
-          // IMPORTANT: On utilise GPT-5.1 pour avoir des prompts de qualité
-          const modelToUse = config?.aiModel || 'gpt-5.1-2025-11-13';
+          // Appel LLM avec streaming et reasoning HIGH
+          console.log(`[API] Mode test: ${isTestMode}, Modèle: ${modelToUse}`);
           const useReasoningAPI = modelToUse.startsWith('gpt-5') || modelToUse.includes('o1') || modelToUse.includes('o3');
           
           let completion;

@@ -309,6 +309,18 @@ export const generateImageAction = async ({
         });
       }
 
+      // Extraire les dimensions réelles de l'image depuis le paramètre size
+      // Format: "widthxheight" (ex: "1024x1024", "256x256")
+      let width = 1024;
+      let height = 1024;
+      if (size) {
+        const parts = size.split('x').map(Number);
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          width = parts[0];
+          height = parts[1];
+        }
+      }
+
       // Retourner avec l'URL locale ET l'URL CloudFront originale
       const newData = {
         updatedAt: new Date().toISOString(),
@@ -317,10 +329,14 @@ export const generateImageAction = async ({
           type: mediaType,
           originalUrl: result.url,  // URL CloudFront pour WaveSpeed video API
         },
+        // Stocker les dimensions réelles pour un affichage correct dans les nœuds
+        width,
+        height,
         localPath: stored.path,
         smartTitle: smartTitle,
         isGenerated: true,
         modelId: modelId,
+        model: modelId, // Pour compatibilité avec l'affichage du modèle sous le nœud
         instructions: instructions,
         aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
         description: `Generated from prompt: ${prompt}`,
@@ -484,8 +500,10 @@ export const generateImageAction = async ({
       generated: {
         url: displayUrl,
         type: mediaType,
+        model: modelId, // Ajouter le modèle utilisé
       },
       description,
+      model: modelId, // Pour l'affichage dans la media library
     };
 
     // En mode local, on ne met pas à jour la BDD

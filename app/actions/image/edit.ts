@@ -7,6 +7,7 @@ import { imageModels } from '@/lib/models/image';
 import { trackCreditUsage } from '@/lib/stripe';
 import { uploadBuffer, generateUniqueFilename } from '@/lib/storage';
 import { isLocalProject } from '@/lib/local-project';
+import { saveMediaMetadata } from '@/lib/media-metadata';
 
 // Mode local
 const isLocalMode = process.env.LOCAL_MODE === 'true';
@@ -74,6 +75,9 @@ type EditImageActionProps = {
   nodeId: string;
   projectId: string;
   size?: string;
+  // Paramètres optionnels pour certains modèles
+  numInferenceSteps?: number;
+  guidanceScale?: number;
 };
 
 const generateGptImage1Image = async ({
@@ -134,7 +138,8 @@ async function editWaveSpeedImage(
   modelId: string,
   images: { url: string; type: string }[],
   prompt: string,
-  size?: string
+  size?: string,
+  options?: { numInferenceSteps?: number; guidanceScale?: number }
 ): Promise<{ url: string; mediaType: string }> {
   // Mapper les IDs de modèle vers les instances WaveSpeed Edit
   const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaProEdit>> = {
@@ -149,6 +154,7 @@ async function editWaveSpeedImage(
     'gemini-3-pro-edit-wavespeed': wavespeedImage.gemini3ProEdit,
     // Flux Kontext (edit)
     'flux-kontext-dev-wavespeed': wavespeedImage.fluxKontextDev,
+    'flux-kontext-dev-multi-ultra-fast-wavespeed': wavespeedImage.fluxKontextDevMultiUltraFast,
     'flux-kontext-pro-wavespeed': wavespeedImage.fluxKontextPro,
     'flux-kontext-max-wavespeed': wavespeedImage.fluxKontextMax,
     // Qwen Edit
@@ -168,14 +174,35 @@ async function editWaveSpeedImage(
     images.map(img => getPublicImageUrl(img.url))
   );
 
+  // Certains modèles (flux-kontext-dev/multi-ultra-fast) utilisent "size" au format "widthxheight"
+  // D'autres utilisent "resolution" ('1k', '2k', '4k')
+  const isFluxKontextMulti = modelId.includes('flux-kontext-dev-multi');
+  
   const params: WaveSpeedEditParams = {
     prompt,
     images: imageUrls,
-    resolution: size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k',
     output_format: 'png',
   };
+  
+  // Ajouter le paramètre de taille selon le modèle
+  if (isFluxKontextMulti && size) {
+    // Format "widthxheight" pour flux-kontext-dev/multi
+    (params as Record<string, unknown>).size = size;
+    console.log(`[WaveSpeed] Flux Kontext Multi - size: ${size}`);
+  } else {
+    // Format resolution pour les autres modèles
+    params.resolution = size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k';
+  }
+  
+  // Ajouter les paramètres optionnels si fournis
+  if (options?.numInferenceSteps !== undefined) {
+    (params as Record<string, unknown>).num_inference_steps = options.numInferenceSteps;
+  }
+  if (options?.guidanceScale !== undefined) {
+    params.guidance_scale = options.guidanceScale;
+  }
 
-  console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`);
+  console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`, options ? `(steps=${options.numInferenceSteps}, guidance=${options.guidanceScale})` : '', isFluxKontextMulti ? `size=${size}` : '');
   const imageUrl = await model.generate(params);
 
   return {
@@ -191,6 +218,8 @@ export const editImageAction = async ({
   nodeId,
   projectId,
   size,
+  numInferenceSteps,
+  guidanceScale,
 }: EditImageActionProps): Promise<
   | {
       nodeData: object;
@@ -228,7 +257,10 @@ export const editImageAction = async ({
     // Vérifier si c'est un modèle WaveSpeed Edit
     if (modelId.endsWith('-wavespeed') && model.supportsEdit) {
       console.log(`[WaveSpeed] Détecté modèle Edit WaveSpeed: ${modelId}`);
-      const result = await editWaveSpeedImage(modelId, images, prompt, size);
+      const result = await editWaveSpeedImage(modelId, images, prompt, size, {
+        numInferenceSteps,
+        guidanceScale,
+      });
       
       // Télécharger l'image depuis l'URL WaveSpeed
       const response = await fetch(result.url);
@@ -294,14 +326,47 @@ export const editImageAction = async ({
     const name = generateUniqueFilename('png');
     const stored = await uploadBuffer(bytes, name, contentType);
 
+    // Sauvegarder les métadonnées dans un fichier sidecar .meta.json
+    // Cela permet à la Media Library d'afficher le modèle utilisé
+    if (stored.path) {
+      saveMediaMetadata(stored.path, {
+        isGenerated: true,
+        modelId: modelId,
+        prompt: instructions || '',
+        format: contentType,
+        generatedAt: new Date().toISOString(),
+        // Marquer comme image secondaire (edit) pour le tracking
+        generationType: 'edit',
+        sourceImagesCount: images.length,
+      });
+    }
+
+    // Extraire les dimensions réelles de l'image depuis le paramètre size
+    // Format: "widthxheight" (ex: "1024x1024", "256x256")
+    let width = 1024;
+    let height = 1024;
+    if (size) {
+      const parts = size.split('x').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        width = parts[0];
+        height = parts[1];
+      }
+    }
+
     // En mode local, créer les données directement sans accès BDD
     const newData = {
       updatedAt: new Date().toISOString(),
       generated: {
         url: stored.url,
         type: contentType,
+        model: modelId, // Ajouter le modèle utilisé pour les métadonnées
       },
+      // Stocker les dimensions réelles pour un affichage correct dans les nœuds
+      width,
+      height,
       description: instructions ?? defaultPrompt,
+      model: modelId, // Pour l'affichage dans la media library
+      isGenerated: true, // Marquer comme généré pour le tracking
     };
 
     // En mode local, on ne met pas à jour la BDD

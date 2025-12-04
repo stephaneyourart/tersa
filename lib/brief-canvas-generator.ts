@@ -296,7 +296,18 @@ function createCharacterStructure(
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
 
-  // 4. Edges : images → collection
+  // 4. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
+  const variantKeys = ['face', 'profile', 'back'];
+  for (const key of variantKeys) {
+    structure.edges.push({
+      id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
+      source: imageNodeIds.primary,
+      target: imageNodeIds[key],
+      type: 'default',
+    });
+  }
+
+  // 5. Edges : images → collection
   for (const imgId of Object.values(imageNodeIds)) {
     structure.edges.push({
       id: `edge-${imgId}-${collectionNodeId}`,
@@ -306,7 +317,7 @@ function createCharacterStructure(
     });
   }
 
-  // 5. Tracking avec info de génération
+  // 6. Tracking avec info de génération
   structure.characterCollectionIds[character.id] = collectionNodeId;
   structure.characterImageMap[character.id] = {
     nodeIds: Object.values(imageNodeIds),
@@ -368,13 +379,14 @@ function createDecorStructure(
   const plongeePrompt = decorPrompts.plongee || decorPrompts.angle3 || "Vue en plongée top down de ce décor, avec une assez courte focale pour avoir une vue d'ensemble de ce décor.";
   const contrePlongeePrompt = decorPrompts.contrePlongee || "Vue en forte contre plongée, caméra basse et inclinée vers le haut, avec une assez courte focale.";
   
+  // Disposition 2x2 comme les personnages
   const imageConfigs = [
     { 
       key: 'primary', 
       id: imageNodeIds.primary, 
       label: 'Primaire (Réf)', 
       prompt: enrichPrimaryPrompt(primaryPrompt), 
-      x: 0, 
+      x: 0, y: 0,
       aspectRatio: IMAGE_RATIOS.decor.primary, 
       isReference: true,
       generationType: 'text-to-image'
@@ -384,7 +396,7 @@ function createDecorStructure(
       id: imageNodeIds.angle2, 
       label: 'Nouvel angle', 
       prompt: angle2Prompt, 
-      x: 1, 
+      x: 1, y: 0,
       aspectRatio: IMAGE_RATIOS.decor.angle2, 
       isReference: false,
       generationType: 'edit'
@@ -394,7 +406,7 @@ function createDecorStructure(
       id: imageNodeIds.plongee, 
       label: 'Plongée', 
       prompt: plongeePrompt, 
-      x: 2, 
+      x: 0, y: 1,
       aspectRatio: IMAGE_RATIOS.decor.plongee, 
       isReference: false,
       generationType: 'edit'
@@ -404,7 +416,7 @@ function createDecorStructure(
       id: imageNodeIds.contrePlongee, 
       label: 'Contre-plongée', 
       prompt: contrePlongeePrompt, 
-      x: 3, 
+      x: 1, y: 1,
       aspectRatio: IMAGE_RATIOS.decor.contrePlongee, 
       isReference: false,
       generationType: 'edit'
@@ -420,13 +432,13 @@ function createDecorStructure(
     aspectRatios[config.key] = config.aspectRatio;
     generationTypes[config.key] = config.generationType;
     
-    // Décors = 16:9, donc hauteur réduite
+    // Décors = 16:9, disposition 2x2 comme les personnages
     structure.imageNodes.push({
       id: config.id,
       type: 'image',
       position: {
         x: imageStartX + config.x * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X),
-        y: startY,
+        y: startY + config.y * (LAYOUT.IMAGE_NODE_HEIGHT_16_9 + LAYOUT.NODE_GAP_Y),
       },
       data: {
         label: `${decor.name} - ${config.label}`,
@@ -444,14 +456,14 @@ function createDecorStructure(
     });
   }
 
-  // 3. Nœud COLLECTION
-  const numImages = imageConfigs.length;
-  const collectionX = imageStartX + numImages * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
+  // 3. Nœud COLLECTION - positionné à droite de la grille 2x2 (comme personnages)
+  const collectionX = imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
+  const collectionY = startY + LAYOUT.IMAGE_NODE_HEIGHT_16_9 / 2;
   
   structure.collectionNodes.push({
     id: collectionNodeId,
     type: 'collection',
-    position: { x: collectionX, y: startY },
+    position: { x: collectionX, y: collectionY },
     data: {
       label: `Décor ${decor.name}`,
       items: [],
@@ -461,7 +473,18 @@ function createDecorStructure(
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
 
-  // 4. Edges
+  // 4. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
+  const variantKeys = ['angle2', 'plongee', 'contrePlongee'];
+  for (const key of variantKeys) {
+    structure.edges.push({
+      id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
+      source: imageNodeIds.primary,
+      target: imageNodeIds[key],
+      type: 'default',
+    });
+  }
+
+  // 5. Edges : images → collection
   for (const imgId of Object.values(imageNodeIds)) {
     structure.edges.push({
       id: `edge-${imgId}-${collectionNodeId}`,
@@ -471,7 +494,7 @@ function createDecorStructure(
     });
   }
 
-  // 5. Tracking avec info de génération
+  // 6. Tracking avec info de génération
   // Garder la compatibilité avec locationCollectionIds et locationImageMap
   structure.locationCollectionIds[decor.id] = collectionNodeId;
   structure.locationImageMap[decor.id] = {

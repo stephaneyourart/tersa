@@ -95,10 +95,39 @@ export const ImageTransform = ({
 
   // Utiliser les modèles dynamiques filtrés
   const availableModels = useAvailableModels('image');
-  const modelId = data.model && availableModels[data.model] ? data.model : getFallbackModel(availableModels);
+  
+  // IMPORTANT: Pour l'affichage du modèle utilisé lors de la génération,
+  // on utilise directement data.model (ou data.modelId) même s'il n'est pas dans availableModels.
+  // Cela permet d'afficher correctement le modèle utilisé en mode test (FLUX Schnell)
+  // même si l'utilisateur n'a pas activé ce modèle dans ses préférences.
+  const actualModelUsed = data.model || data.modelId;
+  
+  // Pour la SÉLECTION d'un nouveau modèle, on utilise availableModels
+  // Si le modèle actuel n'est pas disponible, on propose un fallback
+  const modelId = actualModelUsed && availableModels[actualModelUsed] 
+    ? actualModelUsed 
+    : getFallbackModel(availableModels);
   
   const analytics = useAnalytics();
   const selectedModel = availableModels[modelId];
+  
+  // Pour l'AFFICHAGE du modèle réellement utilisé (sous le nœud),
+  // on cherche d'abord dans availableModels, sinon on montre le nom brut
+  const displayModelLabel = useMemo(() => {
+    if (actualModelUsed && availableModels[actualModelUsed]) {
+      return availableModels[actualModelUsed].label;
+    }
+    // Si le modèle n'est pas dans availableModels, afficher son ID de façon lisible
+    if (actualModelUsed) {
+      // Convertir 'flux-schnell-wavespeed' en 'FLUX Schnell (WaveSpeed)'
+      return actualModelUsed
+        .replace(/-wavespeed$/, ' (WaveSpeed)')
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+    return selectedModel?.label;
+  }, [actualModelUsed, availableModels, selectedModel]);
   
   // Hook pour détecter si l'image est expirée (URL WaveSpeed plus accessible)
   const imageUrl = data.generated?.url;
@@ -787,7 +816,7 @@ export const ImageTransform = ({
       type={type} 
       title={title} 
       toolbar={toolbar}
-      modelLabel={selectedModel?.label}
+      modelLabel={displayModelLabel}
       onBatchRun={handleBatchRun}
       onUpscale={handleUpscale}
       onCancelUpscale={handleCancelUpscale}

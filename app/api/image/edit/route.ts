@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
       projectId,
       sourceImages,
       aspectRatio = '1:1',
+      testMode = false,
+      numInferenceSteps,
+      guidanceScale,
     } = body;
 
     if (!nodeId || !prompt || !sourceImages || sourceImages.length === 0) {
@@ -27,11 +30,12 @@ export async function POST(request: NextRequest) {
 
     const effectiveProjectId = projectId || 'local-generation';
 
-    console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}`);
+    console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}${testMode ? ' (MODE TEST)' : ''}`);
     console.log(`[API Image Edit] Source images: ${sourceImages.length}, prompt: ${prompt.substring(0, 80)}...`);
 
     // Mapper l'aspect ratio vers une taille
-    const sizeMap: Record<string, string> = {
+    // Mode test : tailles réduites pour aller vite
+    const normalSizeMap: Record<string, string> = {
       '1:1': '1024x1024',
       '9:16': '576x1024',
       '16:9': '1024x576',
@@ -39,8 +43,19 @@ export async function POST(request: NextRequest) {
       '4:3': '1024x768',
       '21:9': '1344x576',  // Cinémascope pour les images de plan
     };
-    const size = sizeMap[aspectRatio] || '1024x1024';
-    console.log(`[API Image Edit] aspectRatio=${aspectRatio} -> size=${size}`);
+    
+    const testSizeMap: Record<string, string> = {
+      '1:1': '256x256',      // Carré mini pour secondaires
+      '9:16': '144x256',     // Portrait mini
+      '16:9': '256x144',     // Paysage mini pour primaires
+      '3:4': '192x256',
+      '4:3': '256x192',
+      '21:9': '598x256',     // Cinémascope mini pour first/last frames
+    };
+    
+    const sizeMap = testMode ? testSizeMap : normalSizeMap;
+    const size = sizeMap[aspectRatio] || (testMode ? '256x256' : '1024x1024');
+    console.log(`[API Image Edit] aspectRatio=${aspectRatio} -> size=${size}${testMode ? ' (test)' : ''}`);
 
     const result = await editImageAction({
       images: sourceImages.map((url: string) => ({ url, type: 'image/png' })),
@@ -49,6 +64,8 @@ export async function POST(request: NextRequest) {
       nodeId,
       projectId: effectiveProjectId,
       size,
+      numInferenceSteps: testMode ? (numInferenceSteps ?? 5) : numInferenceSteps,
+      guidanceScale: testMode ? (guidanceScale ?? 2.5) : guidanceScale,
     });
 
     if ('error' in result) {

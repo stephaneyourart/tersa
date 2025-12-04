@@ -993,6 +993,23 @@ export const imageModels: Record<string, TersaImageModel> = {
     sizes: ['1024x1024', '1344x768', '768x1344'],
   },
 
+  'flux-kontext-dev-multi-ultra-fast-wavespeed': {
+    label: 'FLUX Kontext Dev Multi Ultra Fast (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    supportsEdit: true,
+    priceIndicator: 'low',
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.fluxKontextDevMultiUltraFast() as unknown as ImageModel,
+        getCost: () => 0.025,
+      },
+    ],
+    sizes: ['1024x1024', '1344x768', '768x1344'],
+  },
+
   'flux-kontext-pro-wavespeed': {
     label: 'FLUX Kontext Pro (WaveSpeed)',
     chef: providers.wavespeed,

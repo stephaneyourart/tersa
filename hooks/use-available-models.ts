@@ -80,13 +80,21 @@ function getReadableModelName(modelName: string, seo?: string): string {
     }
   }
   
-  // Fallback: convertir le model_name en format lisible
+  // Fallback: construire un nom à partir de TOUT le chemin du modèle
+  // Ex: "google/nano-banana-pro/text-to-image" -> "Nano Banana Pro Text To Image"
   const parts = modelName.split('/');
-  const lastPart = parts[parts.length - 1];
   
-  return lastPart
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+  // Ignorer le premier segment (provider comme "google", "wavespeed-ai", etc.)
+  const relevantParts = parts.slice(1);
+  
+  // Convertir chaque partie en format lisible
+  return relevantParts
+    .map(part => 
+      part
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+    )
     .join(' ');
 }
 

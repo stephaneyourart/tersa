@@ -26,7 +26,8 @@ export type ImageNodeProps = {
     width?: number;
     height?: number;
     updatedAt?: string;
-    model?: string;
+    model?: string;         // Modèle utilisé pour la génération
+    modelId?: string;       // Alternative pour le modèle (compatibilité WaveSpeed)
     description?: string;
     instructions?: string;
     // Batch processing state
@@ -37,6 +38,9 @@ export type ImageNodeProps = {
     upscale?: UpscaleData;
     // Flag pour distinguer images importées vs générées dans le canvas
     isGenerated?: boolean;
+    // État de génération depuis le GenerationPanel
+    generating?: boolean;
+    generatingStartTime?: number;
   };
   id: string;
 };

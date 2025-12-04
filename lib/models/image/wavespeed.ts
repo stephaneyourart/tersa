@@ -38,6 +38,7 @@ export type WaveSpeedImageModelId =
   | 'wavespeed-ai/flux-1.1-pro'
   | 'wavespeed-ai/flux-1.1-pro-ultra'
   | 'wavespeed-ai/flux-kontext-dev'
+  | 'wavespeed-ai/flux-kontext-dev/multi-ultra-fast'
   | 'wavespeed-ai/flux-kontext-pro'
   | 'wavespeed-ai/flux-kontext-max'
   | 'wavespeed-ai/flux-2-dev/text-to-image'
@@ -324,6 +325,7 @@ export const wavespeedImage = {
   flux11Pro: () => createTextToImageModel('wavespeed-ai/flux-1.1-pro'),
   flux11ProUltra: () => createTextToImageModel('wavespeed-ai/flux-1.1-pro-ultra'),
   fluxKontextDev: () => createEditModel('wavespeed-ai/flux-kontext-dev'),
+  fluxKontextDevMultiUltraFast: () => createEditModel('wavespeed-ai/flux-kontext-dev/multi-ultra-fast'),
   fluxKontextPro: () => createEditModel('wavespeed-ai/flux-kontext-pro'),
   fluxKontextMax: () => createEditModel('wavespeed-ai/flux-kontext-max'),
   flux2DevText2Img: () => createTextToImageModel('wavespeed-ai/flux-2-dev/text-to-image'),

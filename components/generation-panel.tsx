@@ -82,8 +82,14 @@ function nodeHasMediaContent(node: Node): boolean {
   }
   
   if (node.type === 'collection') {
-    const items = data.items as Array<{ url?: string; enabled?: boolean }> | undefined;
-    return Boolean(items && items.length > 0 && items.some(item => item.url && item.enabled !== false));
+    const items = data.items as Array<{ url?: string; enabled?: boolean; id?: string }> | undefined;
+    const hasValidContent = Boolean(items && items.length > 0 && items.some(item => item.url && item.enabled !== false));
+    // DEBUG pour les collections
+    if (items && items.length > 0) {
+      const validCount = items.filter(item => item.url && item.enabled !== false).length;
+      console.log(`[nodeHasMediaContent] Collection ${getNodeLabel(node)}: ${validCount}/${items.length} items valides, hasContent=${hasValidContent}`);
+    }
+    return hasValidContent;
   }
   
   if (node.type === 'audio') {
@@ -110,27 +116,39 @@ function getNodeLabel(node: Node): string {
 function getImagesFromIncomers(incomers: Node[]): { url: string; type: string; originalUrl?: string }[] {
   const images: { url: string; type: string; originalUrl?: string }[] = [];
   
+  console.log(`[getImagesFromIncomers] Analyse de ${incomers.length} incomers`);
+  
   for (const node of incomers) {
     const data = node.data as Record<string, unknown>;
+    const label = getNodeLabel(node);
     
     if (node.type === 'image') {
       const generated = data.generated as { url?: string; originalUrl?: string } | undefined;
       const url = generated?.url || (data.url as string);
+      console.log(`[getImagesFromIncomers]   Image ${label}: url=${url?.slice(0, 40) || 'NONE'}`);
       if (url) {
         images.push({ url, type: 'image/png', originalUrl: generated?.originalUrl });
       }
     } else if (node.type === 'collection') {
-      const items = data.items as Array<{ url?: string; enabled?: boolean; type?: string; originalUrl?: string }> | undefined;
-      if (items) {
+      const items = data.items as Array<{ url?: string; enabled?: boolean; type?: string; originalUrl?: string; id?: string }> | undefined;
+      console.log(`[getImagesFromIncomers]   Collection ${label}: ${items?.length || 0} items`);
+      if (items && items.length > 0) {
         for (const item of items) {
-          if (item.enabled !== false && item.url) {
-            images.push({ url: item.url, type: item.type || 'image/png', originalUrl: item.originalUrl });
+          const isEnabled = item.enabled !== false;
+          console.log(`[getImagesFromIncomers]     Item ${item.id}: enabled=${isEnabled}, url=${item.url?.slice(0, 40) || 'NONE'}`);
+          if (isEnabled && item.url) {
+            images.push({ url: item.url, type: 'image/png', originalUrl: item.originalUrl });
           }
         }
+      } else {
+        console.warn(`[getImagesFromIncomers]   ⚠️ Collection ${label} VIDE ou sans items!`);
       }
+    } else if (node.type === 'text') {
+      console.log(`[getImagesFromIncomers]   Text ${label}: ignoré (pas d'image)`);
     }
   }
   
+  console.log(`[getImagesFromIncomers] Total: ${images.length} images extraites`);
   return images;
 }
 
@@ -249,8 +267,8 @@ function NodeRow({ node }: { node: GeneratableNode }) {
 
 // ========== CONSTANTES ==========
 const STORAGE_KEY = 'generation-panel-width';
-const DEFAULT_WIDTH = 500;
-const MIN_WIDTH = 350;
+const DEFAULT_WIDTH = 550;
+const MIN_WIDTH = 450;
 const MAX_WIDTH = 1200;
 
 // ========== COMPOSANT PRINCIPAL ==========
@@ -264,6 +282,21 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   const [nodeList, setNodeList] = useState<GeneratableNode[]>([]);
   const [currentPhase, setCurrentPhase] = useState('');
   const [sendToDVR, setSendToDVR] = useState(false);
+  const [testMode, setTestMode] = useState(false);
+  
+  // Modèles pour le test mode (ultra rapide et pas cher)
+  const TEST_MODELS = {
+    textToImage: 'flux-schnell-wavespeed',                      // 0.003$ - le plus rapide
+    edit: 'flux-kontext-dev-multi-ultra-fast-wavespeed',        // 0.025$ - edit ultra rapide multi-images
+    video: 'kling-v2.6-pro-first-last',                         // Garder le même pour la vidéo
+  };
+  
+  // Modèles pour le mode normal (haute qualité)
+  const NORMAL_MODELS = {
+    textToImage: 'nano-banana-pro-ultra-wavespeed',
+    edit: 'nano-banana-pro-edit-multi-wavespeed',
+    video: 'kling-v2.6-pro-first-last',
+  };
   
   // Redimensionnement
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -381,7 +414,11 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       
       // Calculer le statut
       let status: GeneratableNode['status'] = 'waiting';
-      if (hasContent) {
+      const isGenerating = Boolean(data.generating);
+      
+      if (isGenerating) {
+        status = 'generating';
+      } else if (hasContent) {
         status = 'done';
       } else if (node.type === 'collection') {
         const allSourcesReady = incomers.every(inc => 
@@ -430,12 +467,152 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     return result;
   }, [getNodes, getEdges]);
 
-  // Mettre à jour l'analyse quand le panel s'ouvre
+  // ========== RESET DES GÉNÉRATIONS ABANDONNÉES ==========
+  const resetAbandonedGenerations = useCallback(() => {
+    const nodes = getNodes();
+    let resetCount = 0;
+    
+    for (const node of nodes) {
+      const data = node.data as Record<string, unknown>;
+      if (data.generating === true) {
+        updateNodeData(node.id, { 
+          generating: false, 
+          generatingStartTime: undefined 
+        });
+        resetCount++;
+      }
+    }
+    
+    if (resetCount > 0) {
+      console.log(`[GenerationPanel] Reset ${resetCount} générations abandonnées`);
+      toast.info(`🔄 ${resetCount} génération(s) abandonnée(s) remise(s) à zéro`);
+    }
+    
+    return resetCount;
+  }, [getNodes, updateNodeData]);
+
+  // ========== PEUPLER LES COLLECTIONS PRÊTES ==========
+  const populateReadyCollections = useCallback(() => {
+    // IMPORTANT: récupérer les nodes FRAIS à chaque appel
+    const nodes = getNodes();
+    const edges = getEdges();
+    let populatedCount = 0;
+    
+    // Créer un map pour accès rapide aux nœuds par ID
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    
+    const collections = nodes.filter(n => n.type === 'collection');
+    console.log(`[Collections] ========== DÉBUT PEUPLEMENT ==========`);
+    console.log(`[Collections] ${collections.length} collections, ${nodes.filter(n => n.type === 'image').length} images, ${edges.length} edges`);
+    
+    for (const collectionNode of collections) {
+      const data = collectionNode.data as Record<string, unknown>;
+      const currentItems = data.items as Array<{ url?: string }> | undefined;
+      const label = getNodeLabel(collectionNode);
+      
+      // Vérifier si la collection a des items VALIDES (avec id + url + type corrects)
+      const validItems = currentItems?.filter(item => {
+        const hasId = Boolean((item as Record<string, unknown>).id);
+        const hasUrl = Boolean(item.url && item.url.length > 10);
+        const hasCorrectType = (item as Record<string, unknown>).type === 'image';
+        return hasId && hasUrl && hasCorrectType;
+      }) || [];
+      
+      if (validItems.length > 0 && validItems.length === currentItems!.length) {
+        console.log(`[Collections] ${label}: déjà peuplée avec ${validItems.length} items VALIDES`);
+        continue;
+      }
+      
+      // Si items existent mais sont mal formatés, on les efface et on re-peuple
+      if (currentItems && currentItems.length > 0) {
+        const badItems = currentItems.filter(item => {
+          const hasId = Boolean((item as Record<string, unknown>).id);
+          const hasUrl = Boolean(item.url && item.url.length > 10);
+          const hasCorrectType = (item as Record<string, unknown>).type === 'image';
+          return !hasId || !hasUrl || !hasCorrectType;
+        });
+        if (badItems.length > 0) {
+          console.log(`[Collections] ⚠️ ${label}: ${badItems.length}/${currentItems.length} items MAL FORMATÉS, nettoyage...`);
+          // Effacer les items invalides
+          updateNodeData(collectionNode.id, { items: [] });
+        }
+      }
+      
+      // Trouver les edges qui pointent vers cette collection (image → collection)
+      const incomingEdges = edges.filter(e => e.target === collectionNode.id);
+      console.log(`[Collections] ${label}: ${incomingEdges.length} edges entrants`);
+      
+      // Récupérer les nœuds sources (images) DIRECTEMENT depuis le nodeMap
+      const sourceImageIds = incomingEdges.map(e => e.source);
+      const imageNodes: Node[] = [];
+      
+      for (const sourceId of sourceImageIds) {
+        const sourceNode = nodeMap.get(sourceId);
+        if (sourceNode && sourceNode.type === 'image') {
+          imageNodes.push(sourceNode);
+        }
+      }
+      
+      console.log(`[Collections] ${label}: ${imageNodes.length} images sources trouvées`);
+      
+      // Vérifier chaque image et collecter les URLs avec le bon format
+      const items: Array<{ id: string; url: string; type: 'image'; enabled: boolean; name?: string }> = [];
+      const missingImages: string[] = [];
+      
+      for (const imgNode of imageNodes) {
+        const imgData = imgNode.data as Record<string, unknown>;
+        const generated = imgData.generated as { url?: string } | undefined;
+        const content = imgData.content as { url?: string } | undefined;
+        const directUrl = imgData.url as string | undefined;
+        
+        // Priorité: generated > content > url direct
+        const imageUrl = generated?.url || content?.url || directUrl;
+        const imgLabel = getNodeLabel(imgNode);
+        
+        console.log(`[Collections]   → ${imgLabel}: generated.url=${generated?.url?.slice(0, 40) || 'null'}, url=${directUrl?.slice(0, 40) || 'null'}`);
+        
+        if (imageUrl) {
+          items.push({
+            id: `item-${imgNode.id}`,  // ID unique obligatoire !
+            url: imageUrl,
+            type: 'image',  // DOIT être 'image' et non 'image/png'
+            enabled: true,
+            name: imgLabel,
+          });
+        } else {
+          missingImages.push(imgLabel);
+        }
+      }
+      
+      console.log(`[Collections] ${label}: ${items.length}/${imageNodes.length} images avec URL`);
+      
+      // Peupler seulement si TOUTES les images ont une URL
+      if (items.length > 0 && items.length === imageNodes.length) {
+        console.log(`[Collections] ✅ PEUPLEMENT ${label} avec ${items.length} images`);
+        updateNodeData(collectionNode.id, { items });
+        populatedCount++;
+      } else if (imageNodes.length > 0) {
+        console.log(`[Collections] ⏳ ${label} attend: ${missingImages.join(', ')}`);
+      } else {
+        console.log(`[Collections] ⚠️ ${label}: AUCUNE image source trouvée!`);
+      }
+    }
+    
+    console.log(`[Collections] ========== FIN: ${populatedCount} collections peuplées ==========`);
+    return populatedCount;
+  }, [getNodes, getEdges, updateNodeData]);
+
+  // Mettre à jour l'analyse quand le panel s'ouvre + reset des abandonnées
   useEffect(() => {
     if (isOpen) {
+      // Reset les générations qui étaient en cours mais abandonnées
+      resetAbandonedGenerations();
+      // Peupler les collections qui peuvent l'être
+      populateReadyCollections();
+      // Analyser le canvas
       setNodeList(analyzeCanvas());
     }
-  }, [isOpen, analyzeCanvas]);
+  }, [isOpen, analyzeCanvas, resetAbandonedGenerations, populateReadyCollections]);
   
   // Stats
   const stats = useMemo(() => {
@@ -457,30 +634,64 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
 
   // ========== GÉNÉRATION IMAGE ==========
   const generateImage = async (nodeId: string): Promise<string | null> => {
+    const nodeLabel = getNodeLabel(getNodes().find(n => n.id === nodeId) || { data: {}, id: nodeId, type: 'image', position: { x: 0, y: 0 } });
+    console.log(`[GenerateImage] 🎨 DÉBUT ${nodeLabel} (${nodeId.slice(0, 8)})`);
+    
     const nodes = getNodes();
     const edges = getEdges();
     const node = nodes.find(n => n.id === nodeId);
-    if (!node) return null;
+    if (!node) {
+      console.error(`[GenerateImage] ❌ Node non trouvé: ${nodeId}`);
+      return null;
+    }
     
     const data = node.data as Record<string, unknown>;
     const incomers = getIncomers(node, nodes, edges);
+    console.log(`[GenerateImage] ${nodeLabel}: ${incomers.length} incomers:`, incomers.map(i => `${i.type}:${getNodeLabel(i)}`));
+    
     const images = getImagesFromIncomers(incomers);
+    console.log(`[GenerateImage] ${nodeLabel}: ${images.length} images sources:`, images.map(i => i.url?.slice(0, 50)));
     
     const textFromIncomers = getTextFromIncomers(incomers);
     const prompt = textFromIncomers || (data.instructions as string) || '';
     const aspectRatio = (data.aspectRatio as string) || '1:1';
     
+    console.log(`[GenerateImage] ${nodeLabel}: prompt=${prompt?.slice(0, 50)}..., aspectRatio=${aspectRatio}`);
+    
     if (!prompt) {
-      console.error(`[GenerationPanel] Pas de prompt pour image ${nodeId}`);
+      console.error(`[GenerateImage] ❌ Pas de prompt pour ${nodeLabel}`);
       return null;
     }
     
+    if (images.length === 0) {
+      console.warn(`[GenerateImage] ⚠️ ${nodeLabel}: Aucune image source, utilisation text-to-image`);
+    }
+    
     try {
+      const models = testMode ? TEST_MODELS : NORMAL_MODELS;
       const endpoint = images.length > 0 ? '/api/image/edit' : '/api/image/generate';
-      const body = images.length > 0 
-        ? { nodeId, prompt, model: 'nano-banana-pro-edit-multi-wavespeed', projectId, sourceImages: images.map(i => i.url), aspectRatio }
-        : { nodeId, prompt, model: 'nano-banana-pro-ultra-wavespeed', projectId, aspectRatio };
+      const selectedModel = images.length > 0 ? models.edit : models.textToImage;
       
+      // LOG DÉTAILLÉ pour vérifier le mode test
+      console.log(`[GenerateImage] ${nodeLabel}: testMode=${testMode}`);
+      console.log(`[GenerateImage] ${nodeLabel}: modèles utilisés = ${testMode ? 'TEST_MODELS' : 'NORMAL_MODELS'}`);
+      console.log(`[GenerateImage] ${nodeLabel}: endpoint=${endpoint}, model=${selectedModel}`);
+      
+      // Paramètres de base
+      const baseParams = { nodeId, prompt, projectId, aspectRatio, testMode };
+      
+      // Paramètres spécifiques selon le type (edit ou generate)
+      const body = images.length > 0 
+        ? { 
+            ...baseParams, 
+            model: models.edit, 
+            sourceImages: images.map(i => i.url),
+            // Paramètres spécifiques pour flux-kontext-dev/multi-ultra-fast en mode test
+            ...(testMode && { numInferenceSteps: 5, guidanceScale: 2.5 }),
+          }
+        : { ...baseParams, model: models.textToImage };
+      
+      console.log(`[GenerateImage] ${nodeLabel}: Appel API...`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -488,26 +699,38 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       });
 
       if (!response.ok) {
-        console.error(`[GenerationPanel] Erreur API image:`, await response.text());
+        const errorText = await response.text();
+        console.error(`[GenerateImage] ❌ ${nodeLabel}: Erreur API ${response.status}:`, errorText);
         return null;
       }
 
       const result = await response.json();
+      console.log(`[GenerateImage] ${nodeLabel}: Réponse API reçue`);
+      
       const imageUrl = result.nodeData?.generated?.url || result.nodeData?.url;
       
       if (imageUrl) {
+        const usedModel = images.length > 0 ? models.edit : models.textToImage;
+        console.log(`[GenerateImage] ✅ ${nodeLabel}: Image générée avec ${usedModel}${testMode ? ' (MODE TEST)' : ''}!`, imageUrl.slice(0, 60));
+        
+        // Stocker TOUTES les données retournées par l'API, incluant width/height
+        const apiNodeData = result.nodeData || {};
         updateNodeData(nodeId, {
-          generated: result.nodeData?.generated || { url: imageUrl, type: 'image/png' },
+          ...apiNodeData, // Inclure width, height, isGenerated, etc.
+          generated: apiNodeData.generated || { url: imageUrl, type: 'image/png' },
           url: imageUrl,
+          model: usedModel, // Stocker le modèle utilisé (pour l'affichage sous le nœud)
           generating: false,
           generatingStartTime: undefined,
+          isGenerated: true, // Marquer explicitement comme généré
         });
         return imageUrl;
       }
 
+      console.error(`[GenerateImage] ❌ ${nodeLabel}: Pas d'URL dans la réponse:`, result);
       return null;
     } catch (error) {
-      console.error(`[GenerationPanel] Erreur génération image:`, error);
+      console.error(`[GenerateImage] ❌ ${nodeLabel}: Exception:`, error);
       return null;
     }
   };
@@ -597,7 +820,8 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   };
 
 
-  // ========== LANCEMENT PRINCIPAL ==========
+  // ========== LANCEMENT PRINCIPAL - GÉNÉRATION CONTINUE ==========
+  // Dès qu'un nœud finit, les nœuds qui en dépendent sont lancés immédiatement
   const startGeneration = useCallback(async () => {
     if (isGenerating) return;
     
@@ -616,81 +840,161 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       return;
     }
     
-    toast.info(`🚀 Lancement de la génération de ${totalToGenerate} nœuds...`);
+    toast.info(`🚀 Génération continue de ${totalToGenerate} nœuds...`);
     
     let successCount = 0;
     let errorCount = 0;
-    let waveNumber = 0;
+    const inProgress = new Set<string>(); // IDs des nœuds en cours de génération
+    const completed = new Set<string>(); // IDs des nœuds terminés
+    let abortedRef = false;
+    
+    // Fonction pour générer un nœud et lancer les suivants dès qu'il finit
+    const generateNode = async (nodeId: string, nodeType: 'image' | 'video', nodeLabel: string) => {
+      if (abortedRef || completed.has(nodeId)) return;
+      
+      inProgress.add(nodeId);
+      updateNodeData(nodeId, { generating: true, generatingStartTime: Date.now() });
+      setNodeList(analyzeCanvas());
+      
+      try {
+        let success = false;
+        
+        if (nodeType === 'image') {
+          const url = await generateImage(nodeId);
+          success = url !== null;
+        } else {
+          const url = await generateVideo(nodeId);
+          success = url !== null;
+          if (success && sendToDVR) {
+            await sendVideoToDVR(nodeId);
+          }
+        }
+        
+        updateNodeData(nodeId, { generating: false, generatingStartTime: undefined });
+        inProgress.delete(nodeId);
+        completed.add(nodeId);
+        
+        if (success) {
+          successCount++;
+          console.log(`[Generation] ✅ ${nodeLabel} terminé (${successCount} succès)`);
+          
+          // Rafraîchir la Media Library IMMÉDIATEMENT après chaque génération réussie
+          // Cela permet à l'utilisateur de voir les nouvelles images apparaître en temps réel
+          fetchMedias();
+        } else {
+          errorCount++;
+          console.log(`[Generation] ❌ ${nodeLabel} échoué`);
+        }
+        
+        // Peupler les collections qui sont maintenant prêtes
+        populateReadyCollections();
+        
+        // Mettre à jour l'affichage
+        setNodeList(analyzeCanvas());
+        setCurrentPhase(`⚡ ${inProgress.size} en cours • ✅ ${successCount} • ❌ ${errorCount}`);
+        
+        // Lancer les nouveaux nœuds qui sont devenus ready
+        await launchReadyNodes();
+        
+      } catch (error) {
+        console.error(`[Generation] ❌ EXCEPTION ${nodeLabel}:`, error);
+        updateNodeData(nodeId, { generating: false, generatingStartTime: undefined, error: String(error) });
+        inProgress.delete(nodeId);
+        completed.add(nodeId); // Marquer comme "terminé" pour éviter les boucles infinies
+        errorCount++;
+      }
+    };
+    
+    // Fonction pour lancer tous les nœuds ready qui ne sont pas déjà en cours
+    const launchReadyNodes = async () => {
+      if (abortedRef) return;
+      
+      const currentList = analyzeCanvas();
+      const readyNodes = currentList.filter(n => 
+        n.status === 'ready' && 
+        (n.type === 'image' || n.type === 'video') &&
+        !inProgress.has(n.id) &&
+        !completed.has(n.id)
+      );
+      
+      // DEBUG: Log des nœuds en attente pour comprendre les blocages
+      const waitingNodes = currentList.filter(n => 
+        n.status === 'waiting' && 
+        (n.type === 'image' || n.type === 'video') &&
+        !completed.has(n.id)
+      );
+      if (waitingNodes.length > 0) {
+        console.log(`[Generation] 📋 ${waitingNodes.length} nœuds EN ATTENTE:`);
+        for (const w of waitingNodes.slice(0, 5)) {
+          console.log(`[Generation]   ⏳ ${w.label} attend: ${w.waitingFor.join(', ') || 'RIEN?'}`);
+        }
+      }
+      
+      if (readyNodes.length > 0) {
+        console.log(`[Generation] 🚀 Lancement de ${readyNodes.length} nouveaux nœuds ready:`, readyNodes.map(n => n.label));
+        
+        // Lancer en parallèle SANS attendre (fire and forget)
+        for (const node of readyNodes) {
+          generateNode(node.id, node.type as 'image' | 'video', node.label);
+        }
+      }
+    };
     
     try {
-      while (!aborted) {
-        list = analyzeCanvas();
-        setNodeList(list);
+      // Lancer la première vague de nœuds ready
+      await launchReadyNodes();
+      
+      // Boucle d'attente : tant qu'il y a des nœuds en cours ou des nœuds à lancer
+      while (!abortedRef) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Check toutes les 500ms
         
-        const readyNodes = list.filter(n => n.status === 'ready' && (n.type === 'image' || n.type === 'video'));
+        // Peupler les collections à chaque itération
+        const populatedCount = populateReadyCollections();
         
-        if (readyNodes.length === 0) {
-          const waitingNodes = list.filter(n => n.status === 'waiting' && (n.type === 'image' || n.type === 'video'));
-          if (waitingNodes.length === 0) break;
-          console.log(`[GenerationPanel] ${waitingNodes.length} nœuds en attente mais aucun prêt`);
-          break;
+        // Si des collections ont été peuplées, attendre un peu pour la synchro React Flow
+        if (populatedCount > 0) {
+          console.log(`[Generation] ${populatedCount} collections peuplées, attente synchro...`);
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
         
-        waveNumber++;
-        const readyImages = readyNodes.filter(n => n.type === 'image');
-        const readyVideos = readyNodes.filter(n => n.type === 'video');
+        const currentList = analyzeCanvas();
+        const waitingNodes = currentList.filter(n => 
+          n.status === 'waiting' && 
+          (n.type === 'image' || n.type === 'video') &&
+          !completed.has(n.id)
+        );
+        const readyNodes = currentList.filter(n => 
+          n.status === 'ready' && 
+          (n.type === 'image' || n.type === 'video') &&
+          !inProgress.has(n.id) &&
+          !completed.has(n.id)
+        );
         
-        // Phase Images
-        if (readyImages.length > 0) {
-          setCurrentPhase(`🎨 Vague ${waveNumber} - ${readyImages.length} images`);
-          toast.info(`🎨 Vague ${waveNumber} : ${readyImages.length} images en parallèle`);
-          
-          for (const node of readyImages) {
-            updateNodeData(node.id, { generating: true, generatingStartTime: Date.now() });
-          }
-          
-          const imageResults = await Promise.all(
-            readyImages.map(async (node) => {
-              if (aborted) return { node, success: false };
-              const url = await generateImage(node.id);
-              return { node, success: url !== null };
-            })
-          );
-          
-          for (const { node, success } of imageResults) {
-            updateNodeData(node.id, { generating: false, generatingStartTime: undefined });
-            if (success) successCount++;
-            else errorCount++;
-          }
+        // Lancer les nouveaux ready (au cas où le callback n'a pas tout lancé)
+        if (readyNodes.length > 0) {
+          await launchReadyNodes();
         }
         
-        // Phase Vidéos
-        if (readyVideos.length > 0 && !aborted) {
-          setCurrentPhase(`🎬 Vague ${waveNumber} - ${readyVideos.length} vidéos`);
-          toast.info(`🎬 Vague ${waveNumber} : ${readyVideos.length} vidéos en parallèle`);
-          
-          for (const node of readyVideos) {
-            updateNodeData(node.id, { generating: true, generatingStartTime: Date.now() });
-          }
-          
-          const videoResults = await Promise.all(
-            readyVideos.map(async (node) => {
-              if (aborted) return { node, success: false };
-              const url = await generateVideo(node.id);
-              return { node, success: url !== null };
-            })
-          );
-          
-          for (const { node, success } of videoResults) {
-            updateNodeData(node.id, { generating: false, generatingStartTime: undefined });
-            if (success) {
-              successCount++;
-              if (sendToDVR) await sendVideoToDVR(node.id);
-            } else {
-              errorCount++;
+        // Vérifier si on a terminé
+        if (inProgress.size === 0 && readyNodes.length === 0) {
+          if (waitingNodes.length === 0) {
+            console.log(`[Generation] ✅ TERMINÉ - tout est généré! (${successCount} succès, ${errorCount} erreurs)`);
+            break; // Tout est terminé
+          } else {
+            // Il reste des nœuds en attente mais rien n'est prêt - blocage
+            console.log(`[Generation] ⚠️ BLOCAGE DÉTECTÉ`);
+            console.log(`[Generation]   - ${waitingNodes.length} nœuds en attente`);
+            console.log(`[Generation]   - 0 nœuds prêts`);
+            console.log(`[Generation]   - ${inProgress.size} en cours`);
+            console.log(`[Generation]   - ${completed.size} complétés`);
+            for (const w of waitingNodes.slice(0, 10)) {
+              console.log(`[Generation]   BLOQUÉ: ${w.label} attend: ${w.waitingFor.join(', ')}`);
             }
+            break;
           }
         }
+        
+        setNodeList(currentList);
       }
       
       setCurrentPhase('✅ Terminé');
@@ -704,7 +1008,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       setCurrentPhase('');
       fetchMedias();
     }
-  }, [isGenerating, aborted, analyzeCanvas, sendToDVR, updateNodeData, fetchMedias]);
+  }, [isGenerating, analyzeCanvas, sendToDVR, updateNodeData, fetchMedias, populateReadyCollections, generateImage, generateVideo, sendVideoToDVR]);
 
   const cancelGeneration = () => {
     setAborted(true);
@@ -837,7 +1141,23 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           </div>
 
           {/* Options */}
-          <div className="flex-shrink-0 space-y-3 mt-4 pt-4 border-t border-zinc-800">
+          <div className="flex-shrink-0 space-y-2 mt-4 pt-4 border-t border-zinc-800">
+            {/* Test Mode */}
+            <label className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={(e) => setTestMode(e.target.checked)}
+                className="h-4 w-4 rounded border-amber-500"
+                disabled={isGenerating}
+              />
+              <div>
+                <p className="font-medium text-amber-400">⚡ Mode Test</p>
+                <p className="text-xs text-zinc-500">FLUX Schnell + Nano Banana simple (ultra rapide, basse qualité)</p>
+              </div>
+            </label>
+            
+            {/* DVR */}
             <label className="flex items-center gap-3 rounded-lg bg-zinc-900/50 p-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -872,6 +1192,20 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
                 </Button>
                 
                 {/* Bouton Reset */}
+                {/* Bouton Peupler Collections (DEBUG) */}
+                <Button
+                  onClick={() => {
+                    const count = populateReadyCollections();
+                    toast.info(`${count} collection(s) peuplée(s)`);
+                    setNodeList(analyzeCanvas());
+                  }}
+                  variant="outline"
+                  className="gap-2 border-amber-700 hover:bg-amber-900/30 text-amber-500"
+                  title="Forcer le peuplement des collections"
+                >
+                  <FolderIcon size={16} />
+                </Button>
+                
                 {stats.totalDone > 0 && (
                   <Button
                     onClick={() => {

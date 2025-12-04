@@ -39,7 +39,8 @@ export const ImagePrimitive = ({
   const isUpscaled = upscaleStatus === 'completed';
 
   // L'URL de l'image à afficher (avant ou après upscale)
-  const imageUrl = data.content?.url;
+  // Vérifier dans l'ordre : upscale > generated > content > url direct
+  const imageUrl = data.upscale?.upscaledUrl || data.generated?.url || data.content?.url || data.url;
   
   // Hook pour détecter si l'image est expirée
   const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
