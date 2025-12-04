@@ -38,74 +38,122 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { createLocalProject, updateLocalProject, getLocalProjectById } from '@/lib/local-projects-store';
-import type { Brief, ProjectGenerationConfig, ReasoningLevel } from '@/types/brief';
+import type { Brief, ProjectGenerationConfig, ReasoningLevel, QualityLevel } from '@/types/brief';
+import { 
+  DEFAULT_CHARACTER_CONFIG, 
+  DEFAULT_DECOR_CONFIG, 
+  DEFAULT_QUALITY_MODEL_CONFIG 
+} from '@/lib/brief-defaults';
 
-const DEFAULT_SYSTEM_PROMPT = `Tu es un assistant IA expert en création de scénarios vidéo.
+// Le DEFAULT_SYSTEM_PROMPT est chargé depuis localStorage ou utilise la valeur par défaut
+const STORAGE_KEY_SYSTEM_PROMPT = 'brief-system-prompt-default';
 
-## MISSION
-Analyse le brief et génère une structure de projet complète au format JSON.
+const BUILTIN_SYSTEM_PROMPT = `Tu es un scénariste et réalisateur expert, doté d'une sensibilité littéraire et cinématographique aiguë.
 
-## FORMAT DE SORTIE (JSON STRICT)
-Tu DOIS retourner UNIQUEMENT un JSON valide sans markdown:
+## ARCHITECTURE DU PROJET
+
+### 1. PERSONNAGES - Descriptions exhaustives (SEUL ENDROIT)
+Chaque personnage a UN prompt "primary" extrêmement détaillé décrivant son apparence physique complète.
+C'est LE SEUL ENDROIT où les descriptions physiques apparaissent.
+
+### 2. DÉCORS - Descriptions exhaustives (SEUL ENDROIT)
+Chaque décor a UN prompt "primary" extrêmement détaillé décrivant l'environnement complet.
+
+### 3. PLANS - Trois prompts distincts par plan
+
+#### A. prompt (ACTION VIDÉO)
+Décrit l'ACTION, le MOUVEMENT, la PSYCHOLOGIE du plan. Sera utilisé pour animer la vidéo.
+
+**STYLE REQUIS :** Littéraire, raffiné, cinématographique.
+- Verbes d'action précis et évocateurs
+- Mouvements de caméra (travelling, panoramique...)
+- Rythme (lent, saccadé, fluide...)
+- Psychologie (tension, hésitation...)
+
+**INTERDICTION ABSOLUE :** Ne JAMAIS décrire l'apparence physique.
+Utiliser uniquement des DÉSIGNATIONS SIMPLES : "l'homme", "la femme", "le vieux".
+
+**EXEMPLE :**
+"L'homme s'avance vers elle d'un pas hésitant. Elle se retourne lentement. Travelling avant, tension croissante."
+
+#### B. promptImageDepart (COMPOSITION DÉBUT)
+Décrit la COMPOSITION SPATIALE au DÉBUT du plan (21:9 cinémascope).
+Position des personnages dans le cadre, postures, rapport au décor.
+
+**EXEMPLE :**
+"L'homme de dos au premier plan gauche. La femme au fond, assise, de profil."
+
+#### C. promptImageFin (COMPOSITION FIN)
+Décrit la COMPOSITION SPATIALE à la FIN du plan (21:9 cinémascope).
+DÉDUITE de l'action : si "l'homme s'approche", la fin montre le rapprochement.
+
+**EXEMPLE :**
+"L'homme et la femme face à face, proches, au centre du cadre."
+
+## FORMAT JSON OBLIGATOIRE
 
 {
-  "title": "Titre du projet",
-  "synopsis": "Synopsis général (2-3 phrases)",
-  "characters": [
-    {
-      "id": "perso-prenom",
-      "name": "Prénom",
-      "description": "Description complète",
-      "referenceCode": "[PERSO:Prénom]",
-      "prompts": {
-        "face": "Portrait frontal détaillé...",
-        "profile": "Portrait de profil détaillé...",
-        "fullBody": "Photo en pied détaillée...",
-        "back": "Vue de dos détaillée..."
-      }
+  "title": "Titre",
+  "synopsis": "Synopsis (2-3 phrases)",
+  "characters": [{
+    "id": "perso-prenom",
+    "name": "Prénom",
+    "description": "Description narrative",
+    "referenceCode": "[PERSO:Prénom]",
+    "prompts": {
+      "primary": "[DESCRIPTION PHYSIQUE 200+ mots]",
+      "face": "Génère une image précise du visage de face...",
+      "profile": "Génère une image précise du visage de profil...",
+      "back": "Génère une image précise de ce personnage vu de dos..."
     }
-  ],
-  "locations": [
-    {
-      "id": "lieu-nom",
-      "name": "Nom du lieu",
-      "description": "Description complète",
-      "referenceCode": "[LIEU:Nom]",
-      "prompts": {
-        "angle1": "Vue principale détaillée...",
-        "angle2": "Vue alternative...",
-        "angle3": "Vue ambiance/détail..."
-      }
+  }],
+  "decors": [{
+    "id": "decor-nom",
+    "name": "Nom",
+    "description": "Description",
+    "referenceCode": "[DECOR:Nom]",
+    "prompts": {
+      "primary": "[DESCRIPTION DÉCOR 150+ mots]",
+      "angle2": "Propose un angle très différent...",
+      "plongee": "Vue en plongée top down...",
+      "contrePlongee": "Vue en forte contre plongée..."
     }
-  ],
-  "scenes": [
-    {
-      "id": "scene-1",
-      "sceneNumber": 1,
-      "title": "Titre de la scène",
-      "description": "Synopsis de la scène",
-      "plans": [
-        {
-          "id": "plan-1-1",
-          "planNumber": 1,
-          "prompt": "Prompt COMPLET et AUTO-SUFFISANT pour la vidéo...",
-          "characterRefs": ["perso-prenom"],
-          "locationRef": "lieu-nom",
-          "duration": 5,
-          "cameraMovement": "Description mouvement caméra"
-        }
-      ]
-    }
-  ],
+  }],
+  "scenes": [{
+    "id": "scene-1",
+    "sceneNumber": 1,
+    "title": "Titre",
+    "description": "Synopsis",
+    "plans": [{
+      "id": "plan-1-1",
+      "planNumber": 1,
+      "prompt": "[ACTION LITTÉRAIRE - SANS description physique]",
+      "promptImageDepart": "[COMPOSITION SPATIALE DÉBUT]",
+      "promptImageFin": "[COMPOSITION SPATIALE FIN]",
+      "characterRefs": ["perso-prenom"],
+      "decorRef": "decor-nom",
+      "duration": 5,
+      "cameraMovement": "Mouvement caméra"
+    }]
+  }],
   "totalPlans": 4,
   "estimatedDuration": 60
 }
 
-## RÈGLES CRITIQUES
-1. Chaque prompt doit être AUTONOME - décrire TOUT (qui, où, quoi, comment)
-2. Inclure : vêtements, posture, expression, éclairage, ambiance
-3. Style : cinématographique, professionnel, 4K
-4. Plans de 3-8 secondes`;
+## RÈGLES ABSOLUES
+1. Descriptions physiques UNIQUEMENT dans prompts "primary"
+2. Dans les plans : "l'homme", "la femme" - JAMAIS de descriptions
+3. promptImageFin = conséquence logique de l'action
+4. Les prompts variantes sont FIXES, ne pas modifier`;
+
+// Helper pour charger le system prompt sauvegardé
+function getDefaultSystemPrompt(): string {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(STORAGE_KEY_SYSTEM_PROMPT);
+    if (saved) return saved;
+  }
+  return BUILTIN_SYSTEM_PROMPT;
+}
 
 export default function GenerateProjectPage() {
   const router = useRouter();
@@ -118,6 +166,7 @@ export default function GenerateProjectPage() {
   const [showReasoningDialog, setShowReasoningDialog] = useState(false);
   const [reasoning, setReasoning] = useState<string>('');
   const [currentPhase, setCurrentPhase] = useState<string>('');
+  const [savePromptAsDefault, setSavePromptAsDefault] = useState(false);
   const [phaseStatus, setPhaseStatus] = useState<Record<string, 'pending' | 'running' | 'done'>>({
     analysis: 'pending',
     canvas: 'pending',
@@ -133,22 +182,34 @@ export default function GenerateProjectPage() {
   }, [reasoning, showReasoningDialog]);
   
   const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
-    aiModel: 'gpt-4o',
+    aiModel: 'gpt-5.1-2025-11-13', // GPT-5.1 par défaut pour des prompts de qualité
     reasoningLevel: 'high',
     generateMediaDirectly: false,
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: BUILTIN_SYSTEM_PROMPT, // Sera mis à jour dans useEffect
     customInstructions: '',
+    quality: 'elevee' as QualityLevel, // Qualité élevée par défaut
     settings: {
-      videoModel: 'kling-o1-i2v',
+      videoModel: 'kling-v2.6-pro-first-last', // KLING v2.6 pour first+last frame
       imageModel: 'nano-banana-pro-ultra-wavespeed',
       videoCopies: 4,
       videoDuration: 10, // 10 secondes par défaut
       videoAspectRatio: '16:9', // 16:9 par défaut
       testMode: false,
     },
+    advancedPromptConfig: {
+      characterConfig: DEFAULT_CHARACTER_CONFIG,
+      decorConfig: DEFAULT_DECOR_CONFIG,
+      modelConfig: DEFAULT_QUALITY_MODEL_CONFIG,
+    },
   });
   
   const [projectName, setProjectName] = useState('');
+
+  // Charger le system prompt sauvegardé au montage
+  useEffect(() => {
+    const savedPrompt = getDefaultSystemPrompt();
+    setConfig(prev => ({ ...prev, systemPrompt: savedPrompt }));
+  }, []);
 
   useEffect(() => {
     loadBrief();
@@ -183,8 +244,6 @@ export default function GenerateProjectPage() {
 
     try {
       // ========== PHASE 1 : ANALYSE ==========
-      setReasoning('🧠 Phase 1 : Analyse du brief...\n\n');
-
       const response = await fetch('/api/briefs/generate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,10 +284,12 @@ export default function GenerateProjectPage() {
           switch (data.type) {
             case 'phase_start':
               setCurrentPhase(data.phase);
-              setReasoning(prev => prev + `\n${data.message}\n\n`);
+              // Affichage propre sans doublon ni double emoji
               if (data.phase === 'analysis') {
+                setReasoning(data.message + '\n');
                 setPhaseStatus(prev => ({ ...prev, analysis: 'running' }));
               } else if (data.phase === 'canvas_creation') {
+                setReasoning(prev => prev + `\n${data.message}\n`);
                 setPhaseStatus(prev => ({ ...prev, analysis: 'done', canvas: 'running' }));
               }
               break;
@@ -289,12 +350,12 @@ export default function GenerateProjectPage() {
                 const s = data.summary;
                 setReasoning(prev => prev + `\n📊 Résumé :\n`);
                 setReasoning(prev => prev + `   • ${s.characters} personnage(s)\n`);
-                setReasoning(prev => prev + `   • ${s.locations} lieu(x)\n`);
+                setReasoning(prev => prev + `   • ${s.locations || s.decors || 0} décor(s)\n`);
                 setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
                 setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
                 setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
                 if (s.imagesToGenerate) {
-                  setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer\n`);
+                  setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer (primaires + variantes)\n`);
                 }
                 if (s.videosToGenerate) {
                   setReasoning(prev => prev + `   • ${s.videosToGenerate} vidéos à générer\n`);
@@ -355,19 +416,26 @@ export default function GenerateProjectPage() {
     }
   };
 
-  // Composant indicateur de phase
+  // Composant indicateur de phase - Style compact (sans spinner)
   const PhaseIndicator = ({ phase, label }: { phase: string; label: string }) => {
     const status = phaseStatus[phase];
+    const isDone = status === 'done';
+    const isRunning = status === 'running';
+    
     return (
-      <div className={`flex items-center gap-2 ${status === 'running' ? 'text-violet-400' : status === 'done' ? 'text-emerald-400' : 'text-muted-foreground'}`}>
-        {status === 'done' ? (
-          <CheckCircle2Icon size={16} />
-        ) : status === 'running' ? (
-          <Loader2Icon size={16} className="animate-spin" />
+      <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+        isDone 
+          ? 'bg-[#00ff41]/20 text-[#00ff41]' 
+          : isRunning 
+            ? 'bg-[#00ff41]/10 text-[#00ff41]' 
+            : 'bg-zinc-800 text-zinc-500'
+      }`}>
+        {isDone ? (
+          <CheckCircle2Icon size={12} />
         ) : (
-          <CircleDotIcon size={16} />
+          <CircleDotIcon size={12} />
         )}
-        <span className="text-sm font-medium">{label}</span>
+        <span>{label}</span>
       </div>
     );
   };
@@ -444,11 +512,15 @@ export default function GenerateProjectPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gpt-4o">GPT-4o (Recommandé)</SelectItem>
-                    <SelectItem value="gpt-4o-mini">GPT-4o Mini (Rapide)</SelectItem>
-                    <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                    <SelectItem value="gpt-5.1-2025-11-13">GPT-5.1 (Recommandé)</SelectItem>
+                    <SelectItem value="o1-2024-12-17">o1 (Reasoning)</SelectItem>
+                    <SelectItem value="gpt-4o">GPT-4o (Rapide)</SelectItem>
+                    <SelectItem value="gpt-4o-mini">GPT-4o Mini (Économique)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  GPT-5.1 génère des prompts beaucoup plus détaillés
+                </p>
               </div>
 
               {/* Niveau de raisonnement */}
@@ -499,6 +571,62 @@ export default function GenerateProjectPage() {
               >
                 Voir / Éditer
               </Button>
+            </div>
+          </Card>
+
+          {/* Configuration Qualité */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <SparklesIcon size={20} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold">Qualité de génération</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Sélecteur de qualité */}
+              <div className="col-span-2">
+                <Label className="mb-3 block">Niveau de qualité des images</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, quality: 'normal' as QualityLevel })}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      config.quality === 'normal' 
+                        ? 'border-violet-500 bg-violet-500/10' 
+                        : 'border-border/50 hover:border-border'
+                    }`}
+                  >
+                    <div className="font-semibold mb-1">Normal</div>
+                    <p className="text-xs text-muted-foreground">
+                      Génération rapide, qualité standard
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Modèles : nano-banana / nano-banana edit
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, quality: 'elevee' as QualityLevel })}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      config.quality === 'elevee' 
+                        ? 'border-emerald-500 bg-emerald-500/10' 
+                        : 'border-border/50 hover:border-border'
+                    }`}
+                  >
+                    <div className="font-semibold mb-1 flex items-center gap-2">
+                      Élevée
+                      <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
+                        Recommandé
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Qualité supérieure, résolution 2K
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Modèles : nano-banana-pro / edit
+                    </p>
+                  </button>
+                </div>
+              </div>
             </div>
           </Card>
 
@@ -633,56 +761,12 @@ export default function GenerateProjectPage() {
               </div>
             </div>
 
-            {/* Options si génération activée */}
+            {/* Info modèles automatiques */}
             {config.generateMediaDirectly && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 mt-6 border-t border-border/30">
-                <div>
-                  <Label htmlFor="imageModel" className="mb-2 flex items-center gap-2">
-                    <ImageIcon size={14} />
-                    Modèle d'images
-                  </Label>
-                  <Select
-                    value={config.settings?.imageModel}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, imageModel: value } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="imageModel">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nanobanana-pro">NanoBanana Pro</SelectItem>
-                      <SelectItem value="flux-pro">Flux Pro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="videoModel" className="mb-2 flex items-center gap-2">
-                    <VideoIcon size={14} />
-                    Modèle de vidéos
-                  </Label>
-                  <Select
-                    value={config.settings?.videoModel}
-                    onValueChange={(value) => 
-                      setConfig({ 
-                        ...config, 
-                        settings: { ...config.settings, videoModel: value } 
-                      })
-                    }
-                  >
-                    <SelectTrigger id="videoModel">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="kling-o1">Kling O1 (WaveSpeed)</SelectItem>
-                      <SelectItem value="seedream">Seedream</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="pt-4 mt-4 border-t border-border/30">
+                <p className="text-xs text-muted-foreground">
+                  📸 Images : nano-banana-pro (2K) • 🎬 Vidéos : Kling O1 reference-to-video (max 7 images)
+                </p>
               </div>
             )}
           </Card>
@@ -719,75 +803,114 @@ export default function GenerateProjectPage() {
 
       {/* Dialog System Prompt */}
       <Dialog open={showPromptDialog} onOpenChange={setShowPromptDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>System Prompt</DialogTitle>
             <DialogDescription>
-              Ce prompt guide l'IA dans l'analyse du brief.
+              Ce prompt guide l'IA dans l'analyse du brief et la génération des plans.
             </DialogDescription>
           </DialogHeader>
           
-          <Textarea
-            value={config.systemPrompt}
-            onChange={(e) => setConfig({ ...config, systemPrompt: e.target.value })}
-            rows={20}
-            className="font-mono text-xs"
-          />
+          <ScrollArea className="flex-1 min-h-0">
+            <Textarea
+              value={config.systemPrompt}
+              onChange={(e) => setConfig({ ...config, systemPrompt: e.target.value })}
+              rows={25}
+              className="font-mono text-xs"
+            />
+          </ScrollArea>
+          
+          {/* Checkbox sauvegarder par défaut */}
+          <div className="flex items-center gap-3 py-3 px-1 border-t border-border/30">
+            <Checkbox
+              id="saveAsDefault"
+              checked={savePromptAsDefault}
+              onCheckedChange={(checked) => setSavePromptAsDefault(checked as boolean)}
+            />
+            <Label htmlFor="saveAsDefault" className="text-sm cursor-pointer">
+              Sauvegarder comme prompt par défaut
+            </Label>
+          </div>
           
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setConfig({ ...config, systemPrompt: DEFAULT_SYSTEM_PROMPT })}
+              onClick={() => {
+                setConfig({ ...config, systemPrompt: BUILTIN_SYSTEM_PROMPT });
+                // Effacer aussi la sauvegarde
+                localStorage.removeItem(STORAGE_KEY_SYSTEM_PROMPT);
+                setSavePromptAsDefault(false);
+              }}
             >
-              Réinitialiser
+              Réinitialiser (défaut)
             </Button>
-            <Button onClick={() => setShowPromptDialog(false)}>
-              Fermer
+            <Button 
+              onClick={() => {
+                // Sauvegarder si demandé
+                if (savePromptAsDefault && config.systemPrompt) {
+                  localStorage.setItem(STORAGE_KEY_SYSTEM_PROMPT, config.systemPrompt);
+                }
+                setShowPromptDialog(false);
+              }}
+            >
+              {savePromptAsDefault ? 'Sauvegarder & Fermer' : 'Fermer'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Raisonnement IA */}
+      {/* Dialog Génération - UI épurée */}
       <Dialog open={showReasoningDialog} onOpenChange={(open) => !generating && setShowReasoningDialog(open)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              🧠 Génération du projet
-              {generating && <Loader2Icon size={16} className="animate-spin" />}
-            </DialogTitle>
-            <DialogDescription>
-              Suivez le processus de création en temps réel
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Indicateurs de phases */}
-          <div className="flex-shrink-0 flex items-center gap-6 py-3 px-4 bg-muted/30 rounded-lg">
-            <PhaseIndicator phase="analysis" label="Analyse" />
-            <div className="h-px w-8 bg-border" />
-            <PhaseIndicator phase="canvas" label="Canvas" />
-            <div className="h-px w-8 bg-border" />
-            <PhaseIndicator phase="redirect" label="Terminé" />
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col overflow-hidden bg-zinc-950 border-zinc-800">
+          {/* Header minimaliste */}
+          <div className="flex-shrink-0 flex items-center justify-between pb-4 border-b border-zinc-800">
+            <div className="flex items-center gap-3">
+              {generating ? (
+                <div className="w-8 h-8 rounded-full bg-[#00ff41]/20 flex items-center justify-center">
+                  <Loader2Icon size={18} className="animate-spin text-[#00ff41]" />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <CheckCircle2Icon size={18} className="text-emerald-400" />
+                </div>
+              )}
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  {generating ? 'Génération en cours' : 'Génération terminée'}
+                </h2>
+                <p className="text-xs text-zinc-500">GPT-5.1 • Reasoning High</p>
+              </div>
+            </div>
+            
+            {/* Phases en mode compact */}
+            <div className="flex items-center gap-1">
+              <PhaseIndicator phase="analysis" label="Analyse" />
+              <div className="w-4 h-px bg-zinc-700" />
+              <PhaseIndicator phase="canvas" label="Canvas" />
+              <div className="w-4 h-px bg-zinc-700" />
+              <PhaseIndicator phase="redirect" label="OK" />
+            </div>
           </div>
           
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full max-h-[50vh] w-full rounded-md border p-4 bg-black/20">
-              <pre className="text-sm whitespace-pre-wrap font-mono text-emerald-400/90">
-                {reasoning || 'En attente...'}
-                <div ref={reasoningEndRef} />
-              </pre>
-            </ScrollArea>
+          {/* Zone de log - Sans bordure interne */}
+          <div className="flex-1 min-h-0 overflow-auto py-4">
+            <pre className="text-sm whitespace-pre-wrap font-sans text-zinc-300 leading-relaxed">
+              {reasoning || '⏳ Initialisation...'}
+            </pre>
+            <div ref={reasoningEndRef} />
           </div>
           
-          <DialogFooter>
-            <Button 
-              onClick={() => setShowReasoningDialog(false)}
-              disabled={generating}
-              variant={generating ? 'outline' : 'default'}
-            >
-              {generating ? 'Génération en cours...' : 'Fermer'}
-            </Button>
-          </DialogFooter>
+          {/* Footer discret */}
+          {!generating && (
+            <div className="flex-shrink-0 pt-4 border-t border-zinc-800">
+              <Button 
+                onClick={() => setShowReasoningDialog(false)}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white"
+              >
+                Continuer vers le canvas
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

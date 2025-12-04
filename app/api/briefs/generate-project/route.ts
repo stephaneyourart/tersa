@@ -15,45 +15,106 @@ import type { GeneratedProjectStructure } from '@/types/generated-project';
 import { generateCanvasFromProject } from '@/lib/brief-canvas-generator';
 
 // ========== SYSTEM PROMPT ==========
-const SYSTEM_PROMPT_ANALYSIS = `Tu es un assistant expert en création de vidéos et scénarios.
-Tu analyses des briefs créatifs et génères une structure de projet complète.
+// Import des configurations par défaut
+import { 
+  DEFAULT_CHARACTER_SYSTEM_PROMPT, 
+  DEFAULT_DECOR_SYSTEM_PROMPT,
+  DEFAULT_CHARACTER_VARIANT_PROMPTS,
+  DEFAULT_DECOR_VARIANT_PROMPTS 
+} from '@/lib/brief-defaults';
 
-## Ta mission
-Analyser le brief fourni et générer un JSON structuré contenant :
-- Les personnages avec leurs descriptions et prompts d'images
-- Les lieux avec leurs descriptions et prompts d'angles
-- Les scènes découpées en plans numérotés
+const SYSTEM_PROMPT_ANALYSIS = `Tu es un scénariste et réalisateur expert, doté d'une sensibilité littéraire et cinématographique aiguë.
+Tu analyses des briefs créatifs et génères une structure de projet complète pour la production vidéo.
 
-## Format de sortie OBLIGATOIRE
-Tu DOIS retourner UNIQUEMENT un JSON valide (pas de markdown, pas de commentaires) avec cette structure exacte :
+## ARCHITECTURE DU PROJET
+
+### 1. PERSONNAGES - Descriptions exhaustives (SEUL ENDROIT)
+Chaque personnage a UN prompt "primary" extrêmement détaillé décrivant son apparence physique complète.
+C'est LE SEUL ENDROIT où les descriptions physiques apparaissent.
+
+### 2. DÉCORS - Descriptions exhaustives (SEUL ENDROIT)  
+Chaque décor a UN prompt "primary" extrêmement détaillé décrivant l'environnement complet.
+C'est LE SEUL ENDROIT où les descriptions de décor apparaissent.
+
+### 3. PLANS - Trois prompts distincts par plan
+
+#### A. prompt (ACTION VIDÉO)
+Ce prompt décrit l'ACTION, le MOUVEMENT, la PSYCHOLOGIE du plan.
+Il sera utilisé pour animer la vidéo entre l'image de départ et l'image de fin.
+
+**STYLE REQUIS :** Littéraire, raffiné, cinématographique.
+- Verbes d'action précis et évocateurs
+- Mouvements de caméra (travelling, panoramique, plan fixe...)
+- Rythme (lent, saccadé, fluide...)
+- Psychologie des personnages (tension, soulagement, hésitation...)
+- Atmosphère (oppressante, légère, suspendue...)
+
+**INTERDICTION ABSOLUE :** Ne JAMAIS décrire l'apparence physique des personnages ou des décors.
+Utiliser uniquement des DÉSIGNATIONS SIMPLES : "l'homme", "la femme", "le vieux", "l'enfant".
+
+**EXEMPLE :**
+"L'homme s'avance vers elle d'un pas hésitant, le regard fuyant. Elle se retourne lentement. Travelling avant accompagnant le rapprochement, tension croissante dans l'espace qui se réduit entre eux."
+
+#### B. promptImageDepart (COMPOSITION VISUELLE DÉBUT)
+Décrit la COMPOSITION SPATIALE de l'image au DÉBUT du plan.
+Cette image sera générée en 21:9 (cinémascope) par édition depuis les collections.
+
+**CONTENU :** Position des personnages dans le cadre, rapport au décor, postures.
+**STYLE :** Descriptif, spatial, cinématographique (comme une indication de mise en scène).
+
+**EXEMPLE :**
+"L'homme de dos au premier plan gauche, face à la porte. La femme au fond, assise à son bureau, de profil."
+
+#### C. promptImageFin (COMPOSITION VISUELLE FIN)
+Décrit la COMPOSITION SPATIALE de l'image à la FIN du plan.
+Cette image sera générée en 21:9 (cinémascope) par édition depuis les collections.
+
+**LOGIQUE :** DÉDUIRE cette composition de l'action décrite dans le prompt principal.
+Si l'action est "l'homme s'approche", la fin montre le résultat de ce rapprochement.
+
+**EXEMPLE :**
+"L'homme et la femme face à face, proches, au centre du cadre. Tension dans leurs regards."
+
+---
+
+## RÈGLES POUR LES PROMPTS PRIMAIRES DE PERSONNAGES
+${DEFAULT_CHARACTER_SYSTEM_PROMPT}
+
+## RÈGLES POUR LES PROMPTS PRIMAIRES DE DÉCORS  
+${DEFAULT_DECOR_SYSTEM_PROMPT}
+
+---
+
+## FORMAT JSON OBLIGATOIRE
 
 {
   "title": "Titre du projet",
-  "synopsis": "Synopsis général du projet (2-3 phrases)",
+  "synopsis": "Synopsis général (2-3 phrases)",
   "characters": [
     {
       "id": "perso-prenom",
       "name": "Prénom",
-      "description": "Description complète du personnage",
+      "description": "Description narrative du personnage",
       "referenceCode": "[PERSO:Prénom]",
       "prompts": {
-        "face": "Prompt pour portrait frontal...",
-        "profile": "Prompt pour portrait de profil...",
-        "fullBody": "Prompt pour photo en pied de face...",
-        "back": "Prompt pour photo de dos..."
+        "primary": "[DESCRIPTION PHYSIQUE EXHAUSTIVE - 200+ mots minimum]",
+        "face": "${DEFAULT_CHARACTER_VARIANT_PROMPTS.face}",
+        "profile": "${DEFAULT_CHARACTER_VARIANT_PROMPTS.profile}",
+        "back": "${DEFAULT_CHARACTER_VARIANT_PROMPTS.back}"
       }
     }
   ],
-  "locations": [
+  "decors": [
     {
-      "id": "lieu-nom",
-      "name": "Nom du lieu",
-      "description": "Description complète du lieu",
-      "referenceCode": "[LIEU:Nom]",
+      "id": "decor-nom",
+      "name": "Nom du décor",
+      "description": "Description narrative du décor",
+      "referenceCode": "[DECOR:Nom]",
       "prompts": {
-        "angle1": "Prompt pour vue principale...",
-        "angle2": "Prompt pour vue alternative...",
-        "angle3": "Prompt pour vue détail/ambiance..."
+        "primary": "[DESCRIPTION EXHAUSTIVE DU DÉCOR - 150+ mots minimum]",
+        "angle2": "${DEFAULT_DECOR_VARIANT_PROMPTS.angle2}",
+        "plongee": "${DEFAULT_DECOR_VARIANT_PROMPTS.plongee}",
+        "contrePlongee": "${DEFAULT_DECOR_VARIANT_PROMPTS.contrePlongee}"
       }
     }
   ],
@@ -61,18 +122,19 @@ Tu DOIS retourner UNIQUEMENT un JSON valide (pas de markdown, pas de commentaire
     {
       "id": "scene-1",
       "sceneNumber": 1,
-      "title": "Titre de la scène",
-      "description": "Description/synopsis de la scène",
+      "title": "Titre évocateur",
+      "description": "Synopsis de la scène",
       "plans": [
         {
           "id": "plan-1-1",
           "planNumber": 1,
-          "prompt": "Prompt détaillé pour la génération vidéo...",
+          "prompt": "[ACTION LITTÉRAIRE - mouvement, psychologie, caméra - SANS description physique]",
+          "promptImageDepart": "[COMPOSITION SPATIALE DÉBUT - positions, postures, rapport au cadre]",
+          "promptImageFin": "[COMPOSITION SPATIALE FIN - déduite de l'action]",
           "characterRefs": ["perso-prenom"],
-          "locationRef": "lieu-nom",
+          "decorRef": "decor-nom",
           "duration": 5,
-          "cameraMovement": "Description du mouvement de caméra",
-          "notes": "Notes additionnelles optionnelles"
+          "cameraMovement": "Type de mouvement caméra"
         }
       ]
     }
@@ -81,17 +143,19 @@ Tu DOIS retourner UNIQUEMENT un JSON valide (pas de markdown, pas de commentaire
   "estimatedDuration": 60
 }
 
-## Règles pour les prompts
-1. Chaque prompt doit être AUTONOME et COMPLET - ne jamais référencer d'autres éléments
-2. Inclure tous les détails visuels nécessaires pour la génération
-3. Pour les personnages : décrire vêtements, posture, expression, éclairage
-4. Pour les lieux : décrire décor, ambiance, éclairage, heure du jour
-5. Pour les plans : décrire l'action, le cadrage, le mouvement, l'émotion
+## RÈGLES ABSOLUES
 
-## Exemples de bons prompts
-- Face: "Portrait frontal d'un homme de 35 ans aux cheveux bruns courts, yeux marron, sourire confiant, costume gris anthracite avec cravate bordeaux, fond neutre gris clair, éclairage studio professionnel, haute résolution"
-- Lieu angle1: "Vue frontale d'un bureau moderne open space avec grandes baies vitrées donnant sur une ville au coucher du soleil, mobilier design blanc et chrome, plantes vertes, ambiance chaleureuse et professionnelle"
-- Plan: "Jean (35 ans, costume gris) debout devant les baies vitrées du bureau moderne, dos à la caméra, regardant la ville au coucher du soleil, puis se retourne vers la caméra avec un sourire confiant, travelling avant lent"`;
+1. **SÉPARATION STRICTE** : Descriptions physiques UNIQUEMENT dans les prompts "primary". JAMAIS dans les prompts de plans.
+
+2. **DÉSIGNATIONS SIMPLES** dans les plans : "l'homme", "la femme", "le vieux", "l'enfant" - PAS de descriptions.
+
+3. **COHÉRENCE** : promptImageFin doit être la conséquence logique de l'action décrite dans prompt.
+
+4. **characterRefs** : Liste des IDs de personnages présents (peut être vide si plan de décor seul).
+
+5. **decorRef** : ID du décor (obligatoire sauf exceptions).
+
+6. **Prompts variantes** (face, profile, back, angle2, plongee, contrePlongee) : FIXES, ne pas modifier.`;
 
 const SYSTEM_PROMPT_TEST_MODE = `
 
@@ -105,7 +169,8 @@ CONTRAINTES STRICTES À RESPECTER :
 
 // ========== HELPERS ==========
 function sseEvent(type: string, data: Record<string, unknown>): string {
-  return `data: ${JSON.stringify({ type, ...data })}\n\n`;
+  // On met type en dernier pour qu'il ne soit pas écrasé par les données
+  return `data: ${JSON.stringify({ ...data, type })}\n\n`;
 }
 
 async function getBriefContent(briefId: string): Promise<{ title: string; content: string } | null> {
@@ -199,33 +264,72 @@ export async function POST(request: NextRequest) {
             systemPrompt += SYSTEM_PROMPT_TEST_MODE;
           }
 
-          // Appel GPT-5.1 avec streaming
-          const completion = await openai.chat.completions.create({
-            model: config?.aiModel || 'gpt-4o',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
-            ],
-            temperature: 0.7,
-            stream: true,
-          });
+          // Appel GPT-5.1 avec streaming et reasoning HIGH
+          // IMPORTANT: On utilise GPT-5.1 pour avoir des prompts de qualité
+          const modelToUse = config?.aiModel || 'gpt-5.1-2025-11-13';
+          const useReasoningAPI = modelToUse.startsWith('gpt-5') || modelToUse.includes('o1') || modelToUse.includes('o3');
+          
+          let completion;
+          if (useReasoningAPI) {
+            // GPT-5.1 utilise reasoning_effort
+            const reasoningEffort = config?.reasoningLevel || 'high';
+            console.log(`[API] Utilisation de ${modelToUse} avec reasoning_effort=${reasoningEffort}`);
+            
+            completion = await openai.chat.completions.create({
+              model: modelToUse,
+              reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
+              ],
+              stream: true,
+            } as any); // Type étendu pour supporter reasoning_effort
+          } else {
+            // Modèles classiques (GPT-4o, etc.)
+            completion = await openai.chat.completions.create({
+              model: modelToUse,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
+              ],
+              temperature: 0.7,
+              stream: true,
+            });
+          }
 
           let fullResponse = '';
           let reasoningContent = '';
+          let chunkCount = 0;
 
-          // Stream le raisonnement
+          // Stream la réponse de GPT-5.1
           for await (const chunk of completion) {
-            const delta = chunk.choices[0]?.delta;
+            chunkCount++;
+            const delta = chunk.choices[0]?.delta as any;
+            const choice = chunk.choices[0] as any;
             
+            // DEBUG: Log les premiers chunks pour voir la structure
+            if (chunkCount <= 3) {
+              console.log(`[GPT-5.1 DEBUG] Chunk ${chunkCount}:`, JSON.stringify(chunk, null, 2));
+            }
+            
+            // Capturer le reasoning - plusieurs champs possibles selon le modèle
+            const reasoningText = delta?.reasoning_content || delta?.reasoning || choice?.reasoning_content || choice?.reasoning;
+            if (reasoningText) {
+              reasoningContent += reasoningText;
+              console.log(`[GPT-5.1] Reasoning chunk: ${reasoningText.substring(0, 100)}...`);
+            }
+            
+            // Capturer la réponse finale (le JSON)
             if (delta?.content) {
               fullResponse += delta.content;
-              reasoningContent += delta.content;
-              
-              // Envoyer le chunk de raisonnement
-              controller.enqueue(encoder.encode(sseEvent('reasoning', { 
-                content: delta.content,
-              })));
             }
+          }
+          
+          console.log(`[GPT-5.1] Total chunks: ${chunkCount}, Reasoning length: ${reasoningContent.length}, Response length: ${fullResponse.length}`);
+          
+          // Log du reasoning pour debug
+          if (reasoningContent) {
+            console.log(`[API] Reasoning capturé: ${reasoningContent.length} caractères`);
           }
 
           controller.enqueue(encoder.encode(sseEvent('phase_complete', { 
@@ -242,7 +346,12 @@ export async function POST(request: NextRequest) {
               throw new Error('Aucun JSON trouvé dans la réponse');
             }
             projectStructure = JSON.parse(jsonMatch[0]);
-            projectStructure.reasoning = reasoningContent;
+            
+            // Sauvegarder le reasoning de GPT-5.1 dans la structure
+            if (reasoningContent && reasoningContent.length > 0) {
+              projectStructure.reasoning = reasoningContent;
+              console.log(`[API] Reasoning sauvegardé: ${reasoningContent.substring(0, 200)}...`);
+            }
           } catch (parseError) {
             console.error('Erreur parsing JSON:', parseError);
             controller.enqueue(encoder.encode(sseEvent('error', { 
@@ -305,18 +414,25 @@ export async function POST(request: NextRequest) {
           })));
 
           // ========== RÉSUMÉ FINAL ==========
+          // Supporter les deux formats : decors (nouveau) ou locations (ancien)
+          const decorsCount = projectStructure.decors?.length || projectStructure.locations?.length || 0;
+          
           const summary = {
             projectName,
             characters: projectStructure.characters.length,
-            locations: projectStructure.locations.length,
+            decors: decorsCount,
+            locations: decorsCount, // Alias pour rétrocompatibilité
             scenes: projectStructure.scenes.length,
             plans: projectStructure.totalPlans,
             nodes: canvasData.nodes.length,
             edges: canvasData.edges.length,
-            // Infos pour génération séquentielle
+            // Infos pour génération parallèle
+            // Note: chaque personnage/décor a 1 image primaire + 3 variantes = 4 images
             imagesToGenerate: generationSequence.characterImages.reduce((acc, c) => acc + c.imageNodeIds.length, 0) +
-                              generationSequence.locationImages.reduce((acc, l) => acc + l.imageNodeIds.length, 0),
+                              (generationSequence.decorImages?.reduce((acc, d) => acc + d.imageNodeIds.length, 0) || 
+                               generationSequence.locationImages.reduce((acc, l) => acc + l.imageNodeIds.length, 0)),
             videosToGenerate: generationSequence.videos.length,
+            quality: config?.quality || 'elevee',
           };
 
           controller.enqueue(encoder.encode(sseEvent('complete', { 
