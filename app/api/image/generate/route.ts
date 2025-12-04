@@ -19,10 +19,10 @@ function aspectRatioToSize(aspectRatio: string, testMode = false): string {
   
   const testSizeMap: Record<string, string> = {
     '1:1': '256x256',      // Carré mini
-    '9:16': '144x256',     // Portrait mini
-    '16:9': '256x144',     // Paysage mini pour primaires
-    '3:4': '192x256',
-    '4:3': '256x192',
+    '9:16': '256x456',     // Portrait pour primaires (personnages, décors)
+    '16:9': '456x256',     // Paysage mini
+    '3:4': '256x342',      // Portrait 3:4
+    '4:3': '342x256',      // Paysage 4:3
     '21:9': '598x256',     // Cinémascope mini pour first/last frames
   };
   

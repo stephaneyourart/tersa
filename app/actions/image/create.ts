@@ -328,6 +328,7 @@ export const generateImageAction = async ({
           url: stored.url,          // URL locale pour l'affichage
           type: mediaType,
           originalUrl: result.url,  // URL CloudFront pour WaveSpeed video API
+          model: modelId,           // Modèle utilisé pour l'affichage sous le nœud
         },
         // Stocker les dimensions réelles pour un affichage correct dans les nœuds
         width,

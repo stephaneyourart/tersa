@@ -56,6 +56,7 @@ interface GeneratableNode {
 
 interface GenerationPanelProps {
   projectId: string;
+  testMode?: boolean; // Mode test défini lors de la génération du projet (page précédente)
 }
 
 // ========== HELPERS ==========
@@ -272,7 +273,7 @@ const MIN_WIDTH = 450;
 const MAX_WIDTH = 1200;
 
 // ========== COMPOSANT PRINCIPAL ==========
-export function GenerationPanel({ projectId }: GenerationPanelProps) {
+export function GenerationPanel({ projectId, testMode = false }: GenerationPanelProps) {
   const { getNodes, getEdges, updateNodeData } = useReactFlow();
   const { fetchMedias } = useMediaLibraryStore();
   
@@ -282,7 +283,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   const [nodeList, setNodeList] = useState<GeneratableNode[]>([]);
   const [currentPhase, setCurrentPhase] = useState('');
   const [sendToDVR, setSendToDVR] = useState(false);
-  const [testMode, setTestMode] = useState(false);
+  // testMode est maintenant passé en props depuis la page de génération du projet
   
   // Modèles pour le test mode (ultra rapide et pas cher)
   // NOTE: nano-banana-edit (pas pro) pour éviter les problèmes de zoom avec FLUX Kontext
@@ -1141,20 +1142,18 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
 
           {/* Options */}
           <div className="flex-shrink-0 space-y-2 mt-4 pt-4 border-t border-zinc-800">
-            {/* Test Mode */}
-            <label className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={testMode}
-                onChange={(e) => setTestMode(e.target.checked)}
-                className="h-4 w-4 rounded border-amber-500"
-                disabled={isGenerating}
-              />
-              <div>
-                <p className="font-medium text-amber-400">⚡ Mode Test</p>
-                <p className="text-xs text-zinc-500">FLUX Schnell + Nano Banana simple (ultra rapide, basse qualité)</p>
+            {/* Indicateur Mode Test (non modifiable - défini à la génération du projet) */}
+            {testMode && (
+              <div className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
+                <div className="h-4 w-4 rounded bg-amber-500 flex items-center justify-center">
+                  <span className="text-xs text-black">✓</span>
+                </div>
+                <div>
+                  <p className="font-medium text-amber-400">⚡ Mode Test actif</p>
+                  <p className="text-xs text-zinc-500">FLUX Schnell + Nano Banana (défini lors de la création du projet)</p>
+                </div>
               </div>
-            </label>
+            )}
             
             {/* DVR */}
             <label className="flex items-center gap-3 rounded-lg bg-zinc-900/50 p-3 cursor-pointer">

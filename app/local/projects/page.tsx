@@ -340,7 +340,7 @@ export default function LocalProjectsPage() {
             <Link href="/local/briefs">
               <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
                 <FileTextIcon size={16} />
-                Briefs
+                Creative Plans
               </Button>
             </Link>
             <Link href="/local/dashboard">

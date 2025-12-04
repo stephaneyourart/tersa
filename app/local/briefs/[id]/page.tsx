@@ -126,7 +126,7 @@ export default function BriefEditPage() {
 
   const saveBrief = async (): Promise<string | null> => {
     if (!brief.name.trim()) {
-      alert('Veuillez donner un nom à votre brief');
+      alert('Veuillez donner un nom à votre creative plan');
       return null;
     }
 
@@ -175,13 +175,13 @@ export default function BriefEditPage() {
   const handleSaveClick = async () => {
     const briefId = await saveBrief();
     if (briefId) {
-      alert('Brief sauvegardé avec succès !');
+      alert('Creative plan sauvegardé avec succès !');
     }
   };
 
   const handleGenerateProject = async () => {
     if (!brief.name.trim()) {
-      alert('Veuillez donner un nom à votre brief');
+      alert('Veuillez donner un nom à votre creative plan');
       return;
     }
 
@@ -200,7 +200,7 @@ export default function BriefEditPage() {
       // Rediriger vers la page de génération
       router.push(`/local/briefs/${briefId}/generate`);
     } else {
-      alert('Erreur lors de la sauvegarde du brief');
+      alert('Erreur lors de la sauvegarde du creative plan');
     }
   };
 
@@ -334,7 +334,7 @@ export default function BriefEditPage() {
             </Link>
             <div>
               <h1 className="text-xl font-bold">
-                {isNew ? 'Nouveau Brief' : 'Éditer le Brief'}
+                {isNew ? 'Nouveau Creative Plan' : 'Éditer le Creative Plan'}
               </h1>
             </div>
           </div>
@@ -369,7 +369,7 @@ export default function BriefEditPage() {
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">
-                    Nom du brief *
+                    Nom du creative plan *
                   </label>
                   <Input
                     value={brief.name}
@@ -384,18 +384,18 @@ export default function BriefEditPage() {
                   <Textarea
                     value={brief.description || ''}
                     onChange={(e) => setBrief({ ...brief, description: e.target.value })}
-                    placeholder="Décrivez brièvement le contenu de ce brief..."
+                    placeholder="Décrivez brièvement le contenu de ce creative plan..."
                     rows={3}
                   />
                 </div>
               </div>
             </Card>
 
-            {/* Contenu textuel du brief */}
+            {/* Contenu textuel du creative plan */}
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Contenu du brief (texte)</h2>
+              <h2 className="text-lg font-semibold mb-4">Contenu du creative plan (texte)</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Saisissez directement le contenu de votre brief ici. Vous pouvez également ajouter des documents ci-dessous.
+                Saisissez directement le contenu de votre creative plan ici. Vous pouvez également ajouter des documents ci-dessous.
               </p>
               <Textarea
                 value={briefContent}

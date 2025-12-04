@@ -46,7 +46,7 @@ export default function BriefsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer ce brief ? Cette action est irréversible.')) return;
+    if (!confirm('Supprimer ce creative plan ? Cette action est irréversible.')) return;
     
     try {
       const response = await fetch(`/api/briefs/${id}`, { method: 'DELETE' });
@@ -74,15 +74,15 @@ export default function BriefsPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold">Mes Briefs</h1>
+              <h1 className="text-xl font-bold">Creative Plans</h1>
               <p className="text-sm text-muted-foreground">
-                Créez des briefs pour générer automatiquement des projets
+                Créez des creative plans pour générer automatiquement des projets
               </p>
             </div>
           </div>
           <Button onClick={handleCreateNew} className="gap-2">
             <FilePlusIcon size={16} />
-            Nouveau Brief
+            Nouveau Creative Plan
           </Button>
         </div>
       </header>
@@ -95,13 +95,13 @@ export default function BriefsPage() {
         ) : briefs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/50 bg-card/50 p-12 text-center">
             <FilePlusIcon size={48} className="mx-auto mb-4 text-muted-foreground/50" />
-            <h2 className="text-lg font-medium mb-2">Aucun brief</h2>
+            <h2 className="text-lg font-medium mb-2">Aucun creative plan</h2>
             <p className="text-sm text-muted-foreground mb-6">
-              Créez votre premier brief pour commencer à générer des projets automatiquement
+              Créez votre premier creative plan pour commencer à générer des projets automatiquement
             </p>
             <Button onClick={handleCreateNew} className="gap-2">
               <FilePlusIcon size={16} />
-              Créer mon premier brief
+              Créer mon premier creative plan
             </Button>
           </div>
         ) : (

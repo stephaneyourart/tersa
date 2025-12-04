@@ -169,17 +169,23 @@ async function editWaveSpeedImage(
 
   const model = modelFactory();
   
+  // Déterminer les limites d'images selon le modèle
+  const isNanoBananaBasicEdit = modelId === 'nano-banana-edit-wavespeed';
+  const isFluxKontextMulti = modelId.includes('flux-kontext-dev-multi');
+  const supportsResolution = modelId.includes('nano-banana-pro-edit');
+  
+  // nano-banana/edit supporte max 10 images, nano-banana-pro/edit supporte 14
+  const maxImages = isNanoBananaBasicEdit ? 10 : 14;
+  const imagesToUse = images.slice(0, maxImages);
+  
+  if (images.length > maxImages) {
+    console.log(`[WaveSpeed] Limitation: ${images.length} images -> ${maxImages} max pour ${modelId}`);
+  }
+  
   // Convertir les images en URLs publiques ou base64
   const imageUrls = await Promise.all(
-    images.map(img => getPublicImageUrl(img.url))
+    imagesToUse.map(img => getPublicImageUrl(img.url))
   );
-
-  // Certains modèles (flux-kontext-dev/multi-ultra-fast) utilisent "size" au format "widthxheight"
-  // nano-banana-pro-edit et ultra supportent "resolution" ('1k', '2k', '4k')
-  // nano-banana-edit (pas pro) ne supporte PAS de paramètre de taille
-  const isFluxKontextMulti = modelId.includes('flux-kontext-dev-multi');
-  const isNanoBananaBasicEdit = modelId === 'nano-banana-edit-wavespeed';
-  const supportsResolution = modelId.includes('nano-banana-pro-edit');
   
   const params: WaveSpeedEditParams = {
     prompt,
@@ -197,15 +203,19 @@ async function editWaveSpeedImage(
     params.resolution = size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k';
   } else if (isNanoBananaBasicEdit) {
     // nano-banana-edit (pas pro) n'a pas de paramètre de taille - utilise la taille de l'image source
-    console.log(`[WaveSpeed] nano-banana-edit: pas de paramètre de taille, utilise la taille source`);
+    // ET ne supporte PAS num_inference_steps ni guidance_scale
+    console.log(`[WaveSpeed] nano-banana-edit: pas de paramètre de taille ni steps/guidance`);
   }
   
-  // Ajouter les paramètres optionnels si fournis
-  if (options?.numInferenceSteps !== undefined) {
-    (params as Record<string, unknown>).num_inference_steps = options.numInferenceSteps;
-  }
-  if (options?.guidanceScale !== undefined) {
-    params.guidance_scale = options.guidanceScale;
+  // Ajouter les paramètres optionnels si fournis ET si le modèle les supporte
+  // nano-banana-edit (pas pro) ne supporte PAS ces paramètres
+  if (!isNanoBananaBasicEdit) {
+    if (options?.numInferenceSteps !== undefined) {
+      (params as Record<string, unknown>).num_inference_steps = options.numInferenceSteps;
+    }
+    if (options?.guidanceScale !== undefined) {
+      params.guidance_scale = options.guidanceScale;
+    }
   }
 
   console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`, options ? `(steps=${options.numInferenceSteps}, guidance=${options.guidanceScale})` : '', isFluxKontextMulti ? `size=${size}` : '');

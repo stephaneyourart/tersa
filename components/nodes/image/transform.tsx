@@ -111,10 +111,10 @@ export const ImageTransform = ({
   const availableModels = useAvailableModels('image');
   
   // IMPORTANT: Pour l'affichage du modèle utilisé lors de la génération,
-  // on utilise directement data.model (ou data.modelId) même s'il n'est pas dans availableModels.
-  // Cela permet d'afficher correctement le modèle utilisé en mode test (FLUX Schnell)
-  // même si l'utilisateur n'a pas activé ce modèle dans ses préférences.
-  const actualModelUsed = data.model || data.modelId;
+  // on utilise data.generated?.model (le modèle REELLEMENT utilisé, stocké par l'API)
+  // Si pas disponible, on fallback sur data.model ou data.modelId (le modèle SELECTIONNE)
+  // data.generated.model n'est PAS écrasé quand l'utilisateur change le sélecteur de modèle
+  const actualModelUsed = (data.generated as { model?: string } | undefined)?.model || data.model || data.modelId;
   
   // Pour la SÉLECTION d'un nouveau modèle, on utilise availableModels
   // Si le modèle actuel n'est pas disponible, on propose un fallback

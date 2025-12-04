@@ -27,6 +27,7 @@ export default function LocalCanvasPage() {
     edges: Edge[];
     viewport: Viewport;
   } | null>(null);
+  const [testMode, setTestMode] = useState(false); // Mode test défini lors de la génération du projet
   
   // Ref pour l'auto-save
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -44,6 +45,11 @@ export default function LocalCanvasPage() {
     
     const loadedViewport = (project.data.viewport || { x: 0, y: 0, zoom: 1 }) as Viewport;
     console.log('[LocalCanvas] Loading project with viewport:', loadedViewport);
+    
+    // Lire le mode test défini lors de la génération du projet
+    const projectTestMode = (project.data as { testMode?: boolean }).testMode === true;
+    console.log('[LocalCanvas] Mode Test:', projectTestMode);
+    setTestMode(projectTestMode);
     
     setInitialData({
       nodes: (project.data.nodes || []) as Node[],
@@ -165,7 +171,7 @@ export default function LocalCanvasPage() {
             <Controls />
             <Toolbar />
             <CleanupDialogWrapper />
-            <GenerationPanel projectId={projectId} />
+            <GenerationPanel projectId={projectId} testMode={testMode} />
           </Canvas>
           <MediaLibrarySidebar />
         </div>

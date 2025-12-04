@@ -329,11 +329,15 @@ export default function GenerateProjectPage() {
                 setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
                 const newProject = createLocalProject(projectName);
                 
-                // Inclure la séquence de génération dans les données du projet
+                // Récupérer le mode test depuis la config
+                const isTestModeEnabled = config.settings?.testMode === true;
+                
+                // Inclure la séquence de génération ET le mode test dans les données du projet
                 updateLocalProject(newProject.id, { 
                   data: {
                     ...canvasData,
                     generationSequence: generationSequenceData,
+                    testMode: isTestModeEnabled, // Stocker le mode test pour le GenerationPanel
                   }
                 });
                 
@@ -460,7 +464,7 @@ export default function GenerateProjectPage() {
   if (!brief) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Brief non trouvé</p>
+        <p className="text-muted-foreground">Creative plan non trouvé</p>
       </div>
     );
   }
