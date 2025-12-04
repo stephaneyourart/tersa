@@ -17,6 +17,8 @@ import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 import {
   ArrowUpIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClockIcon,
   DownloadIcon,
   Loader2Icon,
@@ -30,6 +32,8 @@ import {
   useEffect,
   useMemo,
   useState,
+  memo,
+  useRef,
 } from 'react';
 import { toast } from 'sonner';
 import { mutate } from 'swr';
@@ -37,6 +41,33 @@ import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { ImageCompareSlider } from './image-compare-slider';
 import type { UpscaleSettings } from './upscale-button';
+
+// Composant Image mémorisé pour éviter le clignotement
+const StableImage = memo(function StableImage({
+  src,
+  width,
+  height,
+  onError,
+}: {
+  src: string;
+  width: number;
+  height: number;
+  onError?: () => void;
+}) {
+  return (
+    <Image
+      src={src}
+      alt="Generated image"
+      width={width}
+      height={height}
+      className="w-full h-auto rounded-b-xl block bg-secondary"
+      onError={onError}
+      placeholder="empty"
+      priority // Charger en priorité pour éviter le flash
+      unoptimized // Évite le re-processing côté Next.js
+    />
+  );
+});
 
 type ImageTransformProps = ImageNodeProps & {
   title: string;
@@ -80,9 +111,12 @@ export const ImageTransform = ({
     return modelObj?.modelId || '';
   }, [selectedModel]);
 
-  // État de génération: soit local (single run), soit batch
-  const isGenerating = loading || data.batchGenerating === true;
-  const generationStartTime = data.batchStartTime ?? null;
+  // État de génération: soit local (single run), soit batch, soit panel de génération
+  const isGenerating = loading || data.batchGenerating === true || data.generating === true;
+  const generationStartTime = data.batchStartTime ?? data.generatingStartTime ?? null;
+  
+  // Code couleur unifié : TOUTES les images = Vert Matrix
+  const skeletonColor = 'image' as const;
 
   // Timer pour afficher le temps écoulé pendant la génération
   useEffect(() => {
@@ -626,8 +660,26 @@ export const ImageTransform = ({
   }), [data, advancedSettings]);
 
   const [isHovered, setIsHovered] = useState(false);
-  const hasContent = isGenerating || data.generated?.url;
+  // Mode collapsed par défaut pour les prompts longs (sauf si vide)
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  
+  // Référence stable pour l'URL de l'image pour éviter le clignotement
+  const stableImageUrl = useRef<string | null>(null);
+  const currentUrl = data.generated?.url;
+  
+  // Mettre à jour la ref seulement si l'URL change réellement
+  if (currentUrl && currentUrl !== stableImageUrl.current) {
+    stableImageUrl.current = currentUrl;
+  }
+  
+  const hasContent = isGenerating || stableImageUrl.current;
   const hasPrompt = Boolean(data.instructions?.trim());
+  // Tronquer le prompt à 80 caractères pour le mode collapsed
+  const truncatedPrompt = useMemo(() => {
+    const text = data.instructions ?? '';
+    if (text.length <= 80) return text;
+    return text.substring(0, 77) + '...';
+  }, [data.instructions]);
 
   // État d'upscale
   const upscaleStatus = data.upscale?.status || 'idle';
@@ -740,12 +792,13 @@ export const ImageTransform = ({
       onUpscale={handleUpscale}
       onCancelUpscale={handleCancelUpscale}
     >
-      {/* Skeleton pendant génération OU upscale */}
+      {/* Skeleton pendant génération OU upscale - Code couleur unifié : Images = Vert Matrix */}
       {(isGenerating || isUpscaling) && (
         <GeneratingSkeleton
           className="rounded-b-xl"
           estimatedDuration={isUpscaling ? 60 : 30} // Upscale ~60s, Image ~30s
-          startTime={isUpscaling ? data.upscale?.startTime : data.batchStartTime}
+          startTime={isUpscaling ? data.upscale?.startTime : generationStartTime}
+          color="image"
         />
       )}
       {!isGenerating && !isUpscaling && !data.generated?.url && (
@@ -759,7 +812,7 @@ export const ImageTransform = ({
           </p>
         </div>
       )}
-      {!isGenerating && !isUpscaling && data.generated?.url && (
+      {!isGenerating && !isUpscaling && stableImageUrl.current && (
         <>
           {/* Afficher l'icône fantôme si l'image est expirée */}
           {isExpired ? (
@@ -769,14 +822,14 @@ export const ImageTransform = ({
             />
           ) : (
             <div 
-              className="relative"
+              className="relative bg-secondary"
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
             >
               {/* Afficher le slider de comparaison si upscalé */}
               {isUpscaled && data.upscale?.upscaledUrl ? (
                 <ImageCompareSlider
-                  beforeUrl={data.upscale.originalUrl || data.generated.url}
+                  beforeUrl={data.upscale.originalUrl || stableImageUrl.current}
                   afterUrl={data.upscale.upscaledUrl}
                   className="rounded-b-xl"
                   width={1000}
@@ -786,12 +839,10 @@ export const ImageTransform = ({
                   upscaleCreativity={data.upscale.creativity}
                 />
               ) : (
-                <Image
-                  src={data.generated.url}
-                  alt="Generated image"
+                <StableImage
+                  src={stableImageUrl.current}
                   width={data.width || 1024}
                   height={data.height || 1024}
-                  className="w-full h-auto rounded-b-xl block"
                   onError={() => markAsExpired()}
                 />
               )}
@@ -807,14 +858,37 @@ export const ImageTransform = ({
           )}
         </>
       )}
-      {/* Textarea visible uniquement quand pas de contenu */}
+      {/* Prompt section - collapsable par défaut */}
       {!hasContent && (
-        <Textarea
-          value={data.instructions ?? ''}
-          onChange={handleInstructionsChange}
-          placeholder="Promptez..."
-          className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
-        />
+        <div className="flex flex-col">
+          {/* Header avec toggle */}
+          {hasPrompt && (
+            <button
+              type="button"
+              onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-white/5 transition-colors border-t border-white/10"
+            >
+              <span className="truncate flex-1 text-left">
+                {isPromptExpanded ? 'Prompt' : truncatedPrompt}
+              </span>
+              {isPromptExpanded ? (
+                <ChevronUpIcon className="h-4 w-4 ml-2 shrink-0" />
+              ) : (
+                <ChevronDownIcon className="h-4 w-4 ml-2 shrink-0" />
+              )}
+            </button>
+          )}
+          {/* Textarea - visible quand expanded ou quand pas de prompt */}
+          {(isPromptExpanded || !hasPrompt) && (
+            <Textarea
+              value={data.instructions ?? ''}
+              onChange={handleInstructionsChange}
+              placeholder="Promptez..."
+              className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
+              rows={isPromptExpanded ? 6 : 2}
+            />
+          )}
+        </div>
       )}
     </NodeLayout>
   );

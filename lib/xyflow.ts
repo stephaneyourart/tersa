@@ -50,6 +50,33 @@ export const getImagesFromImageNodes = (nodes: Node[]) => {
   return [...sourceImages, ...generatedImages];
 };
 
+// Récupère les images depuis les nœuds collection (pour les vidéos connectées à des collections)
+export const getImagesFromCollectionNodes = (nodes: Node[]) => {
+  const images: { url: string; type: string }[] = [];
+  
+  for (const node of nodes) {
+    if (node.type === 'collection') {
+      const items = node.data?.items as { enabled?: boolean; url?: string; type?: string }[] | undefined;
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          if (item.enabled !== false && item.url) {
+            images.push({ url: item.url, type: item.type || 'image/png' });
+          }
+        }
+      }
+    }
+  }
+  
+  return images;
+};
+
+// Récupère les images depuis TOUS les nœuds connectés (images + collections)
+export const getAllImagesFromNodes = (nodes: Node[]) => {
+  const imageNodeImages = getImagesFromImageNodes(nodes);
+  const collectionImages = getImagesFromCollectionNodes(nodes);
+  return [...imageNodeImages, ...collectionImages];
+};
+
 export const isValidSourceTarget = (source: Node, target: Node) => {
   if (source.type === 'video' || source.type === 'drop') {
     return false;

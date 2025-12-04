@@ -107,6 +107,7 @@ export interface MediaFilters {
   dvrTransferred?: boolean;
   search?: string;
   projectId?: string;
+  orphans?: boolean; // Médias non utilisés dans aucun projet
 }
 
 // État du store
@@ -536,6 +537,13 @@ export const useMediaLibraryStore = create<MediaLibraryState>((set, get) => ({
       // Filtre par projet
       if (filters.projectId && !media.usedInProjects?.includes(filters.projectId)) {
         return false;
+      }
+      
+      // Filtre médias orphelins (non utilisés dans aucun projet)
+      if (filters.orphans === true) {
+        if (media.usedInProjects && media.usedInProjects.length > 0) {
+          return false;
+        }
       }
       
       return true;

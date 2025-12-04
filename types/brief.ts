@@ -3,6 +3,7 @@
 export type BriefStatus = 'draft' | 'ready' | 'generating' | 'completed';
 export type ReasoningLevel = 'low' | 'medium' | 'high';
 export type DocumentType = 'text' | 'pdf' | 'image' | 'video' | 'audio';
+export type QualityLevel = 'normal' | 'elevee';
 
 export interface Brief {
   id: string;
@@ -38,6 +39,47 @@ export interface BriefDocument {
   createdAt: Date;
 }
 
+// Configuration des prompts pour la génération d'images
+export interface CharacterPromptConfig {
+  // System prompt pour guider l'IA dans la création des prompts de personnages
+  systemPrompt: string;
+  // Prompts fixes pour les variantes (utilisés après l'image primaire)
+  variantPrompts: {
+    face: string;      // Visage de face (1:1)
+    profile: string;   // Visage de profil (1:1)
+    back: string;      // Vue de dos (9:16)
+  };
+}
+
+export interface DecorPromptConfig {
+  // System prompt pour guider l'IA dans la création des prompts de décors
+  systemPrompt: string;
+  // Prompts fixes pour les variantes (utilisés après l'image primaire)
+  variantPrompts: {
+    angle2: string;    // Nouvel angle 1 (16:9)
+    plongee: string;   // Vue plongée top down (16:9)
+    contrePlongee: string; // Vue contre-plongée (16:9)
+  };
+}
+
+// Configuration des modèles selon la qualité
+export interface QualityModelConfig {
+  // Modèles pour génération text-to-image (image primaire)
+  textToImage: {
+    normal: string;      // google/nano-banana/text-to-image
+    elevee: string;      // google/nano-banana-pro/text-to-image-ultra
+  };
+  // Modèles pour génération edit (variantes)
+  edit: {
+    normal: string;      // google/nano-banana/edit
+    elevee: string;      // google/nano-banana-pro/edit-ultra
+  };
+  // Paramètres additionnels pour qualité élevée
+  eleveeParams: {
+    resolution: string;  // '4K'
+  };
+}
+
 export interface ProjectGenerationConfig {
   id: string;
   briefId: string;
@@ -47,11 +89,22 @@ export interface ProjectGenerationConfig {
   generateMediaDirectly: boolean;
   systemPrompt: string;
   customInstructions?: string;
+  // Niveau de qualité pour les images
+  quality: QualityLevel;
   settings?: {
     videoModel?: string; // 'kling-o1', 'seedream', etc.
     imageModel?: string; // 'nanobanana-pro', 'flux', etc.
     videoCopies?: number; // Nombre de copies à générer (défaut: 4)
+    videoDuration?: number;
+    videoAspectRatio?: string;
+    testMode?: boolean;
     [key: string]: any;
+  };
+  // Configuration avancée des prompts
+  advancedPromptConfig?: {
+    characterConfig: CharacterPromptConfig;
+    decorConfig: DecorPromptConfig;
+    modelConfig: QualityModelConfig;
   };
   createdAt: Date;
 }
@@ -89,9 +142,12 @@ export interface Character {
 export interface Location {
   name: string;
   description: string;
-  referenceCode: string; // Ex: [LIEU:Cuisine]
+  referenceCode: string; // Ex: [DECOR:Cuisine]
   prompt: string; // Prompt pour générer plusieurs angles
 }
+
+// Alias pour la migration vers "Décor"
+export type Decor = Location;
 
 export interface GeneratedScenario {
   briefId: string;

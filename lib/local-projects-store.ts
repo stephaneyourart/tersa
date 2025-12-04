@@ -255,8 +255,26 @@ function saveProjects(projects: LocalProject[]): void {
 
 /**
  * Synchronise les projets vers le serveur pour l'API media-library
+ * DEBOUNCED pour éviter les appels trop fréquents (réduit le flickering UI)
  */
+let syncTimeout: NodeJS.Timeout | null = null;
+let lastSyncTime = 0;
+const SYNC_DEBOUNCE_MS = 5000; // 5 secondes minimum entre les syncs
+
 async function syncProjectsToServer(projects: LocalProject[]): Promise<void> {
+  const now = Date.now();
+  
+  // Si on a sync récemment, debounce
+  if (now - lastSyncTime < SYNC_DEBOUNCE_MS) {
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      syncProjectsToServer(projects);
+    }, SYNC_DEBOUNCE_MS);
+    return;
+  }
+  
+  lastSyncTime = now;
+  
   try {
     await fetch('/api/projects-sync', {
       method: 'POST',

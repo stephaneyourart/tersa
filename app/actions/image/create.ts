@@ -309,12 +309,13 @@ export const generateImageAction = async ({
         });
       }
 
-      // Retourner avec l'URL locale et le chemin
+      // Retourner avec l'URL locale ET l'URL CloudFront originale
       const newData = {
         updatedAt: new Date().toISOString(),
         generated: {
-          url: stored.url,
+          url: stored.url,          // URL locale pour l'affichage
           type: mediaType,
+          originalUrl: result.url,  // URL CloudFront pour WaveSpeed video API
         },
         localPath: stored.path,
         smartTitle: smartTitle,

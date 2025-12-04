@@ -77,8 +77,8 @@ const mediaTypeConfig: Record<string, {
   color: string;
   bgColor: string;
 }> = {
-  image: { icon: Image, color: 'text-violet-400', bgColor: 'bg-violet-500/20' },
-  video: { icon: Video, color: 'text-rose-400', bgColor: 'bg-rose-500/20' },
+  image: { icon: Image, color: 'text-[#00ff41]', bgColor: 'bg-[#00ff41]/20' },
+  video: { icon: Video, color: 'text-fuchsia-400', bgColor: 'bg-fuchsia-500/20' },
   audio: { icon: Music, color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
   document: { icon: FileText, color: 'text-sky-400', bgColor: 'bg-sky-500/20' },
 };
@@ -1430,7 +1430,7 @@ export function MediaLibrarySidebar() {
                   <h2 className="font-semibold text-white" style={{ fontSize: fontSize + 4 }}>Médias</h2>
                   <div className="flex items-center gap-3 text-white/60 pt-0.5" style={{ fontSize: fontSize }}>
                     <span className="flex items-center gap-1">
-                      <Image size={fontSize} className="text-violet-400" />
+                      <Image size={fontSize} className="text-[#00ff41]" />
                       {medias.filter(m => m.type === 'image').length}
                     </span>
                     <span className="flex items-center gap-1">
@@ -1582,6 +1582,18 @@ export function MediaLibrarySidebar() {
                                     <DvrIcon transferred={true} size={fontSize} />
                                   </span>
                                   Dans DVR uniquement
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuSeparator className="bg-white/10" />
+                                <DropdownMenuCheckboxItem
+                                  checked={filters.orphans === true}
+                                  onCheckedChange={(checked) => {
+                                    setFilters({ orphans: checked ? true : undefined });
+                                  }}
+                                  className="text-white/80 focus:bg-white/10"
+                                  style={{ fontSize }}
+                                >
+                                  <span className="mr-2 w-4 h-4 flex items-center justify-center text-orange-400">⚠</span>
+                                  Orphelins (non utilisés)
                                 </DropdownMenuCheckboxItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

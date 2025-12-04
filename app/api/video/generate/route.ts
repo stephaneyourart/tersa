@@ -1,6 +1,8 @@
 /**
  * API pour déclencher la génération de vidéo sur un nœud
  * Utilisé par le GenerationPanel pour la génération séquentielle
+ * 
+ * NOUVEAU : Supporte le mode first+last frame pour les briefs
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,6 +18,9 @@ export async function POST(request: NextRequest) {
       projectId,
       images = [],
       copies = 1,
+      // NOUVEAU : Support first+last frame pour les briefs
+      imagePrompt,      // First frame (image de départ)
+      lastFrameImage,   // Last frame (image de fin) 
     } = body;
 
     if (!nodeId || !prompt) {
@@ -28,7 +33,31 @@ export async function POST(request: NextRequest) {
     const effectiveProjectId = projectId || 'local-generation';
 
     console.log(`[API Video Generate] Node ${nodeId}, modèle ${model}`);
-    console.log(`[API Video Generate] ${images.length} images, ${copies} copies`);
+    
+    // Construire le tableau d'images
+    // Si on a imagePrompt et lastFrameImage explicites, les utiliser
+    // Sinon, utiliser le tableau images classique
+    let finalImages: { url: string; type: string }[] = [];
+    
+    if (imagePrompt || lastFrameImage) {
+      // Mode first+last frame (nouveau workflow briefs)
+      if (imagePrompt) {
+        finalImages.push({ url: imagePrompt, type: 'image/png' });
+      }
+      if (lastFrameImage) {
+        finalImages.push({ url: lastFrameImage, type: 'image/png' });
+      }
+      console.log(`[API Video Generate] Mode first+last frame: ${imagePrompt ? 'first' : ''} ${lastFrameImage ? 'last' : ''}`);
+    } else {
+      // Mode classique avec tableau d'images
+      finalImages = images.map((img: string | { url: string; type: string }) => 
+        typeof img === 'string' 
+          ? { url: img, type: 'image/png' } 
+          : img
+      );
+    }
+    
+    console.log(`[API Video Generate] ${finalImages.length} images, ${copies} copies`);
 
     const results = [];
     for (let i = 0; i < copies; i++) {
@@ -39,11 +68,7 @@ export async function POST(request: NextRequest) {
         modelId: model,
         nodeId: `${nodeId}-copy-${i}`,
         projectId: effectiveProjectId,
-        images: images.map((img: string | { url: string; type: string }) => 
-          typeof img === 'string' 
-            ? { url: img, type: 'image/png' } 
-            : img
-        ),
+        images: finalImages,
       });
 
       if ('error' in result) {

@@ -7,9 +7,13 @@ import type { VideoModel } from '.';
 
 // Mapping des modelId courts vers les chemins API complets
 const MODEL_PATH_MAP: Record<string, string> = {
-  // Kling O1 (nouveau modèle)
+  // Kling O1 (nouveau modèle de raisonnement)
   'kling-o1': 'kwaivgi/kling-video-o1/text-to-video',
   'kling-o1-i2v': 'kwaivgi/kling-video-o1/image-to-video',
+  'kling-o1-ref': 'kwaivgi/kling-video-o1/reference-to-video', // NOUVEAU: reference-to-video avec images multiples
+  // Kling 2.6 Pro (nouveau)
+  'kling-v2.6-pro-t2v': 'kwaivgi/kling-v2.6-pro/text-to-video',
+  'kling-v2.6-pro-i2v': 'kwaivgi/kling-v2.6-pro/image-to-video',
   // Kling 2.5
   'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',
@@ -31,6 +35,9 @@ const MODEL_PATH_MAP: Record<string, string> = {
 type WaveSpeedVideoModel =
   | 'kling-o1'
   | 'kling-o1-i2v'
+  | 'kling-o1-ref'      // NOUVEAU: reference-to-video
+  | 'kling-v2.6-pro-t2v' // NOUVEAU
+  | 'kling-v2.6-pro-i2v' // NOUVEAU
   | 'kling-v2.5-turbo'
   | 'kling-v2.5-standard'
   | 'kling-v2.5-pro'
@@ -164,7 +171,7 @@ async function callWaveSpeedApi(
 }
 
 /**
- * Crée un modèle vidéo WaveSpeed
+ * Crée un modèle vidéo WaveSpeed standard (image-to-video, text-to-video)
  */
 function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
   return {
@@ -193,12 +200,94 @@ function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
 }
 
 /**
+ * Crée un modèle vidéo KLING v2.6 optimisé pour first+last frame
+ * IMPORTANT : Quand on utilise last_image, on ne doit PAS spécifier aspect_ratio
+ * Le ratio est déduit des images d'entrée (21:9 → crop 16:9)
+ * native_audio est désactivé car il bloque last_image
+ */
+function createKling26FirstLastModel(modelId: WaveSpeedVideoModel): VideoModel {
+  return {
+    modelId,
+    generate: async ({ prompt, imagePrompt, lastFrameImage, duration }) => {
+      const input: WaveSpeedRequest = {
+        prompt,
+        duration: duration || 5,
+        // PAS de aspect_ratio - déduit des images d'entrée
+        // PAS de native_audio - bloque last_image
+      };
+
+      // First frame (image de départ)
+      if (imagePrompt) {
+        input.image = imagePrompt;
+        console.log(`[WaveSpeed KLING 2.6] First frame: ${imagePrompt.substring(0, 50)}...`);
+      }
+
+      // Last frame (image de fin) - OBLIGATOIRE pour ce modèle
+      if (lastFrameImage) {
+        input.last_image = lastFrameImage;
+        console.log(`[WaveSpeed KLING 2.6] Last frame: ${lastFrameImage.substring(0, 50)}...`);
+      }
+
+      if (!imagePrompt || !lastFrameImage) {
+        console.warn(`[WaveSpeed KLING 2.6] Attention: first ou last frame manquant`);
+      }
+
+      return callWaveSpeedApi(modelId, input);
+    },
+  };
+}
+
+/**
+ * Crée un modèle vidéo WaveSpeed reference-to-video
+ * Ce modèle utilise un tableau d'images de référence (personnages, décors)
+ * pour maintenir la cohérence dans la vidéo générée
+ */
+function createReferenceToVideoModel(modelId: WaveSpeedVideoModel): VideoModel {
+  return {
+    modelId,
+    generate: async ({ prompt, imagePrompt, referenceImages, duration, aspectRatio }) => {
+      const input: WaveSpeedRequest = {
+        prompt,
+        aspect_ratio: aspectRatio || '16:9',
+        duration: duration || 5,
+      };
+
+      // Pour reference-to-video, on utilise le champ 'images' avec un tableau
+      // Combiner l'image principale et les images de référence
+      const allImages: string[] = [];
+      
+      if (imagePrompt) {
+        allImages.push(imagePrompt);
+      }
+      
+      if (referenceImages && referenceImages.length > 0) {
+        allImages.push(...referenceImages);
+      }
+      
+      if (allImages.length > 0) {
+        input.images = allImages;
+        console.log(`[WaveSpeed Video] Reference-to-video avec ${allImages.length} images de référence`);
+      }
+
+      return callWaveSpeedApi(modelId, input);
+    },
+  };
+}
+
+/**
  * Export des modèles WaveSpeed
  */
 export const wavespeed = {
   // Kling O1 (nouveau modèle de raisonnement)
   klingO1: (): VideoModel => createWaveSpeedModel('kling-o1'),
   klingO1I2V: (): VideoModel => createWaveSpeedModel('kling-o1-i2v'),
+  klingO1Ref: (): VideoModel => createReferenceToVideoModel('kling-o1-ref'), // NOUVEAU: reference-to-video
+
+  // Kling 2.6 Pro
+  kling26ProT2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-t2v'),
+  kling26ProI2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-i2v'),
+  // NOUVEAU: Modèle optimisé pour first+last frame (briefs)
+  kling26ProFirstLast: (): VideoModel => createKling26FirstLastModel('kling-v2.6-pro-i2v'),
 
   // Kling 2.5 via WaveSpeed
   kling25Turbo: (): VideoModel => createWaveSpeedModel('kling-v2.5-turbo'),

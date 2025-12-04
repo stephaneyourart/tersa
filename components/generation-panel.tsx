@@ -41,6 +41,7 @@ import {
   getLocalProjectById, 
   type GenerationSequence 
 } from '@/lib/local-projects-store';
+import { useMediaLibraryStore } from '@/lib/media-library-store';
 
 interface GenerationStep {
   id: string;
@@ -73,6 +74,9 @@ interface GenerationPanelProps {
 export function GenerationPanel({ projectId }: GenerationPanelProps) {
   const { getNodes, updateNodeData } = useReactFlow();
   
+  // Hook pour rafraîchir la bibliothèque de médias après génération
+  const { fetchMedias } = useMediaLibraryStore();
+  
   const [isOpen, setIsOpen] = useState(false);
   const [sequence, setSequence] = useState<GenerationSequence | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -102,14 +106,67 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     }
   }, [projectId]);
 
-  // Calculer les stats
+  // Analyser les nœuds du canvas pour trouver ce qui peut être généré
+  const analyzeCanvasNodes = useCallback(() => {
+    const nodes = getNodes();
+    let imageNodes = 0;
+    let videoNodes = 0;
+    let emptyImages = 0;
+    let emptyVideos = 0;
+    let errorImages = 0;
+    let errorVideos = 0;
+    
+    for (const node of nodes) {
+      if (node.type === 'image') {
+        imageNodes++;
+        const hasImage = node.data?.generated?.url || node.data?.generated?.urls?.length > 0;
+        if (!hasImage) emptyImages++;
+        if (node.data?.error) errorImages++;
+      } else if (node.type === 'video') {
+        videoNodes++;
+        const hasVideo = node.data?.generated?.url;
+        if (!hasVideo) emptyVideos++;
+        if (node.data?.error) errorVideos++;
+      }
+    }
+    
+    return {
+      totalImages: imageNodes,
+      totalVideos: videoNodes,
+      emptyImages,
+      emptyVideos,
+      errorImages,
+      errorVideos,
+      generatableImages: emptyImages + errorImages,
+      generatableVideos: emptyVideos + errorVideos,
+    };
+  }, [getNodes]);
+
+  // Stats depuis la séquence OU depuis l'analyse des nœuds
+  const [canvasStats, setCanvasStats] = useState({ 
+    totalImages: 0, totalVideos: 0, emptyImages: 0, emptyVideos: 0,
+    errorImages: 0, errorVideos: 0, generatableImages: 0, generatableVideos: 0
+  });
+
+  // Mettre à jour les stats quand le panel s'ouvre
+  useEffect(() => {
+    if (isOpen) {
+      setCanvasStats(analyzeCanvasNodes());
+    }
+  }, [isOpen, analyzeCanvasNodes]);
+
+  // Calculer les stats (priorité à la séquence si disponible)
   const stats = sequence ? {
     totalImages: 
       sequence.characterImages.reduce((acc, c) => acc + (c.imageNodeIds?.length || 0), 0) +
       sequence.locationImages.reduce((acc, l) => acc + (l.imageNodeIds?.length || 0), 0),
     totalCollections: sequence.characterCollections.length + sequence.locationCollections.length,
     totalVideos: sequence.videos.reduce((acc, v) => acc + (v.videoNodeIds?.length || 0), 0),
-  } : { totalImages: 0, totalCollections: 0, totalVideos: 0 };
+  } : { 
+    totalImages: canvasStats.totalImages, 
+    totalCollections: 0, 
+    totalVideos: canvasStats.totalVideos 
+  };
 
   const totalSteps = stats.totalImages + stats.totalCollections + stats.totalVideos + (sendToDVR ? stats.totalVideos : 0);
   const progress = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
@@ -141,6 +198,11 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[GenerationPanel] Erreur API image T2I:', errorText);
+        // IMPORTANT: Retirer le flag generating même en cas d'erreur
+        updateNodeData(nodeId, {
+          generating: false,
+          generatingStartTime: undefined,
+        });
         return null;
       }
 
@@ -148,17 +210,31 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       const imageUrl = result.nodeData?.generated?.url || result.nodeData?.url;
       
       if (imageUrl) {
+        // IMPORTANT: Combiner TOUTES les mises à jour en UN SEUL appel
+        // pour éviter que les appels séparés s'écrasent
         updateNodeData(nodeId, {
           generated: result.nodeData?.generated || { url: imageUrl, type: 'image/png' },
           url: imageUrl,
+          generating: false,
+          generatingStartTime: undefined,
         });
         console.log(`[GenerationPanel] Image T2I générée: ${imageUrl.substring(0, 50)}...`);
         return imageUrl;
       }
 
+      // Pas d'URL = échec, retirer le flag
+      updateNodeData(nodeId, {
+        generating: false,
+        generatingStartTime: undefined,
+      });
       return null;
     } catch (error) {
       console.error('Erreur génération image T2I:', error);
+      // Retirer le flag en cas d'exception
+      updateNodeData(nodeId, {
+        generating: false,
+        generatingStartTime: undefined,
+      });
       return null;
     }
   };
@@ -190,6 +266,11 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[GenerationPanel] Erreur API image Edit:', errorText);
+        // IMPORTANT: Retirer le flag generating même en cas d'erreur
+        updateNodeData(nodeId, {
+          generating: false,
+          generatingStartTime: undefined,
+        });
         return null;
       }
 
@@ -197,17 +278,30 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       const imageUrl = result.nodeData?.generated?.url || result.nodeData?.url;
       
       if (imageUrl) {
+        // IMPORTANT: Combiner TOUTES les mises à jour en UN SEUL appel
         updateNodeData(nodeId, {
           generated: result.nodeData?.generated || { url: imageUrl, type: 'image/png' },
           url: imageUrl,
+          generating: false,
+          generatingStartTime: undefined,
         });
         console.log(`[GenerationPanel] Image Edit générée: ${imageUrl.substring(0, 50)}...`);
         return imageUrl;
       }
 
+      // Pas d'URL = échec, retirer le flag
+      updateNodeData(nodeId, {
+        generating: false,
+        generatingStartTime: undefined,
+      });
       return null;
     } catch (error) {
       console.error('Erreur génération image Edit:', error);
+      // Retirer le flag en cas d'exception
+      updateNodeData(nodeId, {
+        generating: false,
+        generatingStartTime: undefined,
+      });
       return null;
     }
   };
@@ -216,7 +310,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   const generateVideoBatch = async (jobs: {
     nodeId: string;
     prompt: string;
-    images: { url: string; type: string }[];
+    images: { url: string; type: string; originalUrl?: string }[];
     duration: number;
     aspectRatio: string;
   }[]): Promise<{ nodeId: string; success: boolean; videoUrl?: string; error?: string }[]> => {
@@ -258,6 +352,16 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
   };
 
   // ========== POPULATION COLLECTION ==========
+  // Collection contient TOUTES les images (4 par personnage, 4 par décor)
+  // LIMITE KLING : Max 7 images de référence pour vidéo
+  // Images ACTIVÉES par défaut (pour vidéo) :
+  //   - Personnages : primary + face (2/4)
+  //   - Décors : primary + angle2 + plongee (3/4)
+  // Images DÉSACTIVÉES par défaut (dans collection mais pas pour vidéo) :
+  //   - Personnages : profile, back
+  //   - Décors : contrePlongee
+  const DISABLED_VIEW_TYPES = ['profile', 'back', 'contrePlongee'];
+  
   const populateCollection = async (collectionNodeId: string, sourceNodeIds: string[]): Promise<boolean> => {
     try {
       const nodes = getNodes();
@@ -266,16 +370,23 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       for (const sourceId of sourceNodeIds) {
         const sourceNode = nodes.find(n => n.id === sourceId);
         const url = sourceNode?.data?.generated?.url || sourceNode?.data?.url;
+        const originalUrl = sourceNode?.data?.generated?.originalUrl; // URL CloudFront pour WaveSpeed video
         
         if (url) {
+          // Vérifier si ce type de vue doit être désactivé par défaut
+          const viewType = sourceNode?.data?.viewType as string | undefined;
+          const shouldBeEnabled = !viewType || !DISABLED_VIEW_TYPES.includes(viewType);
+          
           items.push({
             id: sourceId,
             type: 'image',
-            enabled: true,
+            enabled: shouldBeEnabled, // OFF pour profile, back, contrePlongee
             url,
+            originalUrl, // URL CloudFront pour l'API WaveSpeed video
             width: sourceNode?.data?.generated?.width || 512,
             height: sourceNode?.data?.generated?.height || 512,
             name: sourceNode?.data?.label || 'Image',
+            viewType, // Conserver le type de vue pour référence
           });
         }
       }
@@ -299,21 +410,29 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       const node = nodes.find(n => n.id === nodeId);
       const url = node?.data?.generated?.url || node?.data?.url;
 
-      if (!url) return false;
+      if (!url) {
+        console.error('[DVR] Pas d\'URL vidéo pour le nœud:', nodeId);
+        return false;
+      }
 
       const response = await fetch('/api/davinci-resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'import',
-          url,
-          name: node?.data?.label || 'Video',
+          filePath: url, // L'API attend "filePath", pas "url"
+          clipName: node?.data?.label || 'Video',
         }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('[DVR] Erreur import:', errorData);
+      }
+
       return response.ok;
     } catch (error) {
-      console.error('Erreur DVR:', error);
+      console.error('[DVR] Erreur:', error);
       return false;
     }
   };
@@ -365,15 +484,15 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
             });
 
             const nodes = getNodes();
-            const images: { url: string; type: string }[] = [];
+            const images: { url: string; type: string; originalUrl?: string }[] = [];
             
-            // Collecter les images des collections
+            // Collecter les images des collections (enabled !== false pour inclure undefined)
             for (const collectionId of step.videoInfo.characterCollectionIds) {
               const collectionNode = nodes.find(n => n.id === collectionId);
               if (collectionNode?.data?.items) {
-                for (const item of collectionNode.data.items) {
-                  if (item.enabled && item.url) {
-                    images.push({ url: item.url, type: item.type || 'image/png' });
+                for (const item of collectionNode.data.items as { enabled?: boolean; url?: string; type?: string; originalUrl?: string }[]) {
+                  if (item.enabled !== false && item.url) {
+                    images.push({ url: item.url, type: item.type || 'image/png', originalUrl: item.originalUrl });
                   }
                 }
               }
@@ -381,12 +500,15 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
             if (step.videoInfo.locationCollectionId) {
               const locNode = nodes.find(n => n.id === step.videoInfo!.locationCollectionId);
               if (locNode?.data?.items) {
-                const enabledItem = locNode.data.items.find((item: any) => item.enabled && item.url);
-                if (enabledItem) {
-                  images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png' });
+                const items = locNode.data.items as { enabled?: boolean; url?: string; type?: string; originalUrl?: string }[];
+                const enabledItem = items.find(item => item.enabled !== false && item.url);
+                if (enabledItem?.url) {
+                  images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png', originalUrl: enabledItem.originalUrl });
                 }
               }
             }
+            
+            console.log(`[GenerationPanel] Vidéo individuelle ${step.nodeId} : ${images.length} images collectées`);
 
             const results = await generateVideoBatch([{
               nodeId: step.nodeId,
@@ -402,13 +524,24 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
                 generated: { url: result.videoUrl, type: 'video/mp4' },
                 generating: false,
                 generatingStartTime: undefined,
+                error: undefined, // Effacer l'erreur précédente
               });
               success = true;
             } else {
+              // Capturer l'erreur complète de WaveSpeed
+              const videoError = result?.error || 'Erreur vidéo inconnue';
               updateNodeData(step.nodeId, {
                 generating: false,
                 generatingStartTime: undefined,
+                error: videoError, // Stocker l'erreur dans le nœud
               });
+              // Mettre à jour le step avec l'erreur complète
+              updateStep(step.id, { 
+                status: 'error',
+                error: videoError 
+              });
+              toast.error(`Erreur vidéo: ${videoError}`);
+              return; // Sortir tôt, on a déjà géré l'erreur
             }
           }
           break;
@@ -531,7 +664,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       });
     }
 
-    // ========== IMAGES LIEUX ==========
+    // ========== IMAGES DÉCORS ==========
     for (const locData of sequence.locationImages) {
       const order = locData.order || ['angle1', 'angle2', 'angle3', 'angle4'];
       const prompts = locData.prompts || {};
@@ -587,7 +720,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       }
     }
 
-    // Collections lieux
+    // Collections décors
     for (const [locId, collectionId] of sequence.locationCollections) {
       const locData = sequence.locationImages.find(l => l.locationId === locId);
       allSteps.push({
@@ -595,7 +728,7 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
         type: 'collection',
         status: 'pending',
         nodeId: collectionId,
-        label: `📁 Collection lieu`,
+        label: `📁 Collection décor`,
         collectionSourceIds: locData?.imageNodeIds || [],
       });
     }
@@ -640,89 +773,136 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     let errorCount = 0;
 
     try {
-      // ========== PHASE 1 : Images de référence (T2I) ==========
-      setCurrentPhase('🎨 Images de référence');
-      toast.info('Génération des images de référence (fond noir, studio)...');
+      // ========== PHASE 1 : TOUTES les images PRIMAIRES EN PARALLÈLE ==========
+      setCurrentPhase('🎨 Images PRIMAIRES (parallèle)');
+      toast.info(`🚀 Lancement de TOUTES les images primaires EN PARALLÈLE !`);
 
       const referenceSteps = allSteps.filter(s => s.type === 'image');
       const referenceImageUrls: Record<string, string> = {};
 
+      // Marquer TOUTES les primaires comme "generating" immédiatement
+      // 1. Mettre à jour les steps (pour le panneau)
+      // 2. Mettre à jour les nœuds ReactFlow (pour l'affichage visuel avec skeleton coloré)
+      const primaryStartTime = Date.now();
       for (const step of referenceSteps) {
-        if (aborted) break;
-
         updateStep(step.id, { status: 'generating' });
-        setCurrentStep(++stepIdx);
-
-        if (step.imageInfo) {
-          const url = await generateImageTextToImage(
-            step.nodeId,
-            step.imageInfo.prompt,
-            step.imageInfo.aspectRatio
-          );
-          
-          if (url) {
-            referenceImageUrls[step.nodeId] = url;
-            updateStep(step.id, { status: 'done' });
-            successCount++;
-          } else {
-            updateStep(step.id, { status: 'error', error: 'Échec génération' });
-            errorCount++;
-          }
-        }
-
-        await delay(500); // Petit délai entre les appels
+        updateNodeData(step.nodeId, { 
+          generating: true, 
+          generatingStartTime: primaryStartTime,
+          isReference: true, // Pour la couleur violet du skeleton
+        });
       }
 
-      // ========== PHASE 2 : Images variantes (Edit-Multi) ==========
+      // Lancer TOUTES les primaires EN PARALLÈLE avec Promise.all
+      console.log(`[GenerationPanel] 🚀 Lancement de ${referenceSteps.length} images primaires EN PARALLÈLE`);
+      
+      const primaryResults = await Promise.all(
+        referenceSteps.map(async (step) => {
+          if (aborted) return { step, url: null };
+          
+          if (step.imageInfo) {
+            const url = await generateImageTextToImage(
+              step.nodeId,
+              step.imageInfo.prompt,
+              step.imageInfo.aspectRatio
+            );
+            return { step, url };
+          }
+          return { step, url: null };
+        })
+      );
+
+      // Traiter les résultats des primaires
+      // Note: generateImageTextToImage gère déjà le flag generating dans updateNodeData
+      for (const { step, url } of primaryResults) {
+        if (url) {
+          referenceImageUrls[step.nodeId] = url;
+          updateStep(step.id, { status: 'done' });
+          successCount++;
+        } else {
+          updateStep(step.id, { status: 'error', error: 'Échec génération' });
+          errorCount++;
+        }
+        stepIdx++;
+      }
+      setCurrentStep(stepIdx);
+
+      // ========== PHASE 2 : TOUTES les variantes EN PARALLÈLE ==========
       if (!aborted) {
-        setCurrentPhase('✏️ Variantes (edit-multi)');
-        toast.info('Génération des variantes à partir des références...');
+        setCurrentPhase('✏️ Variantes (parallèle)');
+        toast.info(`🚀 Lancement de TOUTES les variantes EN PARALLÈLE !`);
 
         const editSteps = allSteps.filter(s => s.type === 'image-edit');
 
+        // Marquer TOUTES les variantes comme "generating" immédiatement
+        // 1. Mettre à jour les steps (pour le panneau)
+        // 2. Mettre à jour les nœuds ReactFlow (pour l'affichage visuel avec skeleton AMBRE)
+        const variantStartTime = Date.now();
         for (const step of editSteps) {
-          if (aborted) break;
-
           updateStep(step.id, { status: 'generating' });
-          setCurrentStep(++stepIdx);
-
-          if (step.imageInfo?.referenceNodeId) {
-            // Récupérer l'URL de l'image de référence
-            const nodes = getNodes();
-            const refNode = nodes.find(n => n.id === step.imageInfo!.referenceNodeId);
-            const refUrl = refNode?.data?.generated?.url || refNode?.data?.url || referenceImageUrls[step.imageInfo.referenceNodeId];
-
-            if (refUrl) {
-              const url = await generateImageEditMulti(
-                step.nodeId,
-                step.imageInfo.prompt,
-                step.imageInfo.aspectRatio,
-                refUrl
-              );
-              
-              if (url) {
-                updateStep(step.id, { status: 'done' });
-                successCount++;
-              } else {
-                updateStep(step.id, { status: 'error', error: 'Échec edit' });
-                errorCount++;
-              }
-            } else {
-              updateStep(step.id, { status: 'error', error: 'Image ref manquante' });
-              errorCount++;
-            }
-          }
-
-          await delay(500);
+          updateNodeData(step.nodeId, { 
+            generating: true, 
+            generatingStartTime: variantStartTime,
+            isReference: false, // Pour la couleur AMBRE du skeleton (variante)
+          });
         }
+
+        // Lancer TOUTES les variantes EN PARALLÈLE avec Promise.all
+        console.log(`[GenerationPanel] 🚀 Lancement de ${editSteps.length} variantes EN PARALLÈLE`);
+        
+        const variantResults = await Promise.all(
+          editSteps.map(async (step) => {
+            if (aborted) return { step, url: null, error: 'Annulé' };
+            
+            if (step.imageInfo?.referenceNodeId) {
+              // Récupérer l'URL de l'image de référence
+              const nodes = getNodes();
+              const refNode = nodes.find(n => n.id === step.imageInfo!.referenceNodeId);
+              const refUrl = refNode?.data?.generated?.url || refNode?.data?.url || referenceImageUrls[step.imageInfo.referenceNodeId];
+
+              if (refUrl) {
+                const url = await generateImageEditMulti(
+                  step.nodeId,
+                  step.imageInfo.prompt,
+                  step.imageInfo.aspectRatio,
+                  refUrl
+                );
+                return { step, url, error: url ? null : 'Échec edit' };
+              } else {
+                return { step, url: null, error: 'Image ref manquante' };
+              }
+            }
+            return { step, url: null, error: 'Pas de référence' };
+          })
+        );
+
+        // Traiter les résultats des variantes
+        // Note: generateImageEditMulti gère déjà le flag generating dans updateNodeData
+        for (const { step, url, error } of variantResults) {
+          if (url) {
+            updateStep(step.id, { status: 'done' });
+            successCount++;
+          } else {
+            updateStep(step.id, { status: 'error', error: error || 'Échec' });
+            errorCount++;
+          }
+          stepIdx++;
+        }
+        setCurrentStep(stepIdx);
       }
 
       // ========== PHASE 3 : Collections ==========
+      // IMPORTANT: On stocke les items des collections localement pour éviter les problèmes de sync React
+      // On ne stocke QUE les images activées (enabled) pour la génération vidéo
+      // On inclut l'originalUrl (CloudFront) pour l'API WaveSpeed video
+      const collectionItemsMap: Record<string, { url: string; type: string; originalUrl?: string }[]> = {};
+      
       if (!aborted) {
         setCurrentPhase('📁 Collections');
         toast.info('Population des collections...');
 
         const collectionSteps = allSteps.filter(s => s.type === 'collection');
+        const nodes = getNodes();
 
         for (const step of collectionSteps) {
           if (aborted) break;
@@ -731,6 +911,28 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           setCurrentStep(++stepIdx);
 
           if (step.collectionSourceIds) {
+            // Récupérer les URLs des images sources (SEULEMENT celles activées pour la vidéo)
+            const enabledItems: { url: string; type: string; originalUrl?: string }[] = [];
+            
+            for (const sourceId of step.collectionSourceIds) {
+              const sourceNode = nodes.find(n => n.id === sourceId);
+              const url = sourceNode?.data?.generated?.url || sourceNode?.data?.url;
+              const originalUrl = sourceNode?.data?.generated?.originalUrl; // URL CloudFront pour WaveSpeed
+              const viewType = sourceNode?.data?.viewType as string | undefined;
+              
+              // Filtrer les vues désactivées pour la vidéo (profile, back, contrePlongee)
+              const shouldBeEnabled = !viewType || !DISABLED_VIEW_TYPES.includes(viewType);
+              
+              if (url && shouldBeEnabled) {
+                enabledItems.push({ url, type: 'image/png', originalUrl });
+              }
+            }
+            
+            // Stocker localement SEULEMENT les images activées pour la phase vidéo
+            collectionItemsMap[step.nodeId] = enabledItems;
+            console.log(`[GenerationPanel] Collection ${step.nodeId} : ${enabledItems.length} images activées (sur ${step.collectionSourceIds.length} total, avec ${enabledItems.filter(i => i.originalUrl).length} URLs CloudFront)`);
+            
+            // Peupler aussi le nœud ReactFlow (avec TOUTES les images, enabled=true/false)
             const success = await populateCollection(step.nodeId, step.collectionSourceIds);
             updateStep(step.id, { status: success ? 'done' : 'error' });
             if (success) successCount++;
@@ -753,12 +955,10 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
             nodeId: string;
             stepId: string;
             prompt: string;
-            images: { url: string; type: string }[];
+            images: { url: string; type: string; originalUrl?: string }[];
             duration: number;
             aspectRatio: string;
           }[] = [];
-
-          const nodes = getNodes();
 
           for (const step of videoSteps) {
             if (!step.videoInfo) continue;
@@ -769,29 +969,46 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
               generatingStartTime: Date.now(),
             });
 
-            // Collecter les images des collections
-            const images: { url: string; type: string }[] = [];
+            // Collecter les images - d'abord depuis la map locale, sinon depuis les nœuds ReactFlow
+            const images: { url: string; type: string; originalUrl?: string }[] = [];
+            const nodes = getNodes();
             
             for (const collectionId of step.videoInfo.characterCollectionIds) {
-              const collectionNode = nodes.find(n => n.id === collectionId);
-              if (collectionNode?.data?.items) {
-                for (const item of collectionNode.data.items) {
-                  if (item.enabled && item.url) {
-                    images.push({ url: item.url, type: item.type || 'image/png' });
+              // Essayer d'abord depuis collectionItemsMap (rempli pendant cette session)
+              const collectionItems = collectionItemsMap[collectionId];
+              if (collectionItems && collectionItems.length > 0) {
+                images.push(...collectionItems);
+              } else {
+                // Sinon, récupérer depuis le nœud ReactFlow (projet existant)
+                const collectionNode = nodes.find(n => n.id === collectionId);
+                if (collectionNode?.data?.items) {
+                  for (const item of collectionNode.data.items as { enabled?: boolean; url?: string; type?: string; originalUrl?: string }[]) {
+                    if (item.enabled !== false && item.url) {
+                      images.push({ url: item.url, type: item.type || 'image/png', originalUrl: item.originalUrl });
+                    }
                   }
                 }
               }
             }
 
             if (step.videoInfo.locationCollectionId) {
-              const locNode = nodes.find(n => n.id === step.videoInfo!.locationCollectionId);
-              if (locNode?.data?.items) {
-                const enabledItem = locNode.data.items.find((item: any) => item.enabled && item.url);
-                if (enabledItem) {
-                  images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png' });
+              const locItems = collectionItemsMap[step.videoInfo.locationCollectionId];
+              if (locItems && locItems.length > 0) {
+                images.push(locItems[0]);
+              } else {
+                // Sinon, récupérer depuis le nœud ReactFlow
+                const locNode = nodes.find(n => n.id === step.videoInfo!.locationCollectionId);
+                if (locNode?.data?.items) {
+                  const items = locNode.data.items as { enabled?: boolean; url?: string; type?: string; originalUrl?: string }[];
+                  const enabledItem = items.find(i => i.enabled !== false && i.url);
+                  if (enabledItem?.url) {
+                    images.push({ url: enabledItem.url, type: enabledItem.type || 'image/png', originalUrl: enabledItem.originalUrl });
+                  }
                 }
               }
             }
+
+            console.log(`[GenerationPanel] Vidéo ${step.nodeId} : ${images.length} images collectées depuis ${collectionItemsMap[step.videoInfo.characterCollectionIds[0]] ? 'map locale' : 'nœuds ReactFlow'}`);
 
             videoJobs.push({
               nodeId: step.nodeId,
@@ -838,11 +1055,15 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
                 else errorCount++;
               }
             } else {
+              // Stocker l'erreur complète de WaveSpeed dans le nœud
+              const videoError = result.error || 'Erreur vidéo inconnue';
               updateNodeData(result.nodeId, {
                 generating: false,
                 generatingStartTime: undefined,
+                error: videoError, // Visible dans le nœud
               });
-              updateStep(job.stepId, { status: 'error', error: result.error || 'Échec' });
+              updateStep(job.stepId, { status: 'error', error: videoError });
+              console.error(`[GenerationPanel] Erreur vidéo ${result.nodeId}: ${videoError}`);
               errorCount++;
             }
           }
@@ -861,8 +1082,12 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
       toast.error(`Erreur: ${error.message}`);
     } finally {
       setIsGenerating(false);
+      
+      // Rafraîchir la bibliothèque de médias pour afficher les nouveaux fichiers
+      console.log('[GenerationPanel] Rafraîchissement de la bibliothèque de médias...');
+      fetchMedias();
     }
-  }, [sequence, isGenerating, aborted, sendToDVR, videoCopies, getNodes, updateNodeData, projectId]);
+  }, [sequence, isGenerating, aborted, sendToDVR, videoCopies, getNodes, updateNodeData, projectId, fetchMedias]);
 
   const cancelGeneration = () => {
     setAborted(true);
@@ -870,28 +1095,34 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
     toast.warning('Génération annulée');
   };
 
-  // Ne pas afficher si pas de séquence
-  if (!sequence) {
-    return null;
-  }
+  // Nombre total de médias générables
+  const totalGeneratable = sequence 
+    ? stats.totalImages + stats.totalVideos
+    : canvasStats.generatableImages + canvasStats.generatableVideos;
 
+  // CODE COULEUR UNIFIÉ : Images = Vert Matrix, Vidéos = Fuchsia
   const getStepIcon = (step: GenerationStep) => {
+    const isImage = step.type === 'image' || step.type === 'image-edit';
+    const isVideo = step.type === 'video';
+    
     if (step.status === 'generating') {
-      return <Loader2Icon size={14} className="animate-spin text-blue-400" />;
+      const color = isImage ? 'text-[#00ff41]' : isVideo ? 'text-fuchsia-400' : 'text-blue-400';
+      return <Loader2Icon size={14} className={`animate-spin ${color}`} />;
     }
     if (step.status === 'done') {
-      return <CheckCircle2Icon size={14} className="text-emerald-400" />;
+      const color = isImage ? 'text-[#00ff41]' : isVideo ? 'text-fuchsia-400' : 'text-emerald-400';
+      return <CheckCircle2Icon size={14} className={color} />;
     }
     if (step.status === 'error') {
       return <AlertCircleIcon size={14} className="text-red-400" />;
     }
     
     switch (step.type) {
-      case 'image': return <ImageIcon size={14} className="text-violet-400" />;
-      case 'image-edit': return <ImageIcon size={14} className="text-amber-400" />;
-      case 'video': return <VideoIcon size={14} className="text-emerald-400" />;
-      case 'collection': return <FolderIcon size={14} className="text-muted-foreground" />;
-      case 'dvr': return <SendIcon size={14} className="text-muted-foreground" />;
+      case 'image': return <ImageIcon size={14} className="text-[#00ff41]" />;
+      case 'image-edit': return <ImageIcon size={14} className="text-[#00ff41]" />;
+      case 'video': return <VideoIcon size={14} className="text-fuchsia-400" />;
+      case 'collection': return <FolderIcon size={14} className="text-zinc-500" />;
+      case 'dvr': return <SendIcon size={14} className="text-zinc-500" />;
     }
   };
 
@@ -903,50 +1134,80 @@ export function GenerationPanel({ projectId }: GenerationPanelProps) {
           size="lg"
         >
           <SparklesIcon size={18} />
-          Générer les médias
-          <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 text-xs">
-            {stats.totalImages + stats.totalVideos}
-          </span>
+          Générer
+          {totalGeneratable > 0 && (
+            <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 text-xs">
+              {totalGeneratable}
+            </span>
+          )}
         </Button>
       </SheetTrigger>
       
-      <SheetContent side="right" className="w-[450px] sm:w-[540px] flex flex-col p-6">
+      <SheetContent side="right" className="w-[450px] sm:w-[540px] flex flex-col p-6 bg-zinc-950 border-zinc-800">
         <SheetHeader className="flex-shrink-0 pr-10">
-          <SheetTitle className="flex items-center gap-2">
-            <SparklesIcon className="text-violet-400" />
-            Génération automatique
+          <SheetTitle className="flex items-center gap-2 text-white">
+            <SparklesIcon className="text-[#00ff41]" />
+            Génération des médias
           </SheetTitle>
-          <SheetDescription>
-            Images cohérentes (edit-multi) + Vidéos 10s 16:9
+          <SheetDescription className="text-zinc-400">
+            {sequence ? 'Séquence de génération disponible' : 'Analyse des nœuds du canvas'}
           </SheetDescription>
         </SheetHeader>
 
         <div className="mt-6 space-y-6 flex-1 overflow-y-auto pr-4">
-          {/* Stats */}
+          {/* Stats - Code couleur unifié */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-lg bg-muted/30 p-3 text-center">
-              <ImageIcon size={20} className="mx-auto mb-1 text-violet-400" />
-              <p className="text-lg font-bold">{stats.totalImages}</p>
-              <p className="text-xs text-muted-foreground">Images</p>
+            <div className="rounded-lg bg-[#00ff41]/10 border border-[#00ff41]/30 p-3 text-center">
+              <ImageIcon size={20} className="mx-auto mb-1 text-[#00ff41]" />
+              <p className="text-lg font-bold text-[#00ff41]">{stats.totalImages}</p>
+              <p className="text-xs text-zinc-400">Images</p>
+              {!sequence && canvasStats.generatableImages > 0 && (
+                <p className="text-[10px] text-[#00ff41]/70 mt-1">
+                  {canvasStats.generatableImages} à générer
+                </p>
+              )}
             </div>
-            <div className="rounded-lg bg-muted/30 p-3 text-center">
-              <FolderIcon size={20} className="mx-auto mb-1 text-amber-400" />
-              <p className="text-lg font-bold">{stats.totalCollections}</p>
+            <div className="rounded-lg bg-zinc-800/50 p-3 text-center">
+              <FolderIcon size={20} className="mx-auto mb-1 text-zinc-400" />
+              <p className="text-lg font-bold text-zinc-300">{stats.totalCollections}</p>
               <p className="text-xs text-muted-foreground">Collections</p>
             </div>
-            <div className="rounded-lg bg-muted/30 p-3 text-center">
-              <VideoIcon size={20} className="mx-auto mb-1 text-emerald-400" />
-              <p className="text-lg font-bold">{stats.totalVideos}</p>
-              <p className="text-xs text-muted-foreground">Vidéos</p>
+            <div className="rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/30 p-3 text-center">
+              <VideoIcon size={20} className="mx-auto mb-1 text-fuchsia-400" />
+              <p className="text-lg font-bold text-fuchsia-400">{stats.totalVideos}</p>
+              <p className="text-xs text-zinc-400">Vidéos</p>
+              {!sequence && canvasStats.generatableVideos > 0 && (
+                <p className="text-[10px] text-fuchsia-400/70 mt-1">
+                  {canvasStats.generatableVideos} à générer
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Info nouvelle logique */}
-          <div className="rounded-lg bg-violet-500/10 border border-violet-500/20 p-3 text-sm">
-            <p className="font-medium text-violet-300 mb-1">✨ Nouvelle logique de génération</p>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>• Personnages : fond noir, studio neutre, expression neutre</li>
-              <li>• 1ère image de référence, puis variantes cohérentes (edit-multi)</li>
+          {/* Message si pas de séquence */}
+          {!sequence && (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4">
+              <p className="text-sm text-amber-400 font-medium mb-2">
+                ⚠️ Pas de séquence de génération
+              </p>
+              <p className="text-xs text-zinc-400">
+                Ce projet n'a pas été créé via un brief. Pour régénérer des médias :
+              </p>
+              <ul className="text-xs text-zinc-400 mt-2 space-y-1">
+                <li>• Cliquez sur un nœud image et utilisez le bouton "Générer"</li>
+                <li>• Cliquez sur un nœud vidéo et utilisez le bouton "Générer"</li>
+              </ul>
+              <p className="text-xs text-zinc-500 mt-3">
+                {canvasStats.totalImages} images • {canvasStats.totalVideos} vidéos dans le canvas
+              </p>
+            </div>
+          )}
+
+          {/* Info génération */}
+          <div className="rounded-lg bg-zinc-900/50 p-3 text-sm">
+            <p className="font-medium text-zinc-300 mb-1">✨ Génération intelligente</p>
+            <ul className="text-xs text-zinc-500 space-y-1">
+              <li>• Images primaires → variantes cohérentes</li>
               <li>• Vidéos : 10s en 16:9 par défaut</li>
             </ul>
           </div>

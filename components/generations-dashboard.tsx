@@ -65,16 +65,16 @@ const typeStyles: Record<string, { bg: string; text: string; border: string; glo
     glow: 'shadow-sky-500/20'
   },
   image: { 
-    bg: 'bg-violet-500/10', 
-    text: 'text-violet-400', 
-    border: 'border-violet-500/30',
-    glow: 'shadow-violet-500/20'
+    bg: 'bg-[#00ff41]/10', 
+    text: 'text-[#00ff41]', 
+    border: 'border-[#00ff41]/30',
+    glow: 'shadow-[#00ff41]/20'
   },
   video: { 
-    bg: 'bg-rose-500/10', 
-    text: 'text-rose-400', 
-    border: 'border-rose-500/30',
-    glow: 'shadow-rose-500/20'
+    bg: 'bg-fuchsia-500/10', 
+    text: 'text-fuchsia-400', 
+    border: 'border-fuchsia-500/30',
+    glow: 'shadow-fuchsia-500/20'
   },
   audio: { 
     bg: 'bg-emerald-500/10', 
@@ -275,8 +275,8 @@ export function GenerationsDashboard() {
           onClick={() => setIsExpanded(!isExpanded)}
           className="flex items-center gap-3 group"
         >
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-rose-500/20 border border-violet-500/30">
-            <SparklesIcon size={18} className="text-violet-400" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-[#00ff41]/20 to-fuchsia-500/20 border border-[#00ff41]/30">
+            <SparklesIcon size={18} className="text-[#00ff41]" />
           </div>
           <div>
             <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -318,7 +318,7 @@ export function GenerationsDashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {/* Total */}
               <div className="group relative overflow-hidden rounded-xl border border-border/50 bg-card p-4 transition-all hover:border-border hover:shadow-lg">
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-gradient-to-br from-[#00ff41]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
                     <TrendingUpIcon size={14} />

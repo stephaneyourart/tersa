@@ -19,6 +19,7 @@ export type VideoModel = {
     prompt: string;
     imagePrompt: string | undefined;  // First frame
     lastFrameImage?: string;          // Last frame (tail image)
+    referenceImages?: string[];       // Images de référence pour reference-to-video (personnages, décors)
     duration: 5 | 10;
     aspectRatio: string;
   }) => Promise<string>;
@@ -459,6 +460,44 @@ export const videoModels: Record<string, TersaVideoModel> = {
         getCost: ({ duration }) => 0.05 * duration,
       },
     ],
+  },
+
+  'kling-o1-ref': {
+    label: 'Kling O1 Reference-to-Video (WaveSpeed)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.klingO1Ref(),
+        getCost: ({ duration }) => 0.06 * duration, // Légèrement plus cher car plus avancé
+      },
+    ],
+    default: true, // Modèle par défaut pour les briefs avec référence
+  },
+
+  'kling-v2.6-pro-i2v': {
+    label: 'Kling v2.6 Pro Image-to-Video (WaveSpeed)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.kling26ProI2V(),
+        getCost: ({ duration }) => 0.08 * duration,
+      },
+    ],
+  },
+
+  'kling-v2.6-pro-first-last': {
+    label: 'Kling v2.6 Pro First+Last Frame (Briefs)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.kling26ProFirstLast(),
+        getCost: ({ duration }) => 0.08 * duration,
+      },
+    ],
+    default: true, // Modèle par défaut pour les briefs avec first+last frame
   },
 
   'seedream-v1': {

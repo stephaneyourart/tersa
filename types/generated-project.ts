@@ -5,10 +5,12 @@
 
 // ========== PERSONNAGES ==========
 export interface CharacterPrompts {
-  face: string;      // Portrait frontal
-  profile: string;   // Portrait de profil  
-  fullBody: string;  // Photo en pied de face
-  back: string;      // Photo de dos
+  primary: string;   // Prompt PRIMAIRE très détaillé (personnage debout de face, fond gris neutre)
+  face: string;      // Visage de face (1:1) - généré depuis image primaire
+  profile: string;   // Visage de profil (1:1) - généré depuis image primaire
+  back: string;      // Vue de dos (9:16) - généré depuis image primaire
+  // Legacy - gardé pour rétrocompatibilité
+  fullBody?: string; // Ancien champ - maintenant = primary
 }
 
 export interface GeneratedCharacter {
@@ -16,16 +18,33 @@ export interface GeneratedCharacter {
   name: string;                  // Ex: "Jean"
   description: string;           // Description complète
   referenceCode: string;         // Ex: "[PERSO:Jean]"
-  prompts: CharacterPrompts;     // 4 prompts pour les images
+  prompts: CharacterPrompts;     // Prompts pour les images (1 primaire + 3 variantes)
 }
 
-// ========== LIEUX ==========
+// ========== DÉCORS (anciennement LIEUX) ==========
+export interface DecorPrompts {
+  primary: string;       // Image primaire (vue d'ensemble)
+  angle2: string;        // Nouvel angle 1 (16:9)
+  plongee: string;       // Vue plongée top down (16:9)
+  contrePlongee: string; // Vue contre-plongée (16:9)
+}
+
+// Alias pour rétrocompatibilité
 export interface LocationPrompts {
-  angle1: string;   // Vue principale
+  angle1: string;   // Vue principale (= primary)
   angle2: string;   // Vue alternative
-  angle3: string;   // Vue détail/ambiance
+  angle3: string;   // Vue détail/ambiance (= plongee)
 }
 
+export interface GeneratedDecor {
+  id: string;                    // Ex: "decor-bureau"
+  name: string;                  // Ex: "Bureau moderne"
+  description: string;           // Description complète
+  referenceCode: string;         // Ex: "[DECOR:Bureau]"
+  prompts: DecorPrompts;         // 4 prompts pour les variantes
+}
+
+// Alias pour rétrocompatibilité
 export interface GeneratedLocation {
   id: string;                    // Ex: "lieu-bureau"
   name: string;                  // Ex: "Bureau moderne"
@@ -38,9 +57,12 @@ export interface GeneratedLocation {
 export interface GeneratedPlan {
   id: string;                    // Ex: "plan-1-1"
   planNumber: number;            // Numéro dans la scène
-  prompt: string;                // Prompt pour générer la vidéo
+  prompt: string;                // Prompt ACTION décrivant le déroulé du plan (pour la vidéo)
+  promptImageDepart: string;     // Prompt pour l'image de DÉPART (21:9) - DÉDUIT du prompt action
+  promptImageFin: string;        // Prompt pour l'image de FIN (21:9) - DÉDUIT du prompt action
   characterRefs: string[];       // IDs des personnages impliqués
-  locationRef: string | null;    // ID du lieu (peut être null)
+  decorRef: string | null;       // ID du décor (peut être null)
+  locationRef?: string | null;   // Rétrocompatibilité (alias pour decorRef)
   duration: number;              // Durée estimée en secondes
   cameraMovement?: string;       // Ex: "Travelling avant lent"
   notes?: string;                // Notes additionnelles
@@ -61,7 +83,8 @@ export interface GeneratedProjectStructure {
   title: string;                      // Titre du projet
   synopsis: string;                   // Synopsis général
   characters: GeneratedCharacter[];   // Tous les personnages
-  locations: GeneratedLocation[];     // Tous les lieux
+  decors: GeneratedDecor[];           // Tous les décors (nouveau)
+  locations?: GeneratedLocation[];    // Rétrocompatibilité (alias pour decors)
   scenes: GeneratedScene[];           // Toutes les scènes avec leurs plans
   totalPlans: number;                 // Nombre total de plans
   estimatedDuration: number;          // Durée totale estimée (secondes)
