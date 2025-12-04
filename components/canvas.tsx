@@ -7,6 +7,7 @@ import { handleError } from '@/lib/error/handle';
 import { isValidSourceTarget } from '@/lib/xyflow';
 import { NodeDropzoneProvider } from '@/providers/node-dropzone';
 import { NodeOperationsProvider } from '@/providers/node-operations';
+import { HoveredNodeProvider } from '@/providers/hovered-node';
 import { useProject } from '@/providers/project';
 import {
   Background,
@@ -1252,11 +1253,12 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   })();
 
   return (
-    <NodeOperationsProvider addNode={addNode} duplicateNode={duplicateNode}>
-      <NodeDropzoneProvider>
-        <ContextMenu>
-          <ContextMenuTrigger onContextMenu={handleContextMenu}>
-            <ReactFlow
+    <HoveredNodeProvider>
+      <NodeOperationsProvider addNode={addNode} duplicateNode={duplicateNode}>
+        <NodeDropzoneProvider>
+          <ContextMenu>
+            <ContextMenuTrigger onContextMenu={handleContextMenu}>
+              <ReactFlow
               deleteKeyCode={['Backspace', 'Delete']}
               nodes={nodes}
               onNodesChange={handleNodesChange}
@@ -1514,15 +1516,16 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        {/* Input file caché pour l'import de fichiers */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept="image/*,video/*,audio/*,text/*,.pdf,.json,.md,.txt"
-          onChange={handleFileImport}
-        />
-      </NodeDropzoneProvider>
-    </NodeOperationsProvider>
+          {/* Input file caché pour l'import de fichiers */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/*,audio/*,text/*,.pdf,.json,.md,.txt"
+            onChange={handleFileImport}
+          />
+        </NodeDropzoneProvider>
+      </NodeOperationsProvider>
+    </HoveredNodeProvider>
   );
 };

@@ -1,6 +1,8 @@
 /**
  * Edge "Flora" - Connexion fluide et organique style FLORA
  * Utilise les courbes Bézier standard de ReactFlow pour la compatibilité
+ * 
+ * HIGHLIGHT AU HOVER : L'edge grossit x3 quand un nœud connecté est survolé
  */
 
 import {
@@ -8,6 +10,7 @@ import {
   type EdgeProps,
   getBezierPath,
 } from '@xyflow/react';
+import { useHoveredNodeOptional } from '@/providers/hovered-node';
 
 // Compensation pour le décalage CSS des handles (-3.5rem = -14px)
 // Le handle source (droite) est décalé vers la droite, donc on soustrait
@@ -26,6 +29,13 @@ export const FloraEdge = ({
   markerEnd,
   selected,
 }: EdgeProps) => {
+  // Hook pour le highlight au hover (optionnel pour éviter l'erreur hors provider)
+  const hoveredContext = useHoveredNodeOptional();
+  const isHighlighted = hoveredContext?.isEdgeHighlighted(id) ?? false;
+  
+  // État visuel : selected > highlighted > normal
+  const isEmphasized = selected || isHighlighted;
+
   // Ajuster les coordonnées pour toucher les bords des nœuds
   const adjustedSourceX = sourceX - HANDLE_OFFSET;
   const adjustedTargetX = targetX + HANDLE_OFFSET;
@@ -43,15 +53,25 @@ export const FloraEdge = ({
 
   // Générer un ID unique pour le dégradé
   const gradientId = `flora-gradient-${id}`;
+  
+  // Couleurs selon l'état
+  const colors = isEmphasized 
+    ? { start: "rgba(255, 255, 255, 0.9)", mid: "rgba(255, 255, 255, 1)", end: "rgba(255, 255, 255, 0.9)" }
+    : { start: "rgba(140, 140, 140, 0.5)", mid: "rgba(180, 180, 180, 0.8)", end: "rgba(140, 140, 140, 0.5)" };
+  
+  // Épaisseurs selon l'état (x3 pour highlight)
+  const strokeWidth = isHighlighted ? 6 : selected ? 3 : 2;
+  const shadowWidth = isHighlighted ? 12 : selected ? 5 : 4;
+  const dotRadius = isHighlighted ? 5 : selected ? 3 : 2.5;
 
   return (
     <>
       {/* Définition du dégradé */}
       <defs>
         <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={selected ? "rgba(200, 200, 200, 0.8)" : "rgba(140, 140, 140, 0.5)"} />
-          <stop offset="50%" stopColor={selected ? "rgba(255, 255, 255, 1)" : "rgba(180, 180, 180, 0.8)"} />
-          <stop offset="100%" stopColor={selected ? "rgba(200, 200, 200, 0.8)" : "rgba(140, 140, 140, 0.5)"} />
+          <stop offset="0%" stopColor={colors.start} />
+          <stop offset="50%" stopColor={colors.mid} />
+          <stop offset="100%" stopColor={colors.end} />
         </linearGradient>
       </defs>
       
@@ -59,10 +79,13 @@ export const FloraEdge = ({
       <path
         d={edgePath}
         fill="none"
-        stroke="rgba(0, 0, 0, 0.12)"
-        strokeWidth={selected ? 5 : 4}
+        stroke={isHighlighted ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)"}
+        strokeWidth={shadowWidth}
         strokeLinecap="round"
-        style={{ filter: 'blur(2px)' }}
+        style={{ 
+          filter: isHighlighted ? 'blur(4px)' : 'blur(2px)',
+          transition: 'stroke-width 0.15s ease, filter 0.15s ease',
+        }}
       />
       
       {/* Ligne principale avec dégradé */}
@@ -72,7 +95,7 @@ export const FloraEdge = ({
         markerEnd={markerEnd}
         style={{
           stroke: `url(#${gradientId})`,
-          strokeWidth: selected ? 3 : 2,
+          strokeWidth,
           strokeLinecap: 'round',
           transition: 'stroke-width 0.15s ease',
           ...style,
@@ -80,8 +103,12 @@ export const FloraEdge = ({
       />
       
       {/* Point lumineux qui voyage le long de la connexion */}
-      <circle r={selected ? 3 : 2.5} fill={selected ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.6)"}>
-        <animateMotion dur="3s" repeatCount="indefinite" path={edgePath} />
+      <circle 
+        r={dotRadius} 
+        fill={isEmphasized ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.6)"}
+        style={{ transition: 'r 0.15s ease' }}
+      >
+        <animateMotion dur={isHighlighted ? "1.5s" : "3s"} repeatCount="indefinite" path={edgePath} />
       </circle>
     </>
   );

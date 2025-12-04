@@ -29,6 +29,7 @@ import { updateGenerationDVRStatus } from '@/lib/generations-store';
 import { useNodeOperations } from '@/providers/node-operations';
 import { useProject } from '@/providers/project';
 import { useCleanupMode } from '@/providers/cleanup-mode';
+import { useHoveredNodeOptional } from '@/providers/hovered-node';
 import { Handle, Position, useReactFlow, useStore } from '@xyflow/react';
 import { CodeIcon, CopyIcon, EyeIcon, TrashIcon } from 'lucide-react';
 import { type ReactNode, useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -195,12 +196,31 @@ export const NodeLayout = ({
   const isCollection = type === 'collection';
   const isProtectedFromCleanup = isTransferredToDVR || isCollection;
   
+  // Hook pour le highlight au hover des connexions
+  const hoveredContext = useHoveredNodeOptional();
+  const isConnectionHighlighted = hoveredContext?.isNodeHighlighted(id) ?? false;
+  const isDirectlyHovered = hoveredContext?.hoveredNodeId === id;
+  
+  // Callback pour signaler le hover au provider
+  const handleConnectionHoverEnter = useCallback(() => {
+    hoveredContext?.onNodeHover(id);
+  }, [hoveredContext, id]);
+  
+  const handleConnectionHoverLeave = useCallback(() => {
+    hoveredContext?.onNodeHover(null);
+  }, [hoveredContext]);
+  
   // OPTIMISÉ: Mémoriser les styles dépendant du zoom pour éviter les recalculs
-  const zoomDependentStyles = useMemo(() => ({
-    borderWidth: Math.max(2, Math.min(6, Math.round(2 / zoom))),
-    iconScale: 1 / zoom,
-    showZoomElements: zoom > 0.2,
-  }), [zoom]);
+  // Avec support du highlight des connexions (x3 pour la bordure)
+  const zoomDependentStyles = useMemo(() => {
+    const baseBorderWidth = Math.max(2, Math.min(6, Math.round(2 / zoom)));
+    return {
+      // Bordure x3 si le nœud est highlight (hover direct ou connexion)
+      borderWidth: isConnectionHighlighted ? baseBorderWidth * 3 : baseBorderWidth,
+      iconScale: 1 / zoom,
+      showZoomElements: zoom > 0.2,
+    };
+  }, [zoom, isConnectionHighlighted]);
   
   // Handler pour clic en mode cleanup
   const handleCleanupClick = useCallback((e: React.MouseEvent) => {
@@ -594,10 +614,16 @@ export const NodeLayout = ({
       )}
       <ContextMenu onOpenChange={handleSelect}>
         <ContextMenuTrigger>
-          <div 
+            <div 
             className="relative size-full h-auto w-sm"
-            onMouseEnter={handleNodeMouseEnter}
-            onMouseLeave={handleNodeMouseLeave}
+            onMouseEnter={() => {
+              handleNodeMouseEnter();
+              handleConnectionHoverEnter();
+            }}
+            onMouseLeave={() => {
+              handleNodeMouseLeave();
+              handleConnectionHoverLeave();
+            }}
             onDoubleClick={(e) => e.stopPropagation()}
           >
             {type !== 'drop' && type !== 'collection' && (
@@ -705,13 +731,15 @@ export const NodeLayout = ({
                 // CODE COULEUR UNIFIÉ - Bordure colorée adaptative au zoom (OPTIMISÉ)
                 // Images = Vert Matrix (#00ff41)
                 // Vidéos = Fuchsia (#d946ef)
+                // HIGHLIGHT : opacité 1 et bordure x3 au hover des connexions
                 ...(type === 'video' || type === 'image' ? {
                   boxShadow: `0 0 0 ${zoomDependentStyles.borderWidth}px ${
                     type === 'video' 
-                      ? 'rgba(217, 70, 239, 0.8)'  // Fuchsia
-                      : 'rgba(0, 255, 65, 0.7)'    // Vert Matrix
+                      ? `rgba(217, 70, 239, ${isConnectionHighlighted ? 1 : 0.8})`  // Fuchsia
+                      : `rgba(0, 255, 65, ${isConnectionHighlighted ? 1 : 0.7})`    // Vert Matrix
                   }`,
                   borderRadius: '20px',
+                  transition: 'box-shadow 0.15s ease',
                 } : {}),
                 ...(isCleanupMode ? { cursor: isProtectedFromCleanup ? 'not-allowed' : 'pointer' } : {}),
               }}
