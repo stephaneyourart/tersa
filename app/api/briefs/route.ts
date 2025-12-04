@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { database } from '@/lib/database';
 import { briefs, briefDocuments } from '@/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 
-// GET /api/briefs - Liste tous les briefs
+// GET /api/briefs - Liste tous les briefs (plus récent en premier)
 export async function GET(request: NextRequest) {
   try {
     const userId = 'local-user'; // TODO: Récupérer depuis l'auth
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(briefs)
       .where(eq(briefs.userId, userId))
-      .orderBy(briefs.createdAt);
+      .orderBy(desc(briefs.createdAt));
 
     // Charger les documents pour chaque brief
     const briefsWithDocs = await Promise.all(

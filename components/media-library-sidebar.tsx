@@ -4,9 +4,13 @@
  * Media Library Sidebar
  * Ouvre depuis la gauche avec un chevron toggle
  * UI 100% noir/blanc, redimensionnable, zoom police
+ * 
+ * PERFORMANCE: Utilise la virtualisation pour ne rendre que les lignes visibles
+ * (résout le problème de chargement lent avec beaucoup de médias)
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { toast } from 'sonner';
 import {
   useMediaLibraryStore,
@@ -1044,6 +1048,194 @@ function SidebarSectionComponent({
   );
 }
 
+// ========== COMPOSANT TABLE VIRTUALISÉE ==========
+// Ne rend que les lignes visibles pour des performances optimales
+// avec des centaines/milliers de médias
+
+interface VirtualizedMediaTableProps {
+  tableContainerRef: React.RefObject<HTMLDivElement>;
+  visibleColumns: ColumnConfig[];
+  columnWidths: Record<string, number>;
+  sortedMedias: MediaItem[];
+  isLoading: boolean;
+  selectedMediaIds: Set<string>;
+  sort: { column: string; direction: 'asc' | 'desc' };
+  fontSize: number;
+  setSort: (column: string) => void;
+  handleColumnResize: (columnId: string, width: number) => void;
+  toggleMediaSelection: (id: string) => void;
+  selectMediaRange: (id: string) => void;
+  updateMediaMetadata: (id: string, updates: Partial<MediaItem>) => Promise<boolean>;
+  handleDragStart: (e: React.DragEvent, media: MediaItem) => void;
+  handleSendMediaToDVR: (media: MediaItem) => void;
+  lockCurrentOrder: () => void;
+}
+
+function VirtualizedMediaTable({
+  tableContainerRef,
+  visibleColumns,
+  columnWidths,
+  sortedMedias,
+  isLoading,
+  selectedMediaIds,
+  sort,
+  fontSize,
+  setSort,
+  handleColumnResize,
+  toggleMediaSelection,
+  selectMediaRange,
+  updateMediaMetadata,
+  handleDragStart,
+  handleSendMediaToDVR,
+  lockCurrentOrder,
+}: VirtualizedMediaTableProps) {
+  // Ref pour le conteneur de scroll (pour la virtualisation)
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  // Calculer la hauteur de ligne en fonction de fontSize
+  const rowHeight = useMemo(() => Math.max(50, fontSize * 4 + 8), [fontSize]);
+  
+  // Virtualizer pour les lignes
+  const rowVirtualizer = useVirtualizer({
+    count: sortedMedias.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 10, // Rendre 10 lignes de plus en haut/bas pour un scroll fluide
+  });
+  
+  // Calculer les positions sticky pour les colonnes fixes
+  const checkboxWidth = 40;
+  const typeCol = visibleColumns.find(c => c.id === 'type');
+  const typeWidth = typeCol ? (columnWidths['type'] || typeCol.width) : 40;
+  const previewCol = visibleColumns.find(c => c.id === 'preview');
+  const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
+  
+  const getStickyStyle = (columnId: string): React.CSSProperties => {
+    if (columnId === 'type') {
+      return { position: 'sticky', left: checkboxWidth, zIndex: 20, backgroundColor: 'black' };
+    } else if (columnId === 'preview') {
+      return { position: 'sticky', left: checkboxWidth + typeWidth, zIndex: 20, backgroundColor: 'black' };
+    } else if (columnId === 'name') {
+      return { position: 'sticky', left: checkboxWidth + typeWidth + previewWidth, zIndex: 20, backgroundColor: 'black' };
+    }
+    return {};
+  };
+  
+  return (
+    <div 
+      ref={(el) => {
+        // Assigner les deux refs
+        (parentRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        if (tableContainerRef && 'current' in tableContainerRef) {
+          (tableContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }
+      }}
+      className="flex-1 overflow-auto pb-3 pr-2 bg-black"
+      style={{ 
+        maxHeight: 'calc(100vh - 280px)',
+        overscrollBehavior: 'contain'
+      }}
+    >
+      <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+        {/* Header de la table - sticky */}
+        <thead className="sticky top-0 z-10 bg-black">
+          <tr className="border-b border-white/10">
+            <th 
+              className="w-10 pl-3 pr-1 bg-black" 
+              style={{ position: 'sticky', left: 0, zIndex: 20 }}
+            />
+            {visibleColumns.map((column) => (
+              <ColumnHeader
+                key={column.id}
+                column={column}
+                columnWidth={columnWidths[column.id] || column.width}
+                sortColumn={sort.column}
+                sortDirection={sort.direction}
+                onSort={setSort}
+                onResize={handleColumnResize}
+                fontSize={fontSize}
+                stickyStyle={getStickyStyle(column.id)}
+              />
+            ))}
+          </tr>
+        </thead>
+        
+        {/* Corps de la table avec virtualisation */}
+        <tbody>
+          {isLoading ? (
+            <tr>
+              <td
+                colSpan={visibleColumns.length + 1}
+                className="text-left py-8 text-white/40 pl-4"
+                style={{ fontSize }}
+              >
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={fontSize + 4} className="animate-spin" />
+                  <span>Chargement...</span>
+                </div>
+              </td>
+            </tr>
+          ) : sortedMedias.length === 0 ? (
+            <tr>
+              <td
+                colSpan={visibleColumns.length + 1}
+                className="text-center py-8 text-white/40"
+                style={{ fontSize }}
+              >
+                Aucun média trouvé
+              </td>
+            </tr>
+          ) : (
+            <>
+              {/* Spacer en haut pour le scroll virtuel */}
+              {rowVirtualizer.getVirtualItems().length > 0 && (
+                <tr style={{ height: rowVirtualizer.getVirtualItems()[0]?.start || 0 }}>
+                  <td colSpan={visibleColumns.length + 1} />
+                </tr>
+              )}
+              
+              {/* Lignes virtualisées - seules les lignes visibles sont rendues */}
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const media = sortedMedias[virtualRow.index];
+                return (
+                  <MediaRow
+                    key={media.id}
+                    media={media}
+                    columns={visibleColumns}
+                    columnWidths={columnWidths}
+                    isSelected={selectedMediaIds.has(media.id)}
+                    onSelect={(id) => {
+                      toggleMediaSelection(id);
+                    }}
+                    onSelectRange={(id) => {
+                      selectMediaRange(id);
+                    }}
+                    onUpdateMetadata={updateMediaMetadata}
+                    onDragStart={handleDragStart}
+                    onSendToDVR={handleSendMediaToDVR}
+                    onClearFavoritesSort={lockCurrentOrder}
+                    fontSize={fontSize}
+                  />
+                );
+              })}
+              
+              {/* Spacer en bas pour le scroll virtuel */}
+              {rowVirtualizer.getVirtualItems().length > 0 && (
+                <tr style={{ 
+                  height: rowVirtualizer.getTotalSize() - 
+                    (rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1]?.end || 0)
+                }}>
+                  <td colSpan={visibleColumns.length + 1} />
+                </tr>
+              )}
+            </>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Composant principal
 export function MediaLibrarySidebar() {
   const {
@@ -1674,112 +1866,25 @@ export function MediaLibrarySidebar() {
                           </div>
                         </div>
 
-                        {/* Zone de la table avec scroll vertical et horizontal */}
-                        <div 
-                          ref={tableContainerRef}
-                          className="flex-1 overflow-auto pb-3 pr-2 bg-black"
-                          style={{ 
-                            maxHeight: 'calc(100vh - 280px)',
-                            overscrollBehavior: 'contain' // Empêche le scroll de se propager au canvas
-                          }}
-                        >
-                          <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-                              <thead className="sticky top-0 z-10 bg-black">
-                                <tr className="border-b border-white/10">
-                                  {/* Checkbox header - sticky avec padding gauche */}
-                                  <th 
-                                    className="w-10 pl-3 pr-1 bg-black" 
-                                    style={{ position: 'sticky', left: 0, zIndex: 20 }}
-                                  />
-                                  {visibleColumns.map((column) => {
-                                    // Calculer la position sticky pour type, preview et name
-                                    const checkboxWidth = 40;
-                                    const typeCol = visibleColumns.find(c => c.id === 'type');
-                                    const typeWidth = typeCol ? (columnWidths['type'] || typeCol.width) : 40;
-                                    const previewCol = visibleColumns.find(c => c.id === 'preview');
-                                    const previewWidth = previewCol ? (columnWidths['preview'] || previewCol.width) : 60;
-                                    
-                                    let stickyStyle: React.CSSProperties = {};
-                                    if (column.id === 'type') {
-                                      stickyStyle = { position: 'sticky', left: checkboxWidth, zIndex: 20, backgroundColor: 'black' };
-                                    } else if (column.id === 'preview') {
-                                      stickyStyle = { position: 'sticky', left: checkboxWidth + typeWidth, zIndex: 20, backgroundColor: 'black' };
-                                    } else if (column.id === 'name') {
-                                      stickyStyle = { position: 'sticky', left: checkboxWidth + typeWidth + previewWidth, zIndex: 20, backgroundColor: 'black' };
-                                    }
-                                    
-                                    return (
-                                      <ColumnHeader
-                                        key={column.id}
-                                        column={column}
-                                        columnWidth={columnWidths[column.id] || column.width}
-                                        sortColumn={sort.column}
-                                        sortDirection={sort.direction}
-                                        onSort={setSort}
-                                        onResize={handleColumnResize}
-                                        fontSize={fontSize}
-                                        stickyStyle={stickyStyle}
-                                      />
-                                    );
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {isLoading ? (
-                                  <tr>
-                                    <td
-                                      colSpan={visibleColumns.length + 1}
-                                      className="text-left py-8 text-white/40 pl-4"
-                                      style={{ fontSize }}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <RefreshCw size={fontSize + 4} className="animate-spin" />
-                                        <span>Chargement...</span>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ) : sortedMedias.length === 0 ? (
-                                  <tr>
-                                    <td
-                                      colSpan={visibleColumns.length + 1}
-                                      className="text-center py-8 text-white/40"
-                                      style={{ fontSize }}
-                                    >
-                                      Aucun média trouvé
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  sortedMedias.map((media) => (
-                                    <MediaRow
-                                      key={media.id}
-                                      media={media}
-                                      columns={visibleColumns}
-                                      columnWidths={columnWidths}
-                                      isSelected={selectedMediaIds.has(media.id)}
-                                      onSelect={(id) => {
-                                        // Clic simple : toggle la sélection (lastSelectedId géré dans le store)
-                                        console.log('[MediaLibrary] Select:', id);
-                                        toggleMediaSelection(id);
-                                      }}
-                                      onSelectRange={(id) => {
-                                        // Shift+clic : sélection de plage (lastSelectedId géré dans le store)
-                                        console.log('[MediaLibrary] SelectRange:', id);
-                                        selectMediaRange(id);
-                                      }}
-                                      onUpdateMetadata={updateMediaMetadata}
-                                      onDragStart={handleDragStart}
-                                      onSendToDVR={handleSendMediaToDVR}
-                                      onClearFavoritesSort={() => {
-                                        // Verrouiller l'ordre actuel pour éviter le re-tri
-                                        lockCurrentOrder();
-                                      }}
-                                      fontSize={fontSize}
-                                    />
-                                  ))
-                                )}
-                              </tbody>
-                            </table>
-                        </div>
+                        {/* Zone de la table avec scroll vertical et horizontal + VIRTUALISATION */}
+                        <VirtualizedMediaTable
+                          tableContainerRef={tableContainerRef}
+                          visibleColumns={visibleColumns}
+                          columnWidths={columnWidths}
+                          sortedMedias={sortedMedias}
+                          isLoading={isLoading}
+                          selectedMediaIds={selectedMediaIds}
+                          sort={sort}
+                          fontSize={fontSize}
+                          setSort={setSort}
+                          handleColumnResize={handleColumnResize}
+                          toggleMediaSelection={toggleMediaSelection}
+                          selectMediaRange={selectMediaRange}
+                          updateMediaMetadata={updateMediaMetadata}
+                          handleDragStart={handleDragStart}
+                          handleSendMediaToDVR={handleSendMediaToDVR}
+                          lockCurrentOrder={lockCurrentOrder}
+                        />
                       </div>
                     )}
 

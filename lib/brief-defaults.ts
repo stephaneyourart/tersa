@@ -1,6 +1,9 @@
 /**
  * Configurations par défaut pour la génération de briefs
  * Tous les prompts et paramètres sont configurables et sauvables
+ * 
+ * NOTE: Ces valeurs peuvent être surchargées par les settings Creative Plan
+ * stockés dans localStorage (voir /settings/creative-plan)
  */
 
 import type { 
@@ -9,6 +12,11 @@ import type {
   QualityModelConfig,
   QualityLevel 
 } from '@/types/brief';
+
+import {
+  getImageSettings,
+  getAspectRatios,
+} from '@/lib/creative-plan-settings';
 
 // ========== SYSTEM PROMPT PERSONNAGES ==========
 // Ce prompt guide l'IA pour créer un prompt PRIMAIRE de personnage
@@ -72,7 +80,8 @@ export const DEFAULT_DECOR_VARIANT_PROMPTS = {
   contrePlongee: "Vue en forte contre plongée, caméra basse et inclinée vers le haut, avec une assez courte focale.",
 };
 
-// ========== CONFIGURATION MODÈLES PAR QUALITÉ ==========
+// ========== CONFIGURATION MODÈLES PAR QUALITÉ (DÉFAUT) ==========
+// Ces valeurs sont utilisées si aucun paramètre n'est sauvé dans Creative Plan Settings
 // Qualité Élevée : nano-banana-pro ULTRA en 4K
 export const DEFAULT_QUALITY_MODEL_CONFIG: QualityModelConfig = {
   textToImage: {
@@ -88,7 +97,43 @@ export const DEFAULT_QUALITY_MODEL_CONFIG: QualityModelConfig = {
   },
 };
 
-// ========== RATIOS PAR TYPE D'IMAGE ==========
+// ========== RATIOS PAR TYPE D'IMAGE (DYNAMIQUE) ==========
+// Ces valeurs sont chargées depuis Creative Plan Settings (localStorage)
+// Si aucun paramètre n'est sauvé, les valeurs par défaut sont utilisées
+
+/**
+ * Retourne les ratios d'aspect configurés (depuis localStorage ou défaut)
+ */
+export function getImageRatios() {
+  // Essayer de charger depuis Creative Plan Settings
+  try {
+    const savedRatios = getAspectRatios();
+    return savedRatios;
+  } catch {
+    // Fallback si erreur (ex: côté serveur)
+    return {
+      character: {
+        primary: '9:16',
+        face: '1:1',
+        profile: '1:1',
+        back: '9:16',
+      },
+      decor: {
+        primary: '16:9',
+        angle2: '16:9',
+        plongee: '16:9',
+        contrePlongee: '16:9',
+      },
+      plan: {
+        depart: '21:9',
+        fin: '21:9',
+      },
+    };
+  }
+}
+
+// Export statique pour compatibilité (utilisé par brief-canvas-generator)
+// NOTE: Préférer getImageRatios() pour avoir les valeurs dynamiques
 export const IMAGE_RATIOS = {
   character: {
     primary: '9:16',    // Image primaire personnage (pied à la tête)
@@ -123,24 +168,64 @@ export const DEFAULT_DECOR_CONFIG: DecorPromptConfig = {
 
 /**
  * Retourne le modèle text-to-image selon la qualité
+ * Utilise les settings Creative Plan si disponibles, sinon les defaults
  */
-export function getTextToImageModel(quality: QualityLevel, config: QualityModelConfig = DEFAULT_QUALITY_MODEL_CONFIG): string {
-  return quality === 'elevee' ? config.textToImage.elevee : config.textToImage.normal;
+export function getTextToImageModel(quality: QualityLevel, config?: QualityModelConfig): string {
+  // Essayer d'abord les Creative Plan Settings (localStorage)
+  try {
+    const settings = getImageSettings(quality);
+    if (settings?.textToImage?.model) {
+      return settings.textToImage.model;
+    }
+  } catch {
+    // Côté serveur ou erreur : utiliser le config passé ou défaut
+  }
+  
+  const cfg = config || DEFAULT_QUALITY_MODEL_CONFIG;
+  return quality === 'elevee' ? cfg.textToImage.elevee : cfg.textToImage.normal;
 }
 
 /**
  * Retourne le modèle edit selon la qualité
+ * Utilise les settings Creative Plan si disponibles, sinon les defaults
  */
-export function getEditModel(quality: QualityLevel, config: QualityModelConfig = DEFAULT_QUALITY_MODEL_CONFIG): string {
-  return quality === 'elevee' ? config.edit.elevee : config.edit.normal;
+export function getEditModel(quality: QualityLevel, config?: QualityModelConfig): string {
+  // Essayer d'abord les Creative Plan Settings (localStorage)
+  try {
+    const settings = getImageSettings(quality);
+    if (settings?.edit?.model) {
+      return settings.edit.model;
+    }
+  } catch {
+    // Côté serveur ou erreur : utiliser le config passé ou défaut
+  }
+  
+  const cfg = config || DEFAULT_QUALITY_MODEL_CONFIG;
+  return quality === 'elevee' ? cfg.edit.elevee : cfg.edit.normal;
 }
 
 /**
  * Retourne les paramètres additionnels pour qualité élevée
+ * Utilise les settings Creative Plan si disponibles, sinon les defaults
  */
-export function getQualityParams(quality: QualityLevel, config: QualityModelConfig = DEFAULT_QUALITY_MODEL_CONFIG): Record<string, string> {
+export function getQualityParams(quality: QualityLevel, config?: QualityModelConfig): Record<string, string> {
+  // Essayer d'abord les Creative Plan Settings (localStorage)
+  try {
+    const settings = getImageSettings(quality);
+    if (settings?.textToImage?.resolution) {
+      return { resolution: settings.textToImage.resolution };
+    }
+    // Si mode test et pas de résolution spécifiée, retourner objet vide
+    if (quality === 'normal') {
+      return {};
+    }
+  } catch {
+    // Côté serveur ou erreur : utiliser le config passé ou défaut
+  }
+  
+  const cfg = config || DEFAULT_QUALITY_MODEL_CONFIG;
   if (quality === 'elevee') {
-    return { resolution: config.eleveeParams.resolution };
+    return { resolution: cfg.eleveeParams.resolution };
   }
   return {};
 }

@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,9 @@ import {
   LayersIcon,
   CopyIcon,
   InfoIcon,
+  ChevronDownIcon,
+  SettingsIcon,
+  RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
@@ -48,6 +53,20 @@ import {
   DEFAULT_DECOR_CONFIG, 
   DEFAULT_QUALITY_MODEL_CONFIG 
 } from '@/lib/brief-defaults';
+import {
+  type CreativePlanSettings,
+  type ModeSpecs,
+  type Dimensions,
+  DEFAULT_CREATIVE_PLAN_SETTINGS,
+  loadCreativePlanSettings,
+  saveCreativePlanSettings,
+  resetCreativePlanSettings,
+  AVAILABLE_TEXT_TO_IMAGE_MODELS,
+  AVAILABLE_EDIT_MODELS,
+  AVAILABLE_VIDEO_MODELS,
+  DIMENSION_PRESETS,
+  getAspectRatioFromDimensions,
+} from '@/lib/creative-plan-settings';
 
 // Le DEFAULT_SYSTEM_PROMPT est chargé depuis localStorage ou utilise la valeur par défaut
 const STORAGE_KEY_SYSTEM_PROMPT = 'brief-system-prompt-default';
@@ -159,6 +178,51 @@ function getDefaultSystemPrompt(): string {
   return BUILTIN_SYSTEM_PROMPT;
 }
 
+// Composant pour éditer les dimensions (width × height)
+function DimensionInput({ 
+  label, 
+  dims, 
+  onChange 
+}: { 
+  label: string; 
+  dims?: Dimensions; 
+  onChange: (dims: Dimensions) => void;
+}) {
+  const width = dims?.width || 256;
+  const height = dims?.height || 256;
+  const ratio = getAspectRatioFromDimensions({ width, height });
+  
+  return (
+    <div className="p-2 bg-background/50 rounded border border-border/30">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
+        <span className="text-[9px] text-muted-foreground/60">{ratio}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Input
+          type="number"
+          min={64}
+          max={4096}
+          step={64}
+          className="h-6 text-[10px] px-1 w-14 text-center"
+          value={width}
+          onChange={(e) => onChange({ width: parseInt(e.target.value) || 256, height })}
+        />
+        <span className="text-[10px] text-muted-foreground">×</span>
+        <Input
+          type="number"
+          min={64}
+          max={4096}
+          step={64}
+          className="h-6 text-[10px] px-1 w-14 text-center"
+          value={height}
+          onChange={(e) => onChange({ width, height: parseInt(e.target.value) || 256 })}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function GenerateProjectPage() {
   const router = useRouter();
   const params = useParams();
@@ -209,12 +273,34 @@ export default function GenerateProjectPage() {
   });
   
   const [projectName, setProjectName] = useState('');
+  const [modelsSpecsOpen, setModelsSpecsOpen] = useState(false);
+  const [creativePlanSettings, setCreativePlanSettings] = useState<CreativePlanSettings>(DEFAULT_CREATIVE_PLAN_SETTINGS);
 
-  // Charger le system prompt sauvegardé au montage
+  // Charger le system prompt et les settings Creative Plan au montage
   useEffect(() => {
     const savedPrompt = getDefaultSystemPrompt();
     setConfig(prev => ({ ...prev, systemPrompt: savedPrompt }));
+    
+    // Charger les Creative Plan Settings
+    const cpSettings = loadCreativePlanSettings();
+    setCreativePlanSettings(cpSettings);
   }, []);
+  
+  // Handler pour les changements Creative Plan
+  const updateCreativePlan = (updater: (prev: CreativePlanSettings) => CreativePlanSettings) => {
+    setCreativePlanSettings(prev => {
+      const next = updater(prev);
+      // Sauvegarder immédiatement
+      saveCreativePlanSettings(next);
+      return next;
+    });
+  };
+  
+  // Reset Creative Plan aux defaults
+  const handleResetCreativePlan = () => {
+    const defaults = resetCreativePlanSettings();
+    setCreativePlanSettings(defaults);
+  };
 
   useEffect(() => {
     loadBrief();
@@ -646,6 +732,267 @@ export default function GenerateProjectPage() {
                 </div>
               </div>
             </div>
+          </Card>
+
+          {/* Models & Specs - Collapsible - NOUVELLE STRUCTURE EXHAUSTIVE */}
+          <Card className="p-0 overflow-hidden">
+            <Collapsible open={modelsSpecsOpen} onOpenChange={setModelsSpecsOpen}>
+              <CollapsibleTrigger asChild>
+                <button className="w-full p-6 flex items-center justify-between hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <SettingsIcon size={20} className="text-orange-400" />
+                    <h2 className="text-lg font-semibold">Models & Specs</h2>
+                    <Badge variant="outline" className="text-xs ml-2">
+                      {config.quality === 'elevee' ? 'PROD' : 'TEST'}
+                    </Badge>
+                  </div>
+                  <ChevronDownIcon 
+                    size={20} 
+                    className={`text-muted-foreground transition-transform ${modelsSpecsOpen ? 'rotate-180' : ''}`} 
+                  />
+                </button>
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent>
+                <div className="px-6 pb-6 space-y-6 border-t border-border/30 pt-4">
+                  {/* Note info + Reset */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Ces paramètres s'appliquent à <strong>tous</strong> vos projets futurs.
+                    </p>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={handleResetCreativePlan}
+                      className="text-xs gap-1 h-7"
+                    >
+                      <RotateCcw size={12} />
+                      Reset
+                    </Button>
+                  </div>
+                  
+                  {/* ============================================ */}
+                  {/* SECTION TEST - Rapide, économique */}
+                  {/* ============================================ */}
+                  <div className="space-y-4 p-4 rounded-lg bg-amber-500/5 border border-amber-500/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <span className="text-amber-400 font-bold text-sm">T</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-amber-400">MODE TEST</h4>
+                        <p className="text-[10px] text-muted-foreground">Génération rapide • Petites dimensions • Modèles économiques</p>
+                      </div>
+                    </div>
+                    
+                    {/* Modèles TEST */}
+                    <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle T2I</Label>
+                        <Select
+                          value={creativePlanSettings.test?.textToImageModel || 'google/nano-banana/text-to-image'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            test: { ...s.test, textToImageModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_TEXT_TO_IMAGE_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Edit</Label>
+                        <Select
+                          value={creativePlanSettings.test?.editModel || 'google/nano-banana/edit'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            test: { ...s.test, editModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_EDIT_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Vidéo</Label>
+                        <Select
+                          value={creativePlanSettings.test?.videoModel || 'kling-v2.5-turbo'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            test: { ...s.test, videoModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_VIDEO_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Durée vidéo (sec)</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={30}
+                          className="h-8 text-xs"
+                          value={creativePlanSettings.test?.videoDuration || 5}
+                          onChange={(e) => updateCreativePlan(s => ({
+                            ...s,
+                            test: { ...s.test, videoDuration: parseInt(e.target.value) || 5 }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Dimensions TEST - Tableau exhaustif */}
+                    <div className="mt-4 pt-4 border-t border-amber-500/20">
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-3 block">
+                        Dimensions en pixels (largeur × hauteur)
+                      </Label>
+                      <div className="grid gap-2 grid-cols-2 md:grid-cols-4 text-xs">
+                        <DimensionInput label="Perso primaire" dims={creativePlanSettings.test?.characterPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterPrimary: d } }))} />
+                        <DimensionInput label="Perso face" dims={creativePlanSettings.test?.characterFace} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterFace: d } }))} />
+                        <DimensionInput label="Perso profil" dims={creativePlanSettings.test?.characterProfile} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterProfile: d } }))} />
+                        <DimensionInput label="Perso dos" dims={creativePlanSettings.test?.characterBack} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterBack: d } }))} />
+                        <DimensionInput label="Décor primaire" dims={creativePlanSettings.test?.decorPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorPrimary: d } }))} />
+                        <DimensionInput label="Décor angle 2" dims={creativePlanSettings.test?.decorAngle2} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorAngle2: d } }))} />
+                        <DimensionInput label="Décor plongée" dims={creativePlanSettings.test?.decorPlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorPlongee: d } }))} />
+                        <DimensionInput label="Décor contre-pl." dims={creativePlanSettings.test?.decorContrePlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorContrePlongee: d } }))} />
+                        <DimensionInput label="Plan first" dims={creativePlanSettings.test?.planFirst} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, planFirst: d } }))} />
+                        <DimensionInput label="Plan last" dims={creativePlanSettings.test?.planLast} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, planLast: d } }))} />
+                        <DimensionInput label="Vidéo" dims={creativePlanSettings.test?.videoDimensions} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, videoDimensions: d } }))} />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* ============================================ */}
+                  {/* SECTION PROD - Haute qualité */}
+                  {/* ============================================ */}
+                  <div className="space-y-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                        <span className="text-emerald-400 font-bold text-sm">P</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-400">MODE PROD</h4>
+                        <p className="text-[10px] text-muted-foreground">Haute qualité • Grandes dimensions • Modèles premium</p>
+                      </div>
+                    </div>
+                    
+                    {/* Modèles PROD */}
+                    <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle T2I</Label>
+                        <Select
+                          value={creativePlanSettings.prod?.textToImageModel || 'google/nano-banana-pro/text-to-image-ultra'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            prod: { ...s.prod, textToImageModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_TEXT_TO_IMAGE_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Edit</Label>
+                        <Select
+                          value={creativePlanSettings.prod?.editModel || 'google/nano-banana-pro/edit-ultra'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            prod: { ...s.prod, editModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_EDIT_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Vidéo</Label>
+                        <Select
+                          value={creativePlanSettings.prod?.videoModel || 'kling-v2.1-start-end'}
+                          onValueChange={(v) => updateCreativePlan(s => ({
+                            ...s,
+                            prod: { ...s.prod, videoModel: v }
+                          }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_VIDEO_MODELS.map(m => (
+                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Durée vidéo (sec)</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={30}
+                          className="h-8 text-xs"
+                          value={creativePlanSettings.prod?.videoDuration || 10}
+                          onChange={(e) => updateCreativePlan(s => ({
+                            ...s,
+                            prod: { ...s.prod, videoDuration: parseInt(e.target.value) || 10 }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Dimensions PROD - Tableau exhaustif */}
+                    <div className="mt-4 pt-4 border-t border-emerald-500/20">
+                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-3 block">
+                        Dimensions en pixels (largeur × hauteur)
+                      </Label>
+                      <div className="grid gap-2 grid-cols-2 md:grid-cols-4 text-xs">
+                        <DimensionInput label="Perso primaire" dims={creativePlanSettings.prod?.characterPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterPrimary: d } }))} />
+                        <DimensionInput label="Perso face" dims={creativePlanSettings.prod?.characterFace} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterFace: d } }))} />
+                        <DimensionInput label="Perso profil" dims={creativePlanSettings.prod?.characterProfile} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterProfile: d } }))} />
+                        <DimensionInput label="Perso dos" dims={creativePlanSettings.prod?.characterBack} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterBack: d } }))} />
+                        <DimensionInput label="Décor primaire" dims={creativePlanSettings.prod?.decorPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorPrimary: d } }))} />
+                        <DimensionInput label="Décor angle 2" dims={creativePlanSettings.prod?.decorAngle2} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorAngle2: d } }))} />
+                        <DimensionInput label="Décor plongée" dims={creativePlanSettings.prod?.decorPlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorPlongee: d } }))} />
+                        <DimensionInput label="Décor contre-pl." dims={creativePlanSettings.prod?.decorContrePlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorContrePlongee: d } }))} />
+                        <DimensionInput label="Plan first" dims={creativePlanSettings.prod?.planFirst} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, planFirst: d } }))} />
+                        <DimensionInput label="Plan last" dims={creativePlanSettings.prod?.planLast} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, planLast: d } }))} />
+                        <DimensionInput label="Vidéo" dims={creativePlanSettings.prod?.videoDimensions} onChange={(d) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, videoDimensions: d } }))} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
 
           {/* Configuration Média */}
