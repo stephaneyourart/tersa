@@ -113,9 +113,18 @@ function getNodeLabel(node: Node): string {
   return (data.label as string) || (data.name as string) || `${node.type} ${node.id.slice(-4)}`;
 }
 
+// Type pour les images avec info de frame
+type ImageWithFrame = { 
+  url: string; 
+  type: string; 
+  originalUrl?: string; 
+  frameType?: 'depart' | 'fin' | string;
+};
+
 // Récupérer les images depuis les nœuds entrants
-function getImagesFromIncomers(incomers: Node[]): { url: string; type: string; originalUrl?: string }[] {
-  const images: { url: string; type: string; originalUrl?: string }[] = [];
+// IMPORTANT: Inclut le frameType pour distinguer first frame (depart) et last frame (fin)
+function getImagesFromIncomers(incomers: Node[]): ImageWithFrame[] {
+  const images: ImageWithFrame[] = [];
   
   console.log(`[getImagesFromIncomers] Analyse de ${incomers.length} incomers`);
   
@@ -126,9 +135,10 @@ function getImagesFromIncomers(incomers: Node[]): { url: string; type: string; o
     if (node.type === 'image') {
       const generated = data.generated as { url?: string; originalUrl?: string } | undefined;
       const url = generated?.url || (data.url as string);
-      console.log(`[getImagesFromIncomers]   Image ${label}: url=${url?.slice(0, 40) || 'NONE'}`);
+      const frameType = data.frameType as string | undefined;
+      console.log(`[getImagesFromIncomers]   Image ${label}: url=${url?.slice(0, 40) || 'NONE'}, frameType=${frameType || 'none'}`);
       if (url) {
-        images.push({ url, type: 'image/png', originalUrl: generated?.originalUrl });
+        images.push({ url, type: 'image/png', originalUrl: generated?.originalUrl, frameType });
       }
     } else if (node.type === 'collection') {
       const items = data.items as Array<{ url?: string; enabled?: boolean; type?: string; originalUrl?: string; id?: string }> | undefined;
@@ -742,16 +752,54 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return null;
     
+    const nodeLabel = getNodeLabel(node);
+    const nodeData = node.data as Record<string, unknown>;
+    const usesFirstLastFrame = nodeData.usesFirstLastFrame as boolean;
+    
     const incomers = getIncomers(node, nodes, edges);
     const images = getImagesFromIncomers(incomers);
-    const prompt = getTextFromIncomers(incomers) || (node.data as Record<string, unknown>).instructions as string || '';
-    const duration = (node.data as Record<string, unknown>).duration as number || 10;
-    const aspectRatio = (node.data as Record<string, unknown>).aspectRatio as string || '16:9';
+    const prompt = getTextFromIncomers(incomers) || nodeData.instructions as string || '';
+    const duration = nodeData.duration as number || 10;
+    const aspectRatio = nodeData.aspectRatio as string || '16:9';
+    
+    console.log(`[GenerateVideo] 🎬 DÉBUT ${nodeLabel} (${nodeId.slice(0, 8)})`);
+    console.log(`[GenerateVideo] ${nodeLabel}: usesFirstLastFrame=${usesFirstLastFrame}, ${images.length} images`);
     
     if (images.length === 0) {
-      console.error(`[GenerationPanel] Pas d'images pour la vidéo ${nodeId}`);
+      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Pas d'images disponibles`);
       return null;
     }
+    
+    // IMPORTANT: Pour les vidéos first+last frame, trier les images par frameType
+    let firstFrameUrl: string | undefined;
+    let lastFrameUrl: string | undefined;
+    
+    if (usesFirstLastFrame) {
+      // Chercher les images avec frameType 'depart' (first) et 'fin' (last)
+      const firstFrame = images.find(img => img.frameType === 'depart');
+      const lastFrame = images.find(img => img.frameType === 'fin');
+      
+      firstFrameUrl = firstFrame?.originalUrl || firstFrame?.url;
+      lastFrameUrl = lastFrame?.originalUrl || lastFrame?.url;
+      
+      console.log(`[GenerateVideo] ${nodeLabel}: firstFrame=${firstFrameUrl?.slice(0, 40) || 'MISSING'}`);
+      console.log(`[GenerateVideo] ${nodeLabel}: lastFrame=${lastFrameUrl?.slice(0, 40) || 'MISSING'}`);
+      
+      if (!firstFrameUrl || !lastFrameUrl) {
+        console.error(`[GenerateVideo] ❌ ${nodeLabel}: First ou Last frame manquant!`);
+        console.error(`[GenerateVideo]   Images disponibles:`, images.map(i => `${i.frameType || 'unknown'}: ${i.url?.slice(0, 30)}`));
+        return null;
+      }
+    } else {
+      // Mode classique : première image = first frame
+      firstFrameUrl = images[0]?.originalUrl || images[0]?.url;
+      lastFrameUrl = images.length > 1 ? (images[images.length - 1]?.originalUrl || images[images.length - 1]?.url) : undefined;
+    }
+    
+    const models = testMode ? TEST_MODELS : NORMAL_MODELS;
+    const selectedModel = models.video;
+    
+    console.log(`[GenerateVideo] ${nodeLabel}: testMode=${testMode}, model=${selectedModel}`);
     
     try {
       const response = await fetch('/api/video/generate', {
@@ -760,35 +808,46 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         body: JSON.stringify({
           nodeId,
           prompt,
+          // Passer les images first/last explicitement pour le mode first+last frame
+          imagePrompt: firstFrameUrl,
+          lastFrameImage: lastFrameUrl,
+          // Garder aussi le tableau images pour compatibilité
           images: images.map(i => ({ url: i.originalUrl || i.url, type: i.type })),
           duration,
           aspectRatio,
-          model: 'kling-v2.6-pro-first-last',
+          model: selectedModel,
           projectId,
         }),
       });
 
       if (!response.ok) {
-        console.error(`[GenerationPanel] Erreur API vidéo:`, await response.text());
+        const errorText = await response.text();
+        console.error(`[GenerateVideo] ❌ ${nodeLabel}: Erreur API ${response.status}:`, errorText);
         return null;
       }
 
       const result = await response.json();
-      const videoUrl = result.nodeData?.generated?.url || result.nodeData?.url;
+      
+      // La réponse peut être soit directement nodeData, soit dans results[0].nodeData
+      const nodeDataResult = result.nodeData || result.results?.[0]?.nodeData;
+      const videoUrl = nodeDataResult?.generated?.url || nodeDataResult?.url;
       
       if (videoUrl) {
+        console.log(`[GenerateVideo] ✅ ${nodeLabel}: Vidéo générée avec ${selectedModel}!`, videoUrl.slice(0, 60));
         updateNodeData(nodeId, {
-          generated: result.nodeData?.generated || { url: videoUrl, type: 'video/mp4' },
+          generated: nodeDataResult?.generated || { url: videoUrl, type: 'video/mp4' },
           url: videoUrl,
+          model: selectedModel,
           generating: false,
           generatingStartTime: undefined,
         });
         return videoUrl;
       }
 
+      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Pas d'URL dans la réponse`, result);
       return null;
     } catch (error) {
-      console.error(`[GenerationPanel] Erreur génération vidéo:`, error);
+      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Exception:`, error);
       return null;
     }
   };
