@@ -388,9 +388,10 @@ export const fLog = {
     promptLength?: number;
     sourceImagesCount?: number;
     testMode?: boolean;
+    sourceImageUrls?: string[];  // URLs des images sources
   }) => {
     const modelSpec = findI2IModel(modelId);
-    const logData: ImageGenerationLog = {
+    const logData: ImageGenerationLog & { sourceImageUrls?: string[] } = {
       type: 'I2I',
       nodeId,
       model: modelSpec ? {
@@ -402,7 +403,15 @@ export const fLog = {
         costPerImage: modelSpec.costPerImage,
         description: modelSpec.description,
       } : null,
-      params,
+      params: {
+        aspectRatio: params.aspectRatio,
+        resolution: params.resolution,
+        promptLength: params.promptLength,
+        sourceImagesCount: params.sourceImagesCount,
+        testMode: params.testMode,
+      },
+      // IMAGES SOURCES - CRITIQUES POUR LE DEBUG
+      sourceImageUrls: params.sourceImageUrls,
     };
     fileLog('INFO', 'IMAGE', `[I2I] Démarrage (${params.sourceImagesCount || 1} source(s))`, { nodeId, model: modelId, details: logData });
   },
@@ -476,11 +485,15 @@ export const fLog = {
     fileLog('DEBUG', 'IMAGE', `Polling #${attempt}: ${status}`, { nodeId }),
 
   // ============================================================
-  // VIDEOS - AVEC JSON COMPLET DU MODÈLE
+  // VIDEOS - AVEC JSON COMPLET DU MODÈLE ET IMAGES INPUT
   // ============================================================
-  videoStart: (nodeId: string, modelId: string, duration: number, mode: string) => {
+  videoStart: (nodeId: string, modelId: string, duration: number, mode: string, inputImages?: {
+    firstFrame?: string;
+    lastFrame?: string;
+    allImages?: string[];
+  }) => {
     const modelSpec = findVideoModel(modelId);
-    const logData: VideoGenerationLog = {
+    const logData: VideoGenerationLog & { inputImages?: { firstFrame?: string; lastFrame?: string; allImages?: string[] } } = {
       nodeId,
       model: modelSpec ? {
         id: modelSpec.id,
@@ -498,9 +511,15 @@ export const fLog = {
       params: {
         mode: mode as 'first-only' | 'first+last',
         duration,
-        hasFirstFrame: true,
-        hasLastFrame: mode === 'first+last',
+        hasFirstFrame: !!inputImages?.firstFrame || (inputImages?.allImages?.length || 0) > 0,
+        hasLastFrame: !!inputImages?.lastFrame || (inputImages?.allImages?.length || 0) > 1,
       },
+      // IMAGES EN INPUT - CRITIQUES POUR LE DEBUG
+      inputImages: inputImages ? {
+        firstFrame: inputImages.firstFrame || inputImages.allImages?.[0],
+        lastFrame: inputImages.lastFrame || inputImages.allImages?.[1],
+        allImages: inputImages.allImages,
+      } : undefined,
     };
     fileLog('INFO', 'VIDEO', `Démarrage génération ${duration}s mode=${mode}`, { nodeId, model: modelId, details: logData });
   },

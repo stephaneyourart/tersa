@@ -56,12 +56,18 @@ export async function POST(request: NextRequest) {
     const effectiveProjectId = projectId || 'local-generation';
 
     // Log avec tous les paramètres du modèle depuis la source de vérité
+    // INCLURE LES URLs DES IMAGES SOURCES POUR LE DEBUG
+    const sourceUrls = sourceImages.map((img: string | { url: string; originalUrl?: string }) => 
+      typeof img === 'string' ? img : (img.originalUrl || img.url)
+    );
+    
     fLog.i2iStart(nodeId, model, {
       aspectRatio,
       resolution,
       promptLength: prompt?.length,
       sourceImagesCount: sourceImages.length,
       testMode,
+      sourceImageUrls: sourceUrls,
     });
     console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}${testMode ? ' (MODE TEST)' : ''}`);
     console.log(`[API Image Edit] Source images: ${sourceImages.length}, prompt: ${prompt.substring(0, 80)}...`);

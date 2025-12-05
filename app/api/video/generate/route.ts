@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
     const effectiveProjectId = projectId || 'local-generation';
     const mode = lastFrameImage ? 'first+last' : 'first-only';
 
-    fLog.videoStart(nodeId, model, 5, mode);
     console.log(`[API Video Generate] Node ${nodeId}, modèle ${model}`);
     
     // Construire le tableau d'images
@@ -64,6 +63,13 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`[API Video Generate] ${finalImages.length} images, ${copies} copies`);
+    
+    // LOG AVEC TOUTES LES IMAGES EN INPUT
+    fLog.videoStart(nodeId, model, 5, mode, {
+      firstFrame: imagePrompt || finalImages[0]?.url,
+      lastFrame: lastFrameImage || finalImages[1]?.url,
+      allImages: finalImages.map(img => img.url),
+    });
 
     const results = [];
     for (let i = 0; i < copies; i++) {
