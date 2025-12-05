@@ -316,20 +316,23 @@ export function GenerationPanel({ projectId, testMode = false, generationModels 
   // ============================================================
   // MODÈLES DE GÉNÉRATION
   // PRIORITÉ: modèles sélectionnés par l'utilisateur > fallback hardcodé
+  // SOURCE DE VÉRITÉ: lib/models-registry.ts
   // ============================================================
   
-  // Modèles par défaut pour le test mode (ultra rapide et pas cher)
+  // Modèles par défaut pour le test mode (économique)
+  // IDs RÉELS depuis models-registry.ts
   const DEFAULT_TEST_MODELS = {
-    textToImage: 'flux-schnell-wavespeed',
-    edit: 'nano-banana-edit-wavespeed',
-    video: 'kling-v2.6-pro-first-last',
+    textToImage: 'wavespeed/google/nano-banana/text-to-image', // T2I économique
+    edit: 'wavespeed/google/nano-banana/edit',                  // I2I économique
+    video: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',       // Vidéo rapide
   };
   
   // Modèles par défaut pour le mode normal (haute qualité)
+  // IDs RÉELS depuis models-registry.ts
   const DEFAULT_NORMAL_MODELS = {
-    textToImage: 'nano-banana-pro-ultra-wavespeed',
-    edit: 'nano-banana-pro-edit-ultra-wavespeed',
-    video: 'kling-v2.6-pro-first-last',
+    textToImage: 'wavespeed/google/nano-banana-pro/text-to-image-ultra', // T2I haute qualité
+    edit: 'wavespeed/google/nano-banana-pro/edit-ultra',                  // I2I haute qualité
+    video: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',                 // Vidéo avec first+last
   };
   
   // RÉSOLUTION FINALE: Utiliser les modèles sélectionnés par l'utilisateur si disponibles

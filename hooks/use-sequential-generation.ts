@@ -67,8 +67,9 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
     onComplete,
     onError,
     videoCopies = 4,
-    imageModel = 'nanobanana-pro',
-    videoModel = 'kling-o1',
+    // IDs RÉELS depuis models-registry.ts (source de vérité)
+    imageModel = 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
+    videoModel = 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   } = options;
 
   const { getNodes, setNodes, updateNodeData } = useReactFlow();
@@ -173,6 +174,23 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
   };
 
   // ========== GÉNÉRATION D'IMAGE EDIT (variantes) ==========
+  // Dériver le modèle I2I depuis le modèle T2I
+  // Source de vérité: models-registry.ts
+  const getEditModel = (t2iModel: string): string => {
+    // Mapping T2I → I2I depuis models-registry.ts
+    if (t2iModel.includes('nano-banana-pro') && t2iModel.includes('ultra')) {
+      return 'wavespeed/google/nano-banana-pro/edit-ultra';
+    }
+    if (t2iModel.includes('nano-banana-pro')) {
+      return 'wavespeed/google/nano-banana-pro/edit';
+    }
+    if (t2iModel.includes('nano-banana')) {
+      return 'wavespeed/google/nano-banana/edit';
+    }
+    // Fallback: remplacer text-to-image par edit
+    return t2iModel.replace('text-to-image-ultra', 'edit-ultra').replace('text-to-image', 'edit');
+  };
+  
   const generateImageEdit = async (
     nodeId: string, 
     prompt: string, 
@@ -182,13 +200,15 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
     try {
       incrementActiveGenerations();
       
+      const editModel = getEditModel(imageModel);
+      
       const response = await fetch('/api/image/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nodeId,
           prompt,
-          model: imageModel.replace('wavespeed', 'edit-ultra-wavespeed'),
+          model: editModel,
           aspectRatio,
           sourceImages: [referenceImageUrl],
         }),
