@@ -115,18 +115,25 @@ function cleanOldLogs(): void {
   }
 }
 
-// Écrire une entrée JSON dans le fichier log
+// Écrire une entrée JSON dans le fichier log (les plus récents EN HAUT)
 function writeJsonLog(entry: JsonLogEntry): void {
   try {
     ensureLogsDir();
     const logFile = getTodayLogFile();
     
     // JSON INDENTÉ pour lisibilité dans Cursor/VS Code
-    // Séparateur "---" entre chaque entrée pour faciliter la lecture
     const jsonPretty = JSON.stringify(entry, null, 2);
-    const separator = '\n' + '─'.repeat(80) + '\n';
+    const separator = '─'.repeat(80) + '\n';
+    const newEntry = jsonPretty + '\n' + separator;
     
-    fs.appendFileSync(logFile, jsonPretty + separator, 'utf-8');
+    // Lire le contenu existant et ajouter la nouvelle entrée EN HAUT
+    let existingContent = '';
+    if (fs.existsSync(logFile)) {
+      existingContent = fs.readFileSync(logFile, 'utf-8');
+    }
+    
+    // Écrire: nouvelle entrée + ancien contenu (plus récents en haut)
+    fs.writeFileSync(logFile, newEntry + existingContent, 'utf-8');
     
     // Console: format court pour le terminal
     const time = entry.timestamp.slice(11, 23);
