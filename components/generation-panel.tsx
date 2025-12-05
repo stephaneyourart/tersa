@@ -628,12 +628,14 @@ export function GenerationPanel({ projectId, testMode = false, generationModels 
         const generated = imgData.generated as { url?: string; originalUrl?: string } | undefined;
         const content = imgData.content as { url?: string } | undefined;
         const directUrl = imgData.url as string | undefined;
+        const upscale = imgData.upscale as { status?: string; upscaledUrl?: string } | undefined;
         
-        // Priorité: generated > content > url direct
-        const imageUrl = generated?.url || content?.url || directUrl;
+        // Priorité: upscale (si completed) > generated > content > url direct
+        const upscaledUrl = upscale?.status === 'completed' ? upscale.upscaledUrl : undefined;
+        const imageUrl = upscaledUrl || generated?.url || content?.url || directUrl;
         const imgLabel = getNodeLabel(imgNode);
         
-        console.log(`[Collections]   → ${imgLabel}: generated.url=${generated?.url?.slice(0, 40) || 'null'}, originalUrl=${generated?.originalUrl?.slice(0, 40) || 'null'}`);
+        console.log(`[Collections]   → ${imgLabel}: upscaled=${upscaledUrl?.slice(0, 40) || 'null'}, generated.url=${generated?.url?.slice(0, 40) || 'null'}`);
         
         if (imageUrl) {
           items.push({
