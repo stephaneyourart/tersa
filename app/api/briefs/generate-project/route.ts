@@ -321,7 +321,10 @@ export async function POST(request: NextRequest) {
             const reasoningText = delta?.reasoning_content || delta?.reasoning || choice?.reasoning_content || choice?.reasoning;
             if (reasoningText) {
               reasoningContent += reasoningText;
-              console.log(`[GPT-5.1] Reasoning chunk: ${reasoningText.substring(0, 100)}...`);
+              // STREAMING: Envoyer immédiatement le reasoning au client
+              controller.enqueue(encoder.encode(sseEvent('reasoning', { 
+                content: reasoningText,
+              })));
             }
             
             // Capturer la réponse finale (le JSON)
