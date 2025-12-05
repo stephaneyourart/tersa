@@ -13,6 +13,7 @@ type UpscaleRequest = {
   imageUrl?: string;
   videoUrl?: string;
   scale?: number;
+  creativity?: number; // Pour Lupa AI (-10 à 10)
   enhanceFace?: boolean;
   denoiseStrength?: number;
   saveLocally?: boolean;
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
       imageUrl,
       videoUrl,
       scale = 2,
+      creativity, // Pour Lupa AI
       enhanceFace = false,
       denoiseStrength,
       saveLocally = true,
@@ -99,6 +101,7 @@ export async function POST(request: NextRequest) {
       imageUrl: type === 'image' ? imageUrl : undefined,
       videoUrl: type === 'video' ? videoUrl : undefined,
       scale,
+      creativity, // Pour Lupa AI
       enhanceFace: modelConfig.supportsEnhanceFace ? enhanceFace : undefined,
       denoiseStrength: modelConfig.supportsDenoise ? denoiseStrength : undefined,
     });

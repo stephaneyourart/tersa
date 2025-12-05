@@ -18,6 +18,7 @@ export type UpscaleModel = {
     imageUrl?: string;
     videoUrl?: string;
     scale?: number; // 2x, 4x, etc.
+    creativity?: number; // Pour Lupa AI (-10 à 10)
     enhanceFace?: boolean;
     denoiseStrength?: number;
   }) => Promise<string>;

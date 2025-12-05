@@ -189,7 +189,7 @@ async function waitForCompletion(upscaleId: string): Promise<string> {
 function createLupaStandardModel(): UpscaleModel {
   return {
     modelId: 'lupa-standard',
-    generate: async ({ imageUrl, scale }) => {
+    generate: async ({ imageUrl, scale, creativity }) => {
       if (!imageUrl) {
         throw new Error('imageUrl requis');
       }
@@ -199,9 +199,12 @@ function createLupaStandardModel(): UpscaleModel {
       if (scale && scale >= 4) resolution = 4;
       if (scale && scale >= 6) resolution = 6;
 
+      // Utiliser creativity de l'UI ou valeur par défaut (5 = équilibré)
+      const finalCreativity = creativity !== undefined ? creativity : 5;
+
       const upscaleId = await startLupaUpscale('standard', {
         image: imageUrl,
-        creativity: 5, // Valeur par défaut équilibrée
+        creativity: finalCreativity,
         Resolution: resolution,
       });
 
@@ -218,7 +221,7 @@ function createLupaStandardModel(): UpscaleModel {
 function createLupaPrecisionModel(): UpscaleModel {
   return {
     modelId: 'lupa-precision',
-    generate: async ({ imageUrl, scale }) => {
+    generate: async ({ imageUrl, scale, creativity }) => {
       if (!imageUrl) {
         throw new Error('imageUrl requis');
       }
@@ -227,9 +230,12 @@ function createLupaPrecisionModel(): UpscaleModel {
       if (scale && scale >= 4) resolution = 4;
       if (scale && scale >= 6) resolution = 6;
 
+      // Utiliser creativity de l'UI ou valeur par défaut (3 = plus conservateur)
+      const finalCreativity = creativity !== undefined ? creativity : 3;
+
       const upscaleId = await startLupaUpscale('precision', {
         image: imageUrl,
-        creativity: 3, // Plus conservateur pour la précision
+        creativity: finalCreativity,
         Resolution: resolution,
       });
 

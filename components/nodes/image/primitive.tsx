@@ -122,6 +122,7 @@ export const ImagePrimitive = ({
           model: settings.model,
           imageUrl,
           scale: settings.scale,
+          creativity: settings.creativity, // Pour Lupa AI
           saveLocally: true,
         }),
         signal: controller.signal,
