@@ -717,9 +717,7 @@ export const NodeLayout = ({
               }}
             >
               <div className={cn(
-                "rounded-[17px] bg-card",
-                // Pour les images, permettre à l'overflow de dépasser pour éviter le crop
-                type === 'image' ? 'overflow-visible' : 'overflow-hidden'
+                "rounded-[17px] bg-card overflow-hidden"
               )}>
                 {children}
               </div>

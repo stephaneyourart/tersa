@@ -287,8 +287,8 @@ export function validateConfig(config: GenerationConfig): { valid: boolean; erro
   }
 
   // Validation Quantités
-  if (config.quantities.plansCount < 1 || config.quantities.plansCount > 50) {
-    errors.push('Nombre de plans doit être entre 1 et 50');
+  if (config.quantities.plansCount < 0 || config.quantities.plansCount > 50) {
+    errors.push('Nombre de plans doit être entre 0 (auto) et 50');
   }
   if (config.quantities.imageSetsPerPlan < 1 || config.quantities.imageSetsPerPlan > 10) {
     errors.push('Nombre de jeux d\'images doit être entre 1 et 10');
@@ -333,6 +333,7 @@ export function configToLegacyFormat(config: GenerationConfig): Record<string, u
       // Nouvelles options
       generateSecondaryImages: config.quantities.generateSecondaryImages,
       firstFrameIsPrimary: config.quantities.firstFrameIsPrimary,
+      plansCount: config.quantities.plansCount, // Ajout du nombre de plans
     },
   };
 }

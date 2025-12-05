@@ -66,14 +66,14 @@ const StableImage = memo(function StableImage({
   
   return (
     <div 
-      className="w-full bg-secondary rounded-b-xl overflow-visible"
+      className="w-full bg-secondary rounded-b-xl overflow-hidden"
       style={{ aspectRatio }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt="Generated image"
-        className="w-full h-full rounded-b-xl block object-contain"
+        className="w-full h-full block object-contain"
         onLoad={handleLoad}
         onError={onError}
         loading="eager"

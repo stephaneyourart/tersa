@@ -241,13 +241,15 @@ export const ImagePrimitive = ({
                   upscaleCreativity={data.upscale.creativity}
                 />
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={data.content.url}
-                  alt="Image"
-                  className="w-full h-auto rounded-b-xl block"
-                  onError={() => markAsExpired()}
-                />
+                <div className="w-full rounded-b-xl overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={data.content.url}
+                    alt="Image"
+                    className="w-full h-auto block"
+                    onError={() => markAsExpired()}
+                  />
+                </div>
               )}
             </>
           )}

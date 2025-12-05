@@ -98,52 +98,13 @@ import {
   type BudgetBreakdown,
 } from '@/lib/budget-calculator';
 
+import { SYSTEM_PROMPT_ANALYSIS } from '@/lib/brief-defaults';
+
 // ============================================================
 // SYSTEM PROMPT PAR DÉFAUT
 // ============================================================
 
-const BUILTIN_SYSTEM_PROMPT = `Tu es un scénariste et réalisateur expert, doté d'une sensibilité littéraire et cinématographique aiguë.
-
-## ARCHITECTURE DU PROJET
-
-### 1. PERSONNAGES - Descriptions exhaustives (SEUL ENDROIT)
-Chaque personnage a UN prompt "primary" extrêmement détaillé décrivant son apparence physique complète.
-C'est LE SEUL ENDROIT où les descriptions physiques apparaissent.
-
-### 2. DÉCORS - Descriptions exhaustives (SEUL ENDROIT)
-Chaque décor a UN prompt "primary" extrêmement détaillé décrivant l'environnement complet.
-
-### 3. PLANS - Trois prompts distincts par plan
-
-#### A. prompt (ACTION VIDÉO)
-Décrit l'ACTION, le MOUVEMENT, la PSYCHOLOGIE du plan. Sera utilisé pour animer la vidéo.
-
-**STYLE REQUIS :** Littéraire, raffiné, cinématographique.
-- Verbes d'action précis et évocateurs
-- Mouvements de caméra (travelling, panoramique...)
-- Rythme (lent, saccadé, fluide...)
-- Psychologie (tension, hésitation...)
-
-**INTERDICTION ABSOLUE :** Ne JAMAIS décrire l'apparence physique.
-Utiliser uniquement des DÉSIGNATIONS SIMPLES : "l'homme", "la femme", "le vieux".
-
-#### B. promptImageDepart (COMPOSITION DÉBUT)
-Décrit la COMPOSITION SPATIALE au DÉBUT du plan (21:9 cinémascope).
-
-#### C. promptImageFin (COMPOSITION FIN)
-Décrit la COMPOSITION SPATIALE à la FIN du plan (21:9 cinémascope).
-DÉDUITE de l'action.
-
-## FORMAT JSON OBLIGATOIRE
-{
-  "title": "Titre",
-  "synopsis": "Synopsis (2-3 phrases)",
-  "characters": [...],
-  "decors": [...],
-  "scenes": [...],
-  "totalPlans": 4,
-  "estimatedDuration": 60
-}`;
+const BUILTIN_SYSTEM_PROMPT = SYSTEM_PROMPT_ANALYSIS;
 
 // ============================================================
 // COMPOSANT PRINCIPAL
@@ -410,6 +371,10 @@ export default function GenerateProjectPage() {
     try {
       const legacyConfig = configToLegacyFormat(config);
       
+      // Timeout de 5 minutes (300000ms) pour éviter les coupures prématurées
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+
       const response = await fetch('/api/briefs/generate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -419,12 +384,18 @@ export default function GenerateProjectPage() {
           config: legacyConfig,
           isTestMode: false,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       await processGenerationResponse(response, projectName);
     } catch (error: any) {
-      console.error('Erreur génération:', error);
-      setReasoning(prev => prev + `\n❌ Erreur : ${error.message}`);
+      if (error.name === 'AbortError') {
+        setReasoning(prev => prev + `\n❌ Erreur : Délai d'attente dépassé (5 minutes). Le modèle est trop lent.`);
+      } else {
+        console.error('Erreur génération:', error);
+        setReasoning(prev => prev + `\n❌ Erreur : ${error.message}`);
+      }
       setPhaseStatus({ analysis: 'done', canvas: 'done', redirect: 'done' });
     } finally {
       setGenerating(false);
@@ -1252,11 +1223,12 @@ export default function GenerateProjectPage() {
               value={String(config.quantities.plansCount)} 
               onValueChange={(v) => updateConfig('quantities', { plansCount: parseInt(v) })}
             >
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[1, 2, 4, 6, 8, 10, 12, 15, 20].map(n => (
+                <SelectItem value="0" className="text-emerald-400 font-medium">✨ Décidé par l'IA</SelectItem>
+                {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map(n => (
                   <SelectItem key={n} value={String(n)}>{n} plan{n > 1 ? 's' : ''}</SelectItem>
                 ))}
               </SelectContent>
@@ -1538,12 +1510,11 @@ export default function GenerateProjectPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <ScrollArea className="flex-1 min-h-0">
+          <ScrollArea className="flex-1 min-h-0 border rounded-md p-4">
             <Textarea
               value={config.systemPrompt || BUILTIN_SYSTEM_PROMPT}
               onChange={(e) => setConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
-              rows={25}
-              className="font-mono text-xs"
+              className="font-mono text-xs border-0 focus-visible:ring-0 p-0 resize-none min-h-[600px]"
             />
           </ScrollArea>
           
