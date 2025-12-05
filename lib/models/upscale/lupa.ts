@@ -160,7 +160,7 @@ async function checkLupaStatus(upscaleId: string): Promise<string> {
  * Attend la fin du traitement et retourne l'URL
  */
 async function waitForCompletion(upscaleId: string): Promise<string> {
-  const maxAttempts = 60; // 5 minutes max (5s * 60)
+  const maxAttempts = 144; // 12 minutes max (5s * 144)
   let attempts = 0;
 
   while (attempts < maxAttempts) {

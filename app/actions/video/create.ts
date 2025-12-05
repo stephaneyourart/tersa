@@ -143,7 +143,7 @@ export const generateVideoAction = async ({
     console.log(`[Video Action] Sending to API - First frame: ${firstFrameImage ? 'yes' : 'no'}, Last frame: ${lastFrameImage ? 'yes' : 'no'}`);
 
     // Paramètres de génération
-    const generationParams = {
+    const generationParams: { duration: 5 | 10; aspectRatio: string } = {
       duration: 5,
       aspectRatio: '16:9',
     };

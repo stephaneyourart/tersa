@@ -1,11 +1,13 @@
 /**
  * Creative Plan Settings - Configuration EXHAUSTIVE et PRÉCISE
  * 
+ * ⚠️ PARTIELLEMENT DÉPRÉCIÉ:
+ * - La page de génération utilise maintenant lib/generation-config.ts et lib/models-registry.ts
+ * - Ce fichier est conservé pour les autres composants (canvas, generation-panel, etc.)
+ * 
  * Structure :
  * - TEST : génération rapide, petites dimensions fixes, modèles économiques
- *          → NE PAS TOUCHER - reste avec les dimensions en pixels
  * - PROD : génération haute qualité avec WaveSpeed
- *          → Utilise aspect_ratio + resolution (4k/8k) directement
  * 
  * IMPORTANT: WaveSpeed Nano Banana Pro accepte:
  * - aspect_ratio: '1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'

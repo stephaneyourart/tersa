@@ -32,6 +32,9 @@ export interface MediaMetadata {
   // Coût de génération
   cost?: number;
   service?: string; // 'wavespeed', 'fal', 'replicate', etc.
+  originalUrl?: string; // URL CloudFront WaveSpeed pour réutilisation
+  generationType?: 'text-to-image' | 'edit' | 'variation'; // Type de génération
+  sourceImagesCount?: number; // Nombre d'images sources pour edit/variation
   
   // DVR
   dvrTransferred?: boolean;

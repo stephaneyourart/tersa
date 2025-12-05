@@ -1053,7 +1053,7 @@ function SidebarSectionComponent({
 // avec des centaines/milliers de médias
 
 interface VirtualizedMediaTableProps {
-  tableContainerRef: React.RefObject<HTMLDivElement>;
+  tableContainerRef: React.RefObject<HTMLDivElement | null>;
   visibleColumns: ColumnConfig[];
   columnWidths: Record<string, number>;
   sortedMedias: MediaItem[];
@@ -1064,7 +1064,7 @@ interface VirtualizedMediaTableProps {
   setSort: (column: string) => void;
   handleColumnResize: (columnId: string, width: number) => void;
   toggleMediaSelection: (id: string) => void;
-  selectMediaRange: (id: string) => void;
+  selectMediaRange: ((fromId: string, toId: string) => void) | ((id: string) => void);
   updateMediaMetadata: (id: string, updates: Partial<MediaItem>) => Promise<boolean>;
   handleDragStart: (e: React.DragEvent, media: MediaItem) => void;
   handleSendMediaToDVR: (media: MediaItem) => void;
@@ -1208,7 +1208,7 @@ function VirtualizedMediaTable({
                       toggleMediaSelection(id);
                     }}
                     onSelectRange={(id) => {
-                      selectMediaRange(id);
+                      (selectMediaRange as (id: string) => void)(id);
                     }}
                     onUpdateMetadata={updateMediaMetadata}
                     onDragStart={handleDragStart}

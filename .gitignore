@@ -42,3 +42,8 @@ next-env.d.ts
 
 # react.email
 .react-email/
+# Logs de génération
+logs/
+
+# Data locale (presets, etc.)
+data/

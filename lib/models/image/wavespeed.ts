@@ -182,7 +182,7 @@ async function callWaveSpeedApi(
 
   // Polling pour le résultat (intervalle de 2 secondes)
   let attempts = 0;
-  const maxAttempts = 150; // 5 minutes max (150 * 2s)
+  const maxAttempts = 360; // 12 minutes max (360 * 2s)
 
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -237,7 +237,7 @@ async function callWaveSpeedApi(
     attempts++;
   }
 
-  throw new Error('Timeout: génération trop longue (5 minutes)');
+  throw new Error('Timeout: génération trop longue (12 minutes)');
 }
 
 /**

@@ -102,8 +102,14 @@ export interface ParallelGenerationOptions {
     characterCollectionIds: string[];
     decorCollectionId?: string;
     usesFirstLastFrame?: boolean;
+    // NOUVEAU: Flags pour génération directe depuis les collections primaires
+    skipSecondaryImages?: boolean;
+    firstFrameIsPrimary?: boolean;
   }>;
   videoSettings: { duration: number; aspectRatio: string; frameMode?: FrameMode };
+  // NOUVEAU: Flags globaux
+  skipSecondaryImages?: boolean;
+  firstFrameIsPrimary?: boolean;
   onProgress?: (progress: GenerationProgress) => void;
   onImageGenerated?: (result: GenerationResult) => void;
   onVideoGenerated?: (result: GenerationResult) => void;
@@ -412,13 +418,59 @@ export async function generateAllMediaParallel(
   // ========== PHASE 4 : VIDÉOS EN PARALLÈLE (avec first+last frame ou first only) ==========
   const videoTasks: VideoGenerationTask[] = [];
   
+  // NOUVEAU: Flags globaux pour le mode de génération
+  const globalSkipSecondary = options.skipSecondaryImages || false;
+  const globalFirstFrameIsPrimary = options.firstFrameIsPrimary || false;
+  
   for (const video of videos) {
-    // Récupérer les URLs des images de plan
-    const imageDepartUrl = video.imageDepartNodeId ? imageUrlsMap.get(video.imageDepartNodeId) : undefined;
-    // En mode first-only, pas d'image de fin
-    const imageFinUrl = frameMode === 'first-last' && video.imageFinNodeId 
-      ? imageUrlsMap.get(video.imageFinNodeId) 
-      : undefined;
+    // Déterminer si on utilise les images primaires directement
+    const useDirectPrimary = video.skipSecondaryImages || video.firstFrameIsPrimary || globalSkipSecondary || globalFirstFrameIsPrimary;
+    
+    let imageDepartUrl: string | undefined;
+    let imageFinUrl: string | undefined;
+    
+    if (useDirectPrimary) {
+      // MODE DIRECT: Utiliser les images primaires des collections
+      // Chercher la première image primaire disponible (personnage ou décor)
+      // On prend la première image primaire trouvée dans les collections
+      console.log(`[ParallelGen] Plan ${video.planId}: Mode direct (skipSecondary=${video.skipSecondaryImages}, firstFrameIsPrimary=${video.firstFrameIsPrimary})`);
+      
+      // Récupérer les URLs des images primaires des personnages
+      for (const charData of characterImages) {
+        if (charData.primaryNodeId) {
+          const url = imageUrlsMap.get(charData.primaryNodeId);
+          if (url) {
+            imageDepartUrl = url;
+            console.log(`[ParallelGen] Utilisation image primaire personnage: ${charData.primaryNodeId}`);
+            break;
+          }
+        }
+      }
+      
+      // Si pas d'image personnage, essayer les décors
+      if (!imageDepartUrl) {
+        for (const decorData of decorImages) {
+          if (decorData.primaryNodeId) {
+            const url = imageUrlsMap.get(decorData.primaryNodeId);
+            if (url) {
+              imageDepartUrl = url;
+              console.log(`[ParallelGen] Utilisation image primaire décor: ${decorData.primaryNodeId}`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // En mode direct, pas d'image de fin (on utilise uniquement first frame)
+      imageFinUrl = undefined;
+    } else {
+      // MODE NORMAL: Utiliser les images de plan (départ/fin)
+      imageDepartUrl = video.imageDepartNodeId ? imageUrlsMap.get(video.imageDepartNodeId) : undefined;
+      // En mode first-only, pas d'image de fin
+      imageFinUrl = frameMode === 'first-last' && video.imageFinNodeId 
+        ? imageUrlsMap.get(video.imageFinNodeId) 
+        : undefined;
+    }
     
     for (const videoNodeId of video.videoNodeIds) {
       videoTasks.push({
@@ -428,8 +480,9 @@ export async function generateAllMediaParallel(
         imageDepartUrl,
         imageFinUrl,
         duration: videoSettings.duration,
-        usesFirstLastFrame: frameMode === 'first-last' && (video.usesFirstLastFrame || false),
-        frameMode,
+        // En mode direct, on utilise first-only car on n'a qu'une image primaire
+        usesFirstLastFrame: !useDirectPrimary && frameMode === 'first-last' && (video.usesFirstLastFrame || false),
+        frameMode: useDirectPrimary ? 'first-only' : frameMode,
       });
     }
   }
@@ -679,8 +732,12 @@ interface VideoFirstOnlyParams {
 }
 
 /**
- * NOUVEAU: Génère une vidéo avec FIRST frame uniquement
+ * Génère une vidéo avec FIRST frame uniquement
  * Utilise KLING v2.6 Pro Image-to-Video (1 seule image en entrée)
+ * 
+ * MODÈLE RÉEL: kwaivgi/kling-v2.6-pro/image-to-video
+ * - Champ guidance: cfg_scale (0-1, défaut 0.5)
+ * - PAS de support last_image
  */
 async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
@@ -690,11 +747,11 @@ async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ s
       body: JSON.stringify({
         nodeId: `gen-fo-${Date.now()}`,
         prompt: params.prompt,
-        imagePrompt: params.firstFrameUrl,     // First frame (seule image)
-        model: 'kling-v2.6-pro-i2v',           // Modèle Image-to-Video (1 image)
+        imagePrompt: params.firstFrameUrl,
+        model: 'kwaivgi/kling-v2.6-pro/image-to-video', // Endpoint WaveSpeed réel
         copies: 1,
         duration: params.duration,
-        // PAS de lastFrameImage - mode first only
+        cfg_scale: 0.5, // Guidance pour Kling v2.6
       }),
     });
 
@@ -704,7 +761,6 @@ async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ s
     }
 
     const data = await response.json();
-    // L'API retourne results[0].nodeData.generated.url
     const videoUrl = data.results?.[0]?.nodeData?.generated?.url;
     return { success: !!videoUrl, url: videoUrl };
   } catch (error: any) {
@@ -713,8 +769,12 @@ async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ s
 }
 
 /**
- * NOUVEAU: Génère une vidéo avec first frame + last frame
- * Utilise KLING v2.6 Pro via l'API dédiée
+ * Génère une vidéo avec first frame + last frame
+ * Utilise KLING v2.5 Turbo Pro (seul modèle supportant last_image)
+ * 
+ * MODÈLE RÉEL: kwaivgi/kling-v2.5-turbo-pro/image-to-video
+ * - Champ guidance: guidance_scale (0-1, défaut 0.5)
+ * - Champ last frame: last_image
  */
 async function generateVideoFirstLast(params: VideoFirstLastParams): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
@@ -724,11 +784,12 @@ async function generateVideoFirstLast(params: VideoFirstLastParams): Promise<{ s
       body: JSON.stringify({
         nodeId: `gen-fl-${Date.now()}`,
         prompt: params.prompt,
-        imagePrompt: params.firstFrameUrl,     // First frame (image de départ)
-        lastFrameImage: params.lastFrameUrl,   // Last frame (image de fin)
-        model: 'kling-v2.6-pro-first-last',    // Modèle optimisé pour first+last
+        imagePrompt: params.firstFrameUrl,
+        lastFrameImage: params.lastFrameUrl, // last_image pour Kling v2.5
+        model: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', // Endpoint WaveSpeed réel
         copies: 1,
-        // PAS de aspectRatio - déduit des images
+        duration: params.duration,
+        guidance_scale: 0.5, // Guidance pour Kling v2.5
       }),
     });
 
@@ -738,7 +799,6 @@ async function generateVideoFirstLast(params: VideoFirstLastParams): Promise<{ s
     }
 
     const data = await response.json();
-    // L'API retourne results[0].nodeData.generated.url
     const videoUrl = data.results?.[0]?.nodeData?.generated?.url;
     return { success: !!videoUrl, url: videoUrl };
   } catch (error: any) {

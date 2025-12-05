@@ -357,7 +357,19 @@ export async function POST(request: NextRequest) {
 
           // ========== MISTRAL ==========
           if (llmProvider === 'mistral') {
-            const userPrompt = `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés et CRÉATIFS pour chaque personnage et décor. Sois audacieux et original dans tes descriptions.\n\n${briefData.content}`;
+            // Adapter le prompt selon le modèle (mistral-small = plus concis)
+            const isSmallModel = modelToUse.includes('small');
+            const userPrompt = isSmallModel
+              ? `Analyse ce brief et génère la structure du projet en JSON.
+RÈGLES CRITIQUES:
+- Génère un JSON VALIDE et COMPLET
+- Termine TOUJOURS le JSON correctement avec toutes les fermetures } et ]
+- Limite-toi à 2-3 plans maximum pour un brief court
+- Sois CONCIS dans les descriptions (1-2 phrases max par prompt)
+
+Brief à analyser:
+${briefData.content}`
+              : `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés et CRÉATIFS pour chaque personnage et décor. Sois audacieux et original dans tes descriptions.\n\n${briefData.content}`;
             
             for await (const chunk of streamMistralCompletion(modelToUse, systemPrompt, userPrompt)) {
               if (chunk.done) break;
@@ -367,7 +379,7 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            console.log(`[Mistral] Total chunks: ${chunkCount}, Response length: ${fullResponse.length}`);
+            console.log(`[Mistral] Total chunks: ${chunkCount}, Response length: ${fullResponse.length}, Model: ${modelToUse}`);
           }
           // ========== OPENAI ==========
           else {
@@ -407,8 +419,8 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // Stream OpenAI
-            for await (const chunk of completion) {
+            // Stream OpenAI (completion est un Stream car stream: true)
+            for await (const chunk of completion as AsyncIterable<any>) {
               chunkCount++;
               const delta = chunk.choices[0]?.delta as any;
               const choice = chunk.choices[0] as any;
@@ -520,7 +532,14 @@ export async function POST(request: NextRequest) {
           
           // Mode frame: first-last (2 images) ou first-only (1 image)
           const frameMode = config?.settings?.frameMode || 'first-last';
+          
+          // NOUVELLES OPTIONS
+          const generateSecondaryImages = config?.settings?.generateSecondaryImages !== false; // true par défaut
+          const firstFrameIsPrimary = config?.settings?.firstFrameIsPrimary || false;
+          
           console.log(`[API] Frame mode: ${frameMode}`);
+          console.log(`[API] Generate secondary images: ${generateSecondaryImages}`);
+          console.log(`[API] First frame is primary: ${firstFrameIsPrimary}`);
           console.log(`[API] Full config.settings:`, JSON.stringify(config?.settings, null, 2));
 
           // Générer les nœuds du canvas (avec N couples × M vidéos par plan)
@@ -530,6 +549,8 @@ export async function POST(request: NextRequest) {
             videoDuration,
             videoAspectRatio,
             frameMode,
+            generateSecondaryImages,
+            firstFrameIsPrimary,
           });
           
           // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)

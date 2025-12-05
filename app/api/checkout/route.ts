@@ -6,7 +6,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 
 const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-const successUrl = `${protocol}://${env.VERCEL_PROJECT_PRODUCTION_URL}`;
+const successUrl = `${protocol}://${(env as any).VERCEL_PROJECT_PRODUCTION_URL || 'localhost:3000'}`;
 
 const getFrequencyPrice = async (
   productId: string,
@@ -68,21 +68,21 @@ export const GET = async (request: NextRequest) => {
   if (productName === 'hobby') {
     lineItems.push(
       {
-        price: await getFrequencyPrice(env.STRIPE_HOBBY_PRODUCT_ID, 'month'),
+        price: await getFrequencyPrice(env.STRIPE_HOBBY_PRODUCT_ID!, 'month'),
         quantity: 1,
       },
       {
-        price: await getFrequencyPrice(env.STRIPE_USAGE_PRODUCT_ID, 'month'),
+        price: await getFrequencyPrice(env.STRIPE_USAGE_PRODUCT_ID!, 'month'),
       }
     );
   } else if (productName === 'pro') {
     lineItems.push(
       {
-        price: await getFrequencyPrice(env.STRIPE_PRO_PRODUCT_ID, frequency),
+        price: await getFrequencyPrice(env.STRIPE_PRO_PRODUCT_ID!, frequency),
         quantity: 1,
       },
       {
-        price: await getFrequencyPrice(env.STRIPE_USAGE_PRODUCT_ID, frequency),
+        price: await getFrequencyPrice(env.STRIPE_USAGE_PRODUCT_ID!, frequency),
       }
     );
   }

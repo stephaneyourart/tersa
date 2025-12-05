@@ -120,7 +120,7 @@ async function generateVideoForJob(job: VideoJob): Promise<{
       prompt: job.prompt,
       imagePrompt: referenceImages[0], // Première image comme image principale
       referenceImages: referenceImages, // Images de référence limitées
-      duration: job.duration || 10, // 10 secondes par défaut
+      duration: (job.duration || 10) as 5 | 10, // 10 secondes par défaut
       aspectRatio: job.aspectRatio || '16:9',
     });
 

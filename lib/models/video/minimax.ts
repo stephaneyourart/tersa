@@ -85,7 +85,7 @@ export const minimax = (modelId: CreateJobProps['model']): VideoModel => ({
     let isCompleted = false;
     let fileId: string | null = null;
     const startTime = Date.now();
-    const maxPollTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const maxPollTime = 12 * 60 * 1000; // 12 minutes in milliseconds
 
     while (!isCompleted && Date.now() - startTime < maxPollTime) {
       await new Promise((resolve) => setTimeout(resolve, 2000));

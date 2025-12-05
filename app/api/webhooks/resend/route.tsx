@@ -42,7 +42,7 @@ export const POST = async (req: Request) => {
     const headers = Object.fromEntries(req.headers);
 
     const wh = new Webhook(
-      env.SUPABASE_AUTH_HOOK_SECRET.replace('v1,whsec_', '')
+      env.SUPABASE_AUTH_HOOK_SECRET!.replace('v1,whsec_', '')
     );
 
     const {
@@ -94,7 +94,7 @@ export const POST = async (req: Request) => {
     }
 
     const { error } = await resend.emails.send({
-      from: env.RESEND_EMAIL,
+      from: env.RESEND_EMAIL!,
       to: [user.email],
       subject,
       react,

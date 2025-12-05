@@ -53,10 +53,11 @@ export function CleanupConfirmDialog({
     
     // Supprimer les fichiers locaux de chaque nœud (si pas utilisés ailleurs)
     for (const node of nodesToDelete) {
-      const localPath = node.data?.localPath as string | undefined;
-      const contentUrl = (node.data?.content?.url || node.data?.generated?.url) as string | undefined;
+      const nodeData = node.data as any;
+      const localPath = nodeData?.localPath as string | undefined;
+      const contentUrl = (nodeData?.content?.url || nodeData?.generated?.url) as string | undefined;
       const filePath = localPath || contentUrl;
-      const isGenerated = Boolean(node.data?.isGenerated);
+      const isGenerated = Boolean(nodeData?.isGenerated);
       
       if (isGenerated) {
         generatedCount++;

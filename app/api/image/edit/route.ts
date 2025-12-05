@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { editImageAction } from '@/app/actions/image/edit';
+import { fLog } from '@/lib/file-logger';
 
 // Convertir aspect ratio en size UNIQUEMENT pour le mode TEST
 function aspectRatioToTestSize(aspectRatio: string): string {
@@ -27,6 +28,8 @@ function aspectRatioToTestSize(aspectRatio: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const body = await request.json();
     const { 
@@ -43,6 +46,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!nodeId || !prompt || !sourceImages || sourceImages.length === 0) {
+      fLog.error('Image Edit: paramètres manquants', { nodeId, hasPrompt: !!prompt, hasImages: sourceImages?.length || 0 });
       return NextResponse.json(
         { error: 'nodeId, prompt et sourceImages sont requis' },
         { status: 400 }
@@ -51,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     const effectiveProjectId = projectId || 'local-generation';
 
+    fLog.imageStart(nodeId, model, prompt);
     console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}${testMode ? ' (MODE TEST)' : ''}`);
     console.log(`[API Image Edit] Source images: ${sourceImages.length}, prompt: ${prompt.substring(0, 80)}...`);
 
@@ -79,11 +84,15 @@ export async function POST(request: NextRequest) {
         guidanceScale: guidanceScale ?? 2.5,
       });
 
+      const duration = Date.now() - startTime;
+      
       if ('error' in result) {
         console.error('[API Image Edit] Erreur:', result.error);
+        fLog.imageError(nodeId, model, result.error);
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
+      fLog.imageSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -105,11 +114,15 @@ export async function POST(request: NextRequest) {
         guidanceScale,
       });
 
+      const duration = Date.now() - startTime;
+      
       if ('error' in result) {
         console.error('[API Image Edit] Erreur:', result.error);
+        fLog.imageError(nodeId, model, result.error);
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
+      fLog.imageSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -117,7 +130,9 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
+    const duration = Date.now() - startTime;
     console.error('[API Image Edit] Erreur:', error);
+    fLog.error(`Image Edit crash après ${duration}ms: ${error instanceof Error ? error.message : 'Erreur inconnue'}`, { nodeId: 'unknown' });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erreur inconnue' },
       { status: 500 }

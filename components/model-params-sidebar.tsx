@@ -116,7 +116,7 @@ function ModelParamsSidebarUI() {
     const item = modelsData.data.items.find(m => m.model_uuid === modelId);
     if (!item) return null;
     const providerInfo = getProviderInfo(modelId);
-    const readableName = getReadableModelName(item.model_name, item.seo);
+    const readableName = getReadableModelName(item.model_name, (item as any).seo);
     return { ...item, providerInfo, readableName };
   }, [modelId]);
 

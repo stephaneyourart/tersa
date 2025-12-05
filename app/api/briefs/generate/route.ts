@@ -3,6 +3,7 @@ import { database } from '@/lib/database';
 import { briefs, projectGenerationConfigs } from '@/schema';
 import { eq } from 'drizzle-orm';
 import { generateProjectFromBrief } from '@/lib/brief-generator';
+import type { Brief } from '@/types/brief';
 
 /**
  * API pour générer un projet à partir d'un brief
@@ -51,12 +52,16 @@ export async function POST(request: NextRequest) {
       const result = await generateProjectFromBrief({
         brief: {
           ...brief,
+          description: brief.description ?? undefined,
+          estimatedCost: brief.estimatedCost ?? undefined,
+          updatedAt: brief.updatedAt ?? undefined,
           documents: [], // Charger depuis la DB si nécessaire
-        },
+        } as Brief,
         config: {
           ...savedConfig,
           briefId,
-        },
+          quality: (savedConfig.settings as any)?.quality || 'elevee',
+        } as any,
         projectName,
       });
 

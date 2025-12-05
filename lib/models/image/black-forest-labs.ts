@@ -220,7 +220,7 @@ export const blackForestLabs = {
       // Poll for job completion (max 2 minutes)
       let isCompleted = false;
       const startTime = Date.now();
-      const maxPollTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+      const maxPollTime = 12 * 60 * 1000; // 12 minutes in milliseconds
 
       while (!isCompleted && Date.now() - startTime < maxPollTime) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -277,7 +277,7 @@ export const blackForestLabs = {
         }
       }
 
-      throw new Error('Image generation timed out after 5 minutes');
+      throw new Error('Image generation timed out after 12 minutes');
     },
   }),
 };

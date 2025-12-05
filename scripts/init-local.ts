@@ -47,7 +47,7 @@ POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/tersafork
 
 # Batch Processing
 BATCH_MAX_CONCURRENCY=10
-BATCH_REQUEST_TIMEOUT=300000
+BATCH_REQUEST_TIMEOUT=720000
 
 # Ajoutez vos clés API ici
 # FAL_API_KEY=

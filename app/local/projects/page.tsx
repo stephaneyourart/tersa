@@ -93,7 +93,7 @@ function extractCalculatedStats(project: LocalProject): CalculatedStats {
   for (const node of nodes) {
     const nodeData = node as { type?: string; data?: Record<string, unknown> };
     const type = nodeData.type;
-    const data = nodeData.data || {};
+    const data = (nodeData.data || {}) as any;
 
     // Comptage par type
     if (type === 'image' || type === 'image-transform') {

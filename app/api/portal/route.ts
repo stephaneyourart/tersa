@@ -5,7 +5,7 @@ import { stripe } from '@/lib/stripe';
 import { NextResponse } from 'next/server';
 
 const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-const returnUrl = `${protocol}://${env.VERCEL_PROJECT_PRODUCTION_URL}`;
+const returnUrl = `${protocol}://${(env as any).VERCEL_PROJECT_PRODUCTION_URL || 'localhost:3000'}`;
 
 export const GET = async () => {
   try {

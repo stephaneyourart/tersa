@@ -5,9 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -29,83 +27,78 @@ import {
   PlayIcon,
   FileTextIcon,
   Loader2Icon,
-  SparklesIcon,
   BrainIcon,
   ImageIcon,
   VideoIcon,
   CheckCircle2Icon,
   CircleDotIcon,
-  EuroIcon,
+  DollarSignIcon,
   LayersIcon,
-  CopyIcon,
-  InfoIcon,
-  ChevronDownIcon,
+  SaveIcon,
+  PlusIcon,
+  Trash2Icon,
   SettingsIcon,
-  RotateCcw,
+  ClockIcon,
+  HashIcon,
+  FolderIcon,
+  ToggleLeftIcon,
+  ToggleRightIcon,
+  LinkIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react';
-import { createLocalProject, updateLocalProject, getLocalProjectById } from '@/lib/local-projects-store';
-import type { Brief, ProjectGenerationConfig, ReasoningLevel, QualityLevel } from '@/types/brief';
-import { 
-  DEFAULT_CHARACTER_CONFIG, 
-  DEFAULT_DECOR_CONFIG, 
-  DEFAULT_QUALITY_MODEL_CONFIG 
-} from '@/lib/brief-defaults';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createLocalProject, updateLocalProject } from '@/lib/local-projects-store';
+import type { Brief } from '@/types/brief';
+
+// Imports des nouveaux modules
 import {
-  type CreativePlanSettings,
-  type TestModeSpecs,
-  type ProdModeSpecs,
-  type Dimensions,
-  type WaveSpeedAspectRatio,
-  type WaveSpeedResolution,
-  type FrameMode,
-  DEFAULT_CREATIVE_PLAN_SETTINGS,
-  loadCreativePlanSettings,
-  saveCreativePlanSettings,
-  resetCreativePlanSettings,
-  AVAILABLE_TEXT_TO_IMAGE_MODELS,
-  AVAILABLE_EDIT_MODELS,
-  AVAILABLE_VIDEO_MODELS,
-  AVAILABLE_ASPECT_RATIOS,
-  AVAILABLE_RESOLUTIONS,
-  DIMENSION_PRESETS,
-  getAspectRatioFromDimensions,
-} from '@/lib/creative-plan-settings';
+  LLM_PROVIDERS,
+  LLM_MODELS,
+  T2I_MODELS,
+  I2I_MODELS,
+  VIDEO_MODELS,
+  ASPECT_RATIOS,
+  RESOLUTIONS,
+  REASONING_LEVELS,
+  getVideoModelsForMode,
+  modelSupportsReasoning,
+  type LLMProvider,
+  type AspectRatio,
+  type Resolution,
+  type ReasoningLevel,
+} from '@/lib/models-registry';
 
-// Le DEFAULT_SYSTEM_PROMPT est chargé depuis localStorage ou utilise la valeur par défaut
-const STORAGE_KEY_SYSTEM_PROMPT = 'brief-system-prompt-default';
+import {
+  type GenerationConfig,
+  type VideoMode,
+  DEFAULT_GENERATION_CONFIG,
+  loadGenerationConfig,
+  saveGenerationConfig,
+  configToLegacyFormat,
+} from '@/lib/generation-config';
 
-// ========== CONFIGURATION LLM PROVIDERS ==========
-type LLMProvider = 'mistral' | 'openai';
+import {
+  type GenerationPreset,
+  loadPresets,
+  loadPresetsFromServer,
+  getPreset,
+  createPreset,
+  updatePreset,
+  deletePreset,
+  getCurrentPresetId,
+  setCurrentPresetId,
+} from '@/lib/generation-presets';
 
-const LLM_PROVIDERS: Record<LLMProvider, { 
-  label: string; 
-  description: string;
-  models: { id: string; label: string; description: string; isDefault?: boolean }[];
-  testModel: string; // Modèle utilisé en mode test
-}> = {
-  mistral: {
-    label: 'Mistral',
-    description: 'Plus créatif, moins filtré',
-    testModel: 'mistral-small-latest',
-    models: [
-      { id: 'mistral-large-latest', label: 'Mistral Large', description: 'Le plus créatif', isDefault: true },
-      { id: 'mistral-small-latest', label: 'Mistral Small', description: 'Rapide & économique' },
-    ],
-  },
-  openai: {
-    label: 'OpenAI',
-    description: 'Classique, très structuré',
-    testModel: 'gpt-4o',
-    models: [
-      { id: 'gpt-5.1-2025-11-13', label: 'GPT-5.1', description: 'Très détaillé', isDefault: true },
-      { id: 'gpt-4o', label: 'GPT-4o', description: 'Rapide' },
-      { id: 'gpt-4o-mini', label: 'GPT-4o Mini', description: 'Économique' },
-    ],
-  },
-};
+import {
+  calculateBudget,
+  formatCurrency,
+  type BudgetBreakdown,
+} from '@/lib/budget-calculator';
+
+// ============================================================
+// SYSTEM PROMPT PAR DÉFAUT
+// ============================================================
 
 const BUILTIN_SYSTEM_PROMPT = `Tu es un scénariste et réalisateur expert, doté d'une sensibilité littéraire et cinématographique aiguë.
 
@@ -132,253 +125,125 @@ Décrit l'ACTION, le MOUVEMENT, la PSYCHOLOGIE du plan. Sera utilisé pour anime
 **INTERDICTION ABSOLUE :** Ne JAMAIS décrire l'apparence physique.
 Utiliser uniquement des DÉSIGNATIONS SIMPLES : "l'homme", "la femme", "le vieux".
 
-**EXEMPLE :**
-"L'homme s'avance vers elle d'un pas hésitant. Elle se retourne lentement. Travelling avant, tension croissante."
-
 #### B. promptImageDepart (COMPOSITION DÉBUT)
 Décrit la COMPOSITION SPATIALE au DÉBUT du plan (21:9 cinémascope).
-Position des personnages dans le cadre, postures, rapport au décor.
-
-**EXEMPLE :**
-"L'homme de dos au premier plan gauche. La femme au fond, assise, de profil."
 
 #### C. promptImageFin (COMPOSITION FIN)
 Décrit la COMPOSITION SPATIALE à la FIN du plan (21:9 cinémascope).
-DÉDUITE de l'action : si "l'homme s'approche", la fin montre le rapprochement.
-
-**EXEMPLE :**
-"L'homme et la femme face à face, proches, au centre du cadre."
+DÉDUITE de l'action.
 
 ## FORMAT JSON OBLIGATOIRE
-
 {
   "title": "Titre",
   "synopsis": "Synopsis (2-3 phrases)",
-  "characters": [{
-    "id": "perso-prenom",
-    "name": "Prénom",
-    "description": "Description narrative",
-    "referenceCode": "[PERSO:Prénom]",
-    "prompts": {
-      "primary": "[DESCRIPTION PHYSIQUE 200+ mots]",
-      "face": "Génère une image précise du visage de face...",
-      "profile": "Génère une image précise du visage de profil...",
-      "back": "Génère une image précise de ce personnage vu de dos..."
-    }
-  }],
-  "decors": [{
-    "id": "decor-nom",
-    "name": "Nom",
-    "description": "Description",
-    "referenceCode": "[DECOR:Nom]",
-    "prompts": {
-      "primary": "[DESCRIPTION DÉCOR 150+ mots]",
-      "angle2": "Propose un angle très différent...",
-      "plongee": "Vue en plongée top down...",
-      "contrePlongee": "Vue en forte contre plongée..."
-    }
-  }],
-  "scenes": [{
-    "id": "scene-1",
-    "sceneNumber": 1,
-    "title": "Titre",
-    "description": "Synopsis",
-    "plans": [{
-      "id": "plan-1-1",
-      "planNumber": 1,
-      "prompt": "[ACTION LITTÉRAIRE - SANS description physique]",
-      "promptImageDepart": "[COMPOSITION SPATIALE DÉBUT]",
-      "promptImageFin": "[COMPOSITION SPATIALE FIN]",
-      "characterRefs": ["perso-prenom"],
-      "decorRef": "decor-nom",
-      "duration": 5,
-      "cameraMovement": "Mouvement caméra"
-    }]
-  }],
+  "characters": [...],
+  "decors": [...],
+  "scenes": [...],
   "totalPlans": 4,
   "estimatedDuration": 60
-}
+}`;
 
-## RÈGLES ABSOLUES
-1. Descriptions physiques UNIQUEMENT dans prompts "primary"
-2. Dans les plans : "l'homme", "la femme" - JAMAIS de descriptions
-3. promptImageFin = conséquence logique de l'action
-4. Les prompts variantes sont FIXES, ne pas modifier`;
-
-// Helper pour charger le system prompt sauvegardé
-function getDefaultSystemPrompt(): string {
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem(STORAGE_KEY_SYSTEM_PROMPT);
-    if (saved) return saved;
-  }
-  return BUILTIN_SYSTEM_PROMPT;
-}
-
-// Composant pour éditer les dimensions (width × height) - MODE TEST uniquement
-function DimensionInput({ 
-  label, 
-  dims, 
-  onChange 
-}: { 
-  label: string; 
-  dims?: Dimensions; 
-  onChange: (dims: Dimensions) => void;
-}) {
-  const width = dims?.width || 256;
-  const height = dims?.height || 256;
-  const ratio = getAspectRatioFromDimensions({ width, height });
-  
-  return (
-    <div className="p-2 bg-background/50 rounded border border-border/30">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
-        <span className="text-[9px] text-muted-foreground/60">{ratio}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <Input
-          type="number"
-          min={64}
-          max={4096}
-          step={64}
-          className="h-6 text-[10px] px-1 w-14 text-center"
-          value={width}
-          onChange={(e) => onChange({ width: parseInt(e.target.value) || 256, height })}
-        />
-        <span className="text-[10px] text-muted-foreground">×</span>
-        <Input
-          type="number"
-          min={64}
-          max={4096}
-          step={64}
-          className="h-6 text-[10px] px-1 w-14 text-center"
-          value={height}
-          onChange={(e) => onChange({ width, height: parseInt(e.target.value) || 256 })}
-        />
-      </div>
-    </div>
-  );
-}
-
-// Composant pour sélectionner un aspect ratio - MODE PROD
-function AspectRatioSelect({ 
-  label, 
-  value, 
-  onChange 
-}: { 
-  label: string; 
-  value: WaveSpeedAspectRatio; 
-  onChange: (ratio: WaveSpeedAspectRatio) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
-      <Select value={value} onValueChange={(v) => onChange(v as WaveSpeedAspectRatio)}>
-        <SelectTrigger className="h-7 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {AVAILABLE_ASPECT_RATIOS.map(ar => (
-            <SelectItem key={ar.id} value={ar.id} className="text-xs">
-              {ar.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
+// ============================================================
+// COMPOSANT PRINCIPAL
+// ============================================================
 
 export default function GenerateProjectPage() {
   const router = useRouter();
   const params = useParams();
   
+  // États de base
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [showPromptDialog, setShowPromptDialog] = useState(false);
   const [showReasoningDialog, setShowReasoningDialog] = useState(false);
   const [reasoning, setReasoning] = useState<string>('');
-  const [currentPhase, setCurrentPhase] = useState<string>('');
-  const [savePromptAsDefault, setSavePromptAsDefault] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const reasoningEndRef = useRef<HTMLDivElement>(null);
+  
+  // États des phases de génération
   const [phaseStatus, setPhaseStatus] = useState<Record<string, 'pending' | 'running' | 'done'>>({
     analysis: 'pending',
     canvas: 'pending',
     redirect: 'pending',
   });
-  const [isTestVideoMode, setIsTestVideoMode] = useState(false); // Mode TEST-VIDEO (sans LLM)
-  const reasoningEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll
+  // Configuration de génération
+  const [config, setConfig] = useState<GenerationConfig>(DEFAULT_GENERATION_CONFIG);
+  
+  // Presets - initialisé avec loadPresets() pour avoir les built-in immédiatement
+  const [presets, setPresets] = useState<GenerationPreset[]>(() => {
+    if (typeof window !== 'undefined') {
+      return loadPresets();
+    }
+    return [];
+  });
+  const [currentPresetId, setCurrentPresetIdState] = useState<string | null>(null);
+  const [presetModified, setPresetModified] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [showNewPresetDialog, setShowNewPresetDialog] = useState(false);
+  
+  // Budget
+  const [budget, setBudget] = useState<BudgetBreakdown | null>(null);
+
+  // Auto-scroll reasoning
   useEffect(() => {
     if (reasoningEndRef.current && showReasoningDialog) {
       reasoningEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [reasoning, showReasoningDialog]);
-  
-  // État pour le provider LLM (Mistral par défaut - plus créatif)
-  const [llmProvider, setLlmProvider] = useState<LLMProvider>('mistral');
-  
-  const [config, setConfig] = useState<Partial<ProjectGenerationConfig>>({
-    aiModel: 'mistral-large-latest', // Mistral Large par défaut - prompts plus créatifs
-    reasoningLevel: 'high',
-    generateMediaDirectly: false,
-    systemPrompt: BUILTIN_SYSTEM_PROMPT, // Sera mis à jour dans useEffect
-    customInstructions: '',
-    quality: 'elevee' as QualityLevel, // Qualité élevée par défaut
-    settings: {
-      videoModel: 'kling-v2.6-pro-first-last', // KLING v2.6 pour first+last frame
-      imageModel: 'nano-banana-pro-ultra-wavespeed',
-      couplesPerPlan: 1, // N = nombre de couples (first/last) par plan
-      videosPerCouple: 4, // M = nombre de vidéos par couple
-      videoDuration: 10, // 10 secondes par défaut
-      videoAspectRatio: '16:9', // 16:9 par défaut
-      testMode: false,
-    },
-    advancedPromptConfig: {
-      characterConfig: DEFAULT_CHARACTER_CONFIG,
-      decorConfig: DEFAULT_DECOR_CONFIG,
-      modelConfig: DEFAULT_QUALITY_MODEL_CONFIG,
-    },
-  });
-  
-  // Helper pour changer de provider et mettre à jour le modèle par défaut
-  const handleProviderChange = (provider: LLMProvider) => {
-    setLlmProvider(provider);
-    const defaultModel = LLM_PROVIDERS[provider].models.find(m => m.isDefault)?.id 
-      || LLM_PROVIDERS[provider].models[0].id;
-    setConfig(prev => ({ ...prev, aiModel: defaultModel }));
-  };
-  
-  const [projectName, setProjectName] = useState('');
-  const [modelsSpecsOpen, setModelsSpecsOpen] = useState(false);
-  const [creativePlanSettings, setCreativePlanSettings] = useState<CreativePlanSettings>(DEFAULT_CREATIVE_PLAN_SETTINGS);
 
-  // Charger le system prompt et les settings Creative Plan au montage
+  // Charger la config et les presets au montage
   useEffect(() => {
-    const savedPrompt = getDefaultSystemPrompt();
-    setConfig(prev => ({ ...prev, systemPrompt: savedPrompt }));
-    
-    // Charger les Creative Plan Settings
-    const cpSettings = loadCreativePlanSettings();
-    setCreativePlanSettings(cpSettings);
+    // Charger les presets depuis le serveur (fichier local) pour persistance
+    loadPresetsFromServer().then(({ presets: allPresets, currentPresetId: serverId }) => {
+      console.log('[Generate] Presets chargés depuis serveur:', allPresets.length, allPresets.map(p => p.name));
+      setPresets(allPresets);
+      
+      // Utiliser l'ID du serveur en priorité, sinon localStorage
+      const currentId = serverId || getCurrentPresetId();
+      
+      if (currentId) {
+        // Un preset est sélectionné → charger SA config (pas la config modifiée)
+        const preset = allPresets.find(p => p.id === currentId);
+        if (preset) {
+          console.log('[Generate] Chargement du preset:', preset.name);
+          setConfig(preset.config);
+          setCurrentPresetIdState(currentId);
+          setPresetModified(false);
+        } else {
+          // Preset non trouvé, charger la config sauvegardée
+          console.log('[Generate] Preset non trouvé, chargement config sauvegardée');
+          const savedConfig = loadGenerationConfig();
+          setConfig(savedConfig);
+        }
+      } else {
+        // Pas de preset sélectionné → charger la config sauvegardée
+        const savedConfig = loadGenerationConfig();
+        setConfig(savedConfig);
+      }
+    }).catch(error => {
+      console.error('[Generate] Erreur chargement presets:', error);
+      // Fallback: charger depuis localStorage
+      const allPresets = loadPresets();
+      setPresets(allPresets);
+      const savedConfig = loadGenerationConfig();
+      setConfig(savedConfig);
+    });
   }, []);
   
-  // Handler pour les changements Creative Plan
-  const updateCreativePlan = (updater: (prev: CreativePlanSettings) => CreativePlanSettings) => {
-    setCreativePlanSettings(prev => {
-      const next = updater(prev);
-      // Sauvegarder immédiatement
-      saveCreativePlanSettings(next);
-      return next;
-    });
-  };
+  // Recalculer le budget quand la config change
+  useEffect(() => {
+    const newBudget = calculateBudget(config);
+    setBudget(newBudget);
+  }, [config]);
   
-  // Reset Creative Plan aux defaults
-  const handleResetCreativePlan = () => {
-    const defaults = resetCreativePlanSettings();
-    setCreativePlanSettings(defaults);
-  };
+  // Sauvegarder la config quand elle change
+  useEffect(() => {
+    saveGenerationConfig(config);
+  }, [config]);
 
+  // Charger le brief
   useEffect(() => {
     loadBrief();
   }, [params.id]);
@@ -398,315 +263,159 @@ export default function GenerateProjectPage() {
     }
   };
 
-  // ========== MODE TEST RAPIDE ==========
-  // Paramètres fixes : Mistral Small, first-only, 2 images, 2 vidéos 5s
-  const handleTestGenerate = async () => {
-    const testProjectName = projectName.trim() || `${brief?.name || 'Test'} - TEST`;
-    
-    setIsTestVideoMode(false); // Pas le mode TEST-VIDEO
-    setGenerating(true);
-    setReasoning('');
-    setShowReasoningDialog(true);
-    setPhaseStatus({ analysis: 'running', canvas: 'pending', redirect: 'pending' });
-    setCurrentPhase('analysis');
+  // ============================================================
+  // HANDLERS CONFIG
+  // ============================================================
 
-    // Config fixe pour le mode test
-    const testConfig = {
-      aiModel: 'mistral-small-latest',
-      llmProvider: 'mistral' as LLMProvider,
-      reasoningLevel: 'low',
-      systemPrompt: config.systemPrompt,
-      settings: {
-        testMode: true,
-        frameMode: 'first-only' as FrameMode, // First frame uniquement
-        couplesPerPlan: 2, // 2 images à générer
-        videosPerCouple: 2, // 2 vidéos à générer
-        videoDuration: 5, // 5 secondes
-        videoAspectRatio: '16:9',
+  const updateConfig = useCallback(<K extends 'llm' | 't2i' | 'i2i' | 'video' | 'quantities'>(
+    section: K,
+    updates: Partial<GenerationConfig[K]>
+  ) => {
+    setConfig(prev => ({
+      ...prev,
+      [section]: { ...(prev[section] as object), ...updates },
+    }));
+    setPresetModified(true);
+  }, []);
+
+  const handleLLMProviderChange = (provider: LLMProvider) => {
+    const firstModel = LLM_MODELS[provider][0];
+    setConfig(prev => ({
+      ...prev,
+      llm: {
+        provider,
+        model: firstModel.id,
+        reasoningLevel: firstModel.supportsReasoning ? 'medium' : undefined,
       },
-    };
+    }));
+    setPresetModified(true);
+  };
 
-    setReasoning(`🧪 MODE TEST RAPIDE
-   → LLM: Mistral Small (rapide & économique)
-   → Mode: First frame uniquement (pas de last frame)
-   → Images: 2 par plan
-   → Vidéos: 2 × 5 secondes par plan
-   → Prompts: simplifiés (2 persos max, 2 plans max)
+  const handleLLMModelChange = (modelId: string) => {
+    const supportsReasoning = modelSupportsReasoning(config.llm.provider, modelId);
+    setConfig(prev => ({
+      ...prev,
+      llm: {
+        ...prev.llm,
+        model: modelId,
+        reasoningLevel: supportsReasoning ? (prev.llm.reasoningLevel || 'medium') : undefined,
+      },
+    }));
+    setPresetModified(true);
+  };
 
-`);
+  const handleVideoModeChange = (mode: VideoMode) => {
+    const availableModels = getVideoModelsForMode(mode);
+    const currentModelAvailable = availableModels.find(m => m.id === config.video.model);
+    
+    setConfig(prev => ({
+      ...prev,
+      video: {
+        ...prev.video,
+        mode,
+        model: currentModelAvailable?.id || availableModels[0]?.id || prev.video.model,
+      },
+    }));
+    setPresetModified(true);
+  };
 
-    try {
-      const response = await fetch('/api/briefs/generate-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          briefId: params.id,
-          projectName: testProjectName,
-          config: testConfig,
-          isTestMode: true,
-        }),
-      });
+  // ============================================================
+  // HANDLERS PRESETS
+  // ============================================================
 
-      await processGenerationResponse(response, testProjectName, true);
-    } catch (error: any) {
-      console.error('Erreur génération test:', error);
-      setReasoning(prev => prev + `\n❌ Erreur : ${error.message}`);
-      setPhaseStatus({ analysis: 'done', canvas: 'done', redirect: 'done' });
-    } finally {
-      setGenerating(false);
+  const handlePresetChange = (presetId: string) => {
+    const preset = getPreset(presetId);
+    if (preset) {
+      setConfig(preset.config);
+      setCurrentPresetIdState(presetId);
+      setCurrentPresetId(presetId);
+      setPresetModified(false);
     }
   };
 
-  // ========== MODE TEST-VIDEO ==========
-  // Génère 2 images + 2 vidéos avec prompts fixes pour tester la pipeline vidéo
-  // AUCUN appel LLM - prompts codés en dur
-  // PAS de dialogue - va directement au canvas
-  const handleTestVideoGenerate = async () => {
-    setIsTestVideoMode(true);
-    setGenerating(true);
-    // PAS de dialogue - on va directement au canvas après génération
-
-    // Prompts fixes pour le test
-    const PROMPT_IMAGE_FIRST = "un chihuahua noir avec une tache blanche sur le front assis dans l'herbe";
-    const PROMPT_IMAGE_LAST = "un chihuahua noir avec une tache blanche sur le front marchant dans l'herbe";
-    const PROMPT_ACTION = "le chihuaha se lève et marche dans l'herbe";
-
-    // Modèles à utiliser
-    const IMAGE_MODEL = 'nano-banana-pro-ultra-wavespeed';
-    const VIDEO_MODEL_FIRST_ONLY = 'kwaivgi/kling-v2.6-pro/image-to-video';
-    const VIDEO_MODEL_FIRST_LAST = 'kwaivgi/kling-v2.5-turbo-pro/image-to-video';
-
-    try {
-      // Créer le projet local
-      const testProjectName = `Test Vidéo - ${new Date().toLocaleString('fr-FR')}`;
-      const newProject = createLocalProject(testProjectName);
-      const projectId = newProject.id;
-
-      // ========== GÉNÉRATION DES IMAGES ==========
-      // Générer IMAGE FIRST
-      const imageFirstResponse = await fetch('/api/image/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId: `test-video-img-first-${Date.now()}`,
-          prompt: PROMPT_IMAGE_FIRST,
-          model: IMAGE_MODEL,
-          projectId,
-          testMode: false,
-          aspectRatio: '21:9',
-          resolution: '4k',
-        }),
-      });
-
-      if (!imageFirstResponse.ok) {
-        const error = await imageFirstResponse.text();
-        throw new Error(`Erreur image FIRST: ${error}`);
+  const handleSavePreset = () => {
+    if (currentPresetId) {
+      const currentPreset = presets.find(p => p.id === currentPresetId);
+      // Si c'est un preset built-in, ouvrir le dialogue pour créer une copie
+      if (currentPreset?.isBuiltIn) {
+        setNewPresetName(`${currentPreset.name} (modifié)`);
+        setShowNewPresetDialog(true);
+        return;
       }
-      const imageFirstData = await imageFirstResponse.json();
-      const imageFirstUrl = imageFirstData.nodeData?.generated?.url || imageFirstData.nodeData?.url;
-
-      // Générer IMAGE LAST
-      const imageLastResponse = await fetch('/api/image/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId: `test-video-img-last-${Date.now()}`,
-          prompt: PROMPT_IMAGE_LAST,
-          model: IMAGE_MODEL,
-          projectId,
-          testMode: false,
-          aspectRatio: '21:9',
-          resolution: '4k',
-        }),
-      });
-
-      if (!imageLastResponse.ok) {
-        const error = await imageLastResponse.text();
-        throw new Error(`Erreur image LAST: ${error}`);
+      // Sinon, mettre à jour le preset utilisateur existant
+      const updated = updatePreset(currentPresetId, { config });
+      if (updated) {
+        setPresets(loadPresets());
+        setPresetModified(false);
       }
-      const imageLastData = await imageLastResponse.json();
-      const imageLastUrl = imageLastData.nodeData?.generated?.url || imageLastData.nodeData?.url;
-
-      // ========== GÉNÉRATION DES VIDÉOS ==========
-      // Vidéo 1: First Only avec Kling v2.6 Pro
-      const videoFirstOnlyResponse = await fetch('/api/video/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId: `test-video-first-only-${Date.now()}`,
-          prompt: PROMPT_ACTION,
-          model: VIDEO_MODEL_FIRST_ONLY,
-          projectId,
-          imagePrompt: imageFirstUrl,
-          copies: 1,
-        }),
-      });
-
-      let videoFirstOnlyUrl = null;
-      if (videoFirstOnlyResponse.ok) {
-        const videoFirstOnlyData = await videoFirstOnlyResponse.json();
-        videoFirstOnlyUrl = videoFirstOnlyData.results?.[0]?.nodeData?.generated?.url;
-      }
-
-      // Vidéo 2: First+Last avec Kling v2.5 Turbo Pro
-      const videoFirstLastResponse = await fetch('/api/video/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nodeId: `test-video-first-last-${Date.now()}`,
-          prompt: PROMPT_ACTION,
-          model: VIDEO_MODEL_FIRST_LAST,
-          projectId,
-          imagePrompt: imageFirstUrl,
-          lastFrameImage: imageLastUrl,
-          copies: 1,
-        }),
-      });
-
-      let videoFirstLastUrl = null;
-      if (videoFirstLastResponse.ok) {
-        const videoFirstLastData = await videoFirstLastResponse.json();
-        videoFirstLastUrl = videoFirstLastData.results?.[0]?.nodeData?.generated?.url;
-      }
-
-      // ========== CRÉER LES NŒUDS DANS LE CANVAS ==========
-      const nodes = [
-        // Nœud texte pour le prompt action
-        {
-          id: `text-action-${Date.now()}`,
-          type: 'text',
-          position: { x: 100, y: 100 },
-          data: {
-            title: 'Prompt Action',
-            text: PROMPT_ACTION,
-            isTest: true,
-          },
-        },
-        // Nœud image FIRST
-        {
-          id: `img-first-${Date.now()}`,
-          type: 'image',
-          position: { x: 100, y: 250 },
-          data: {
-            title: 'Image FIRST',
-            prompt: PROMPT_IMAGE_FIRST,
-            generated: { url: imageFirstUrl },
-            isGenerated: true,
-            isTest: true,
-          },
-        },
-        // Nœud image LAST
-        {
-          id: `img-last-${Date.now()}`,
-          type: 'image',
-          position: { x: 500, y: 250 },
-          data: {
-            title: 'Image LAST',
-            prompt: PROMPT_IMAGE_LAST,
-            generated: { url: imageLastUrl },
-            isGenerated: true,
-            isTest: true,
-          },
-        },
-        // Nœud vidéo First Only
-        {
-          id: `video-first-only-${Date.now()}`,
-          type: 'video',
-          position: { x: 100, y: 500 },
-          data: {
-            title: 'Vidéo First Only (Kling v2.6)',
-            prompt: PROMPT_ACTION,
-            model: VIDEO_MODEL_FIRST_ONLY,
-            generated: videoFirstOnlyUrl ? { url: videoFirstOnlyUrl } : undefined,
-            isGenerated: !!videoFirstOnlyUrl,
-            isTest: true,
-          },
-        },
-        // Nœud vidéo First+Last
-        {
-          id: `video-first-last-${Date.now()}`,
-          type: 'video',
-          position: { x: 500, y: 500 },
-          data: {
-            title: 'Vidéo First+Last (Kling v2.5)',
-            prompt: PROMPT_ACTION,
-            model: VIDEO_MODEL_FIRST_LAST,
-            generated: videoFirstLastUrl ? { url: videoFirstLastUrl } : undefined,
-            isGenerated: !!videoFirstLastUrl,
-            isTest: true,
-          },
-        },
-      ];
-
-      // Sauvegarder dans le projet
-      updateLocalProject(projectId, {
-        data: {
-          nodes,
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        },
-      });
-
-      // Aller directement au canvas
-      router.push(`/local/canvas/${projectId}`);
-
-    } catch (error: any) {
-      console.error('Erreur génération test vidéo:', error);
-      alert(`Erreur Test Vidéo: ${error.message}`);
-    } finally {
-      setGenerating(false);
-      setIsTestVideoMode(false);
+    } else {
+      setShowNewPresetDialog(true);
     }
   };
 
-  // ========== MODE PRODUCTION ==========
+  const handleCreatePreset = () => {
+    if (!newPresetName.trim()) return;
+    
+    const preset = createPreset(newPresetName.trim(), config);
+    setPresets(loadPresets());
+    setCurrentPresetIdState(preset.id);
+    setCurrentPresetId(preset.id);
+    setPresetModified(false);
+    setNewPresetName('');
+    setShowNewPresetDialog(false);
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    if (deletePreset(presetId)) {
+      setPresets(loadPresets());
+      if (currentPresetId === presetId) {
+        setCurrentPresetIdState(null);
+        setCurrentPresetId(null);
+      }
+    }
+  };
+
+  // ============================================================
+  // GÉNÉRATION
+  // ============================================================
+
   const handleGenerate = async () => {
     if (!projectName.trim()) {
       alert('Veuillez donner un nom au projet');
       return;
     }
 
-    setIsTestVideoMode(false); // Pas le mode TEST-VIDEO
     setGenerating(true);
     setReasoning('');
     setShowReasoningDialog(true);
     setPhaseStatus({ analysis: 'running', canvas: 'pending', redirect: 'pending' });
-    setCurrentPhase('analysis');
 
-    // Récupérer le frameMode depuis les creativePlanSettings PROD
-    const frameMode = creativePlanSettings.prod?.frameMode || 'first-last';
-    const frameModeLabel = frameMode === 'first-only' ? '🖼️ FIRST frame seul' : '🎬 FIRST + LAST frames';
-    const providerLabel = LLM_PROVIDERS[llmProvider].label;
-    
-    setReasoning(`🎬 MODE PRODUCTION
-   → LLM: ${providerLabel} (${config.aiModel})
-   → Mode: ${frameModeLabel}
-   → Images: haute résolution
-   → Vidéos: ${config.settings?.videosPerCouple || 4} × ${config.settings?.videoDuration || 10}s par couple
+    const providerLabel = config.llm.provider === 'openai' ? 'OpenAI' : 'Mistral';
+    setReasoning(`🎬 GÉNÉRATION DE PROJET
+   → LLM: ${providerLabel} (${config.llm.model})
+   → Mode vidéo: ${config.video.mode === 'image-first' ? 'IMAGE FIRST' : 'IMAGES FIRST AND LAST'}
+   → Plans: ${config.quantities.plansCount}
+   → Jeux d'images: ${config.quantities.imageSetsPerPlan} par plan
+   → Vidéos: ${config.quantities.videosPerImageSet} par jeu
+   → Durée: ${config.video.duration}s
 
 `);
 
     try {
+      const legacyConfig = configToLegacyFormat(config);
+      
       const response = await fetch('/api/briefs/generate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           briefId: params.id,
           projectName,
-          config: {
-            ...config,
-            llmProvider,
-            settings: {
-              ...config.settings,
-              testMode: false,
-              frameMode,
-            },
-          },
+          config: legacyConfig,
           isTestMode: false,
         }),
       });
 
-      await processGenerationResponse(response, projectName, false);
+      await processGenerationResponse(response, projectName);
     } catch (error: any) {
       console.error('Erreur génération:', error);
       setReasoning(prev => prev + `\n❌ Erreur : ${error.message}`);
@@ -716,14 +425,12 @@ export default function GenerateProjectPage() {
     }
   };
 
-  // ========== TRAITEMENT RÉPONSE COMMUNE ==========
-  const processGenerationResponse = async (response: Response, projName: string, isTestMode: boolean) => {
+  const processGenerationResponse = async (response: Response, projName: string) => {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || `Erreur: ${response.statusText}`);
     }
 
-    // Lire le stream SSE
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
 
@@ -732,12 +439,10 @@ export default function GenerateProjectPage() {
     }
 
     let canvasData: any = null;
-    let projectStructure: any = null;
     let buffer = '';
     let generationSequenceData: any = null;
     let createdProjectId: string | null = null;
 
-    // Fonction pour traiter une ligne SSE
     const processLine = (line: string) => {
       if (!line.startsWith('data: ')) return;
 
@@ -746,7 +451,6 @@ export default function GenerateProjectPage() {
         
         switch (data.type) {
           case 'phase_start':
-            setCurrentPhase(data.phase);
             if (data.phase === 'analysis') {
               setReasoning(prev => prev + data.message + '\n');
               setPhaseStatus(prev => ({ ...prev, analysis: 'running' }));
@@ -773,7 +477,6 @@ export default function GenerateProjectPage() {
 
           case 'project_data':
             canvasData = data.canvasData;
-            projectStructure = data.projectStructure;
             generationSequenceData = data.generationSequence;
             
             if (canvasData) {
@@ -784,20 +487,12 @@ export default function GenerateProjectPage() {
                 data: {
                   ...canvasData,
                   generationSequence: generationSequenceData,
-                  testMode: isTestMode,
+                  testMode: false,
                 }
               });
               
               createdProjectId = newProject.id;
               setReasoning(prev => prev + `✅ Projet créé : ${createdProjectId}\n`);
-              
-              if (generationSequenceData) {
-                const imgCount = 
-                  (generationSequenceData.characterImages?.reduce((acc: number, c: {imageNodeIds: string[]}) => acc + c.imageNodeIds.length, 0) || 0) +
-                  (generationSequenceData.locationImages?.reduce((acc: number, l: {imageNodeIds: string[]}) => acc + l.imageNodeIds.length, 0) || 0);
-                const vidCount = generationSequenceData.videos?.length || 0;
-                setReasoning(prev => prev + `📦 Séquence : ${imgCount} images, ${vidCount} vidéos à générer\n`);
-              }
             }
             break;
 
@@ -813,12 +508,6 @@ export default function GenerateProjectPage() {
               setReasoning(prev => prev + `   • ${s.scenes} scène(s)\n`);
               setReasoning(prev => prev + `   • ${s.plans} plan(s)\n`);
               setReasoning(prev => prev + `   • ${s.nodes} nœuds dans le canvas\n`);
-              if (s.imagesToGenerate) {
-                setReasoning(prev => prev + `   • ${s.imagesToGenerate} images à générer\n`);
-              }
-              if (s.videosToGenerate) {
-                setReasoning(prev => prev + `   • ${s.videosToGenerate} vidéos à générer\n`);
-              }
             }
 
             if (createdProjectId) {
@@ -827,16 +516,11 @@ export default function GenerateProjectPage() {
               setTimeout(() => {
                 router.push(`/local/canvas/${createdProjectId}`);
               }, 2000);
-            } else {
-              setReasoning(prev => prev + `\n⚠️ Projet non créé, vérifiez les logs.`);
             }
             break;
 
           case 'error':
             setReasoning(prev => prev + `\n\n❌ Erreur: ${data.error}\n`);
-            if (data.details) {
-              setReasoning(prev => prev + `\nDétails: ${data.details}\n`);
-            }
             break;
         }
       } catch (e) {
@@ -844,7 +528,6 @@ export default function GenerateProjectPage() {
       }
     };
 
-    // Lire le stream
     while (true) {
       const { done, value } = await reader.read();
       
@@ -867,7 +550,10 @@ export default function GenerateProjectPage() {
     }
   };
 
-  // Composant indicateur de phase - Style compact (sans spinner)
+  // ============================================================
+  // COMPOSANTS UI
+  // ============================================================
+
   const PhaseIndicator = ({ phase, label }: { phase: string; label: string }) => {
     const status = phaseStatus[phase];
     const isDone = status === 'done';
@@ -876,13 +562,15 @@ export default function GenerateProjectPage() {
     return (
       <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
         isDone 
-          ? 'bg-[#00ff41]/20 text-[#00ff41]' 
+          ? 'bg-emerald-500/20 text-emerald-400' 
           : isRunning 
-            ? 'bg-[#00ff41]/10 text-[#00ff41]' 
+            ? 'bg-blue-500/20 text-blue-400' 
             : 'bg-zinc-800 text-zinc-500'
       }`}>
         {isDone ? (
           <CheckCircle2Icon size={12} />
+        ) : isRunning ? (
+          <Loader2Icon size={12} className="animate-spin" />
         ) : (
           <CircleDotIcon size={12} />
         )}
@@ -890,6 +578,10 @@ export default function GenerateProjectPage() {
       </div>
     );
   };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   if (loading) {
     return (
@@ -906,6 +598,9 @@ export default function GenerateProjectPage() {
       </div>
     );
   }
+
+  const availableVideoModels = getVideoModelsForMode(config.video.mode);
+  const currentLLMSupportsReasoning = modelSupportsReasoning(config.llm.provider, config.llm.model);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -928,73 +623,16 @@ export default function GenerateProjectPage() {
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="space-y-6">
-          {/* BOUTON TEST RAPIDE - En haut bien visible */}
-          <Card className="p-6 bg-amber-500/10 border-amber-500/50">
-            <div className="flex items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
-                  <span className="text-2xl">🧪</span>
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-amber-400">Test Rapide</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Mistral Small • First frame • 2 images • 2 vidéos 5s
-                  </p>
-                </div>
-              </div>
-              <Button 
-                onClick={handleTestGenerate}
-                disabled={generating}
-                size="lg"
-                className="bg-amber-500 hover:bg-amber-600 text-black font-bold px-8"
-              >
-                {generating ? (
-                  <Loader2Icon size={20} className="animate-spin mr-2" />
-                ) : (
-                  <PlayIcon size={20} className="mr-2" />
-                )}
-                Lancer Test
-              </Button>
-            </div>
-          </Card>
-
-          {/* BOUTON TEST-VIDEO - Test spécifique génération vidéo */}
-          <Card className="p-6 bg-violet-500/10 border-violet-500/50">
-            <div className="flex items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-violet-500/20 flex items-center justify-center">
-                  <span className="text-2xl">🎬</span>
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-violet-400">Test Vidéo</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Chihuahua • 2 images 4K 21:9 • 2 vidéos (First Only + First & Last)
-                  </p>
-                </div>
-              </div>
-              <Button 
-                onClick={handleTestVideoGenerate}
-                disabled={generating}
-                size="lg"
-                className="bg-violet-500 hover:bg-violet-600 text-white font-bold px-8"
-              >
-                {generating ? (
-                  <Loader2Icon size={20} className="animate-spin mr-2" />
-                ) : (
-                  <VideoIcon size={20} className="mr-2" />
-                )}
-                Test Vidéo
-              </Button>
-            </div>
-          </Card>
-
-          {/* Nom du projet */}
+          
+          {/* ============================================================ */}
+          {/* SECTION 1: NOM DU PROJET */}
+          {/* ============================================================ */}
           <Card className="p-6">
-            <Label htmlFor="projectName" className="text-base font-semibold mb-3 block">
-              Nom du projet
-            </Label>
+            <div className="flex items-center gap-2 mb-4">
+              <FolderIcon size={20} className="text-blue-400" />
+              <h2 className="text-lg font-semibold">Nom du projet</h2>
+            </div>
             <Input
-              id="projectName"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="Ex: Vidéo promotionnelle Q1 2025 v1"
@@ -1002,895 +640,670 @@ export default function GenerateProjectPage() {
             />
           </Card>
 
-          {/* Configuration IA */}
+          {/* ============================================================ */}
+          {/* SECTION 2: PRESETS */}
+          {/* ============================================================ */}
           <Card className="p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <BrainIcon size={20} className="text-violet-400" />
-              <h2 className="text-lg font-semibold">Intelligence Artificielle</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Provider LLM */}
-              <div>
-                <Label htmlFor="llmProvider" className="mb-2 block">
-                  Provider IA
-                </Label>
-                <Select
-                  value={llmProvider}
-                  onValueChange={(value) => handleProviderChange(value as LLMProvider)}
-                >
-                  <SelectTrigger id="llmProvider">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(LLM_PROVIDERS).map(([key, provider]) => (
-                      <SelectItem key={key} value={key}>
-                        <span className="flex items-center gap-2">
-                          {provider.label}
-                          {key === 'mistral' && (
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0">Créatif</Badge>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {LLM_PROVIDERS[llmProvider].description}
-                </p>
-              </div>
-
-              {/* Modèle IA (dépend du provider) */}
-              <div>
-                <Label htmlFor="aiModel" className="mb-2 block">
-                  Modèle d'analyse
-                </Label>
-                <Select
-                  value={config.aiModel}
-                  onValueChange={(value) => setConfig({ ...config, aiModel: value })}
-                >
-                  <SelectTrigger id="aiModel">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LLM_PROVIDERS[llmProvider].models.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.label} ({model.description})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Mode test → {LLM_PROVIDERS[llmProvider].testModel.replace('-latest', '')}
-                </p>
-              </div>
-
-              {/* Niveau de raisonnement */}
-              <div>
-                <Label htmlFor="reasoningLevel" className="mb-2 block">
-                  Niveau de raisonnement
-                </Label>
-                <Select
-                  value={config.reasoningLevel}
-                  onValueChange={(value) => setConfig({ ...config, reasoningLevel: value as ReasoningLevel })}
-                  disabled={llmProvider === 'mistral'} // Mistral n'a pas de reasoning_effort
-                >
-                  <SelectTrigger id="reasoningLevel">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Faible (rapide)</SelectItem>
-                    <SelectItem value="medium">Moyen (équilibré)</SelectItem>
-                    <SelectItem value="high">Élevé (précis)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {llmProvider === 'mistral' && (
-                  <p className="text-xs text-amber-500 mt-1">Non applicable à Mistral</p>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <SettingsIcon size={20} className="text-violet-400" />
+                <h2 className="text-lg font-semibold">Presets</h2>
+                {presetModified && (
+                  <Badge variant="outline" className="text-amber-400 border-amber-400/50">
+                    Modifié
+                  </Badge>
                 )}
               </div>
-            </div>
-
-            {/* Instructions personnalisées */}
-            <div className="mt-6">
-              <Label htmlFor="customInstructions" className="mb-2 block">
-                Instructions supplémentaires (optionnel)
-              </Label>
-              <Textarea
-                id="customInstructions"
-                value={config.customInstructions}
-                onChange={(e) => setConfig({ ...config, customInstructions: e.target.value })}
-                placeholder="Ex: Privilégier un style documentaire, ambiance sombre..."
-                rows={3}
-              />
-            </div>
-
-            {/* System Prompt */}
-            <div className="mt-6 flex items-center justify-between p-4 bg-muted/30 rounded-lg">
               <div className="flex items-center gap-2">
-                <FileTextIcon size={18} className="text-muted-foreground" />
-                <span className="text-sm font-medium">System Prompt</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowNewPresetDialog(true)}
+                  className="gap-1"
+                >
+                  <PlusIcon size={14} />
+                  Nouveau
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSavePreset}
+                  disabled={!presetModified && !!currentPresetId}
+                  className="gap-1"
+                >
+                  <SaveIcon size={14} />
+                  Sauvegarder
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowPromptDialog(true)}
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <Select value={currentPresetId || ''} onValueChange={handlePresetChange}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Sélectionner un preset..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {presets.map(preset => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      <div className="flex items-center gap-2">
+                        {preset.name}
+                        {preset.isBuiltIn && (
+                          <Badge variant="secondary" className="text-[10px]">Intégré</Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {currentPresetId && !presets.find(p => p.id === currentPresetId)?.isBuiltIn && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeletePreset(currentPresetId)}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  <Trash2Icon size={16} />
+                </Button>
+              )}
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 3: LLM */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <BrainIcon size={20} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold">LLM</h2>
+            </div>
+
+            <div className="space-y-4">
+              {/* Provider */}
+              <div>
+                <Label className="text-sm text-muted-foreground mb-2 block">Provider</Label>
+                <div className="flex gap-3">
+                  {LLM_PROVIDERS.map(provider => (
+                    <button
+                      key={provider}
+                      onClick={() => handleLLMProviderChange(provider)}
+                      className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                        config.llm.provider === provider
+                          ? 'border-emerald-500 bg-emerald-500/10'
+                          : 'border-border/50 hover:border-border'
+                      }`}
+                    >
+                      <div className="font-semibold capitalize">{provider === 'openai' ? 'OpenAI' : 'Mistral'}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modèle */}
+              <div>
+                <Label className="text-sm text-muted-foreground mb-2 block">Modèle</Label>
+                <Select value={config.llm.model} onValueChange={handleLLMModelChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LLM_MODELS[config.llm.provider].map(model => (
+                      <SelectItem key={model.id} value={model.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm">{model.displayName}</span>
+                          <span className="text-xs text-muted-foreground">({model.description})</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Niveau de raisonnement (si supporté) */}
+              {currentLLMSupportsReasoning && (
+                <div>
+                  <Label className="text-sm text-muted-foreground mb-2 block">
+                    Niveau de raisonnement
+                  </Label>
+                  <Select 
+                    value={config.llm.reasoningLevel || 'medium'} 
+                    onValueChange={(v) => updateConfig('llm', { reasoningLevel: v as ReasoningLevel })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REASONING_LEVELS.map(level => (
+                        <SelectItem key={level.id} value={level.id}>
+                          <span className="font-mono">{level.label}</span>
+                          <span className="text-xs text-muted-foreground ml-2">({level.description})</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {!currentLLMSupportsReasoning && config.llm.provider === 'openai' && (
+                <p className="text-xs text-muted-foreground">
+                  ℹ️ Le niveau de raisonnement est disponible uniquement avec o3
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 4: MODÈLES DE GÉNÉRATION D'IMAGE */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <ImageIcon size={20} className="text-blue-400" />
+              <h2 className="text-lg font-semibold">Modèles de génération d'image</h2>
+            </div>
+
+            <div className="space-y-6">
+              {/* T2I - Text to Image */}
+              <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-blue-400 font-semibold">T2I</span>
+                  <span className="text-sm text-muted-foreground">Text to Image (images primaires)</span>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Modèle</Label>
+                    <Select 
+                      value={config.t2i.model} 
+                      onValueChange={(v) => updateConfig('t2i', { model: v })}
+                    >
+                      <SelectTrigger className="text-xs font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {T2I_MODELS.map(model => (
+                          <SelectItem key={model.id} value={model.id} className="text-xs font-mono">
+                            {model.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
+                      <Select 
+                        value={config.t2i.aspectRatio} 
+                        onValueChange={(v) => updateConfig('t2i', { aspectRatio: v as AspectRatio })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ASPECT_RATIOS.map(ar => (
+                            <SelectItem key={ar.id} value={ar.id}>
+                              {ar.label} <span className="text-muted-foreground">({ar.description})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
+                      <Select 
+                        value={config.t2i.resolution} 
+                        onValueChange={(v) => updateConfig('t2i', { resolution: v as Resolution })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESOLUTIONS.map(r => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.label}
+                          </SelectItem>
+                        ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* I2I - Image to Image */}
+              <div className="p-4 bg-violet-500/5 border border-violet-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-violet-400 font-semibold">I2I</span>
+                  <span className="text-sm text-muted-foreground">Image to Image (first & last frames)</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Pour les images secondaires, first et last frames des plans
+                </p>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Modèle</Label>
+                    <Select 
+                      value={config.i2i.model} 
+                      onValueChange={(v) => updateConfig('i2i', { model: v })}
+                    >
+                      <SelectTrigger className="text-xs font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {I2I_MODELS.map(model => (
+                          <SelectItem key={model.id} value={model.id} className="text-xs font-mono">
+                            {model.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
+                      <Select 
+                        value={config.i2i.aspectRatio} 
+                        onValueChange={(v) => updateConfig('i2i', { aspectRatio: v as AspectRatio })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ASPECT_RATIOS.map(ar => (
+                            <SelectItem key={ar.id} value={ar.id}>
+                              {ar.label} <span className="text-muted-foreground">({ar.description})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
+                      <Select 
+                        value={config.i2i.resolution} 
+                        onValueChange={(v) => updateConfig('i2i', { resolution: v as Resolution })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESOLUTIONS.map(r => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 5: MODÈLES DE GÉNÉRATION DE VIDÉO */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <VideoIcon size={20} className="text-amber-400" />
+              <h2 className="text-lg font-semibold">Modèles de génération de vidéo</h2>
+            </div>
+
+            {/* Sélection du mode */}
+            <div className="mb-6">
+              <Label className="text-sm text-muted-foreground mb-3 block">Mode</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handleVideoModeChange('image-first')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    config.video.mode === 'image-first'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-border/50 hover:border-border'
+                  }`}
+                >
+                  <div className="font-semibold mb-1">IMAGE FIRST</div>
+                  <p className="text-xs text-muted-foreground">
+                    1 image en entrée → vidéo générée
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Modèles: Kling 2.6, Kling 2.5 Turbo
+                  </p>
+                </button>
+                
+                <button
+                  onClick={() => handleVideoModeChange('images-first-last')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    config.video.mode === 'images-first-last'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-border/50 hover:border-border'
+                  }`}
+                >
+                  <div className="font-semibold mb-1">IMAGES FIRST AND LAST</div>
+                  <p className="text-xs text-muted-foreground">
+                    2 images en entrée → interpolation vidéo
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Modèle: Kling 2.5 Turbo uniquement
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Paramètres du mode sélectionné */}
+            <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-amber-400 font-semibold">
+                  {config.video.mode === 'image-first' ? 'IMAGE FIRST' : 'IMAGES FIRST AND LAST'}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Modèle</Label>
+                  <Select 
+                    value={config.video.model} 
+                    onValueChange={(v) => updateConfig('video', { model: v })}
+                  >
+                    <SelectTrigger className="text-xs font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableVideoModels.map(model => (
+                        <SelectItem key={model.id} value={model.id} className="text-xs font-mono">
+                          {model.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    {VIDEO_MODELS.find(m => m.id === config.video.model)?.guidanceField || 'guidance_scale'}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={config.video.guidanceValue}
+                    onChange={(e) => updateConfig('video', { guidanceValue: parseFloat(e.target.value) || 0.5 })}
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+              
+              {config.video.mode === 'images-first-last' && (
+                <p className="text-xs text-amber-400 mt-3">
+                  ⚠️ Seul kwaivgi/kling-v2.5-turbo-pro/image-to-video supporte le mode first+last
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 6: NOMBRE DE PLANS */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <HashIcon size={20} className="text-cyan-400" />
+              <h2 className="text-lg font-semibold">Nombre de plans</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Nombre de plans à générer dans le projet
+            </p>
+            <Select 
+              value={String(config.quantities.plansCount)} 
+              onValueChange={(v) => updateConfig('quantities', { plansCount: parseInt(v) })}
+            >
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 4, 6, 8, 10, 12, 15, 20].map(n => (
+                  <SelectItem key={n} value={String(n)}>{n} plan{n > 1 ? 's' : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 6bis: IMAGES SECONDAIRES */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <ImageIcon size={20} className="text-violet-400" />
+              <h2 className="text-lg font-semibold">Images secondaires</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Les images secondaires (I2I) sont générées à partir de l'image primaire pour créer les first/last frames des vidéos.
+            </p>
+            
+            <button
+              onClick={() => updateConfig('quantities', { generateSecondaryImages: !config.quantities.generateSecondaryImages })}
+              className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all w-full ${
+                config.quantities.generateSecondaryImages
+                  ? 'border-violet-500 bg-violet-500/10'
+                  : 'border-border/50 hover:border-border'
+              }`}
+            >
+              {config.quantities.generateSecondaryImages ? (
+                <ToggleRightIcon size={28} className="text-violet-400" />
+              ) : (
+                <ToggleLeftIcon size={28} className="text-muted-foreground" />
+              )}
+              <div className="text-left">
+                <div className="font-semibold">
+                  {config.quantities.generateSecondaryImages ? 'Oui - Générer les images secondaires' : 'Non - Ne pas générer'}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {config.quantities.generateSecondaryImages 
+                    ? 'Les images I2I (first/last frames) seront générées pour chaque plan'
+                    : 'Seules les images primaires T2I seront générées'
+                  }
+                </p>
+              </div>
+            </button>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 7: JEUX D'IMAGES INPUT */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <LayersIcon size={20} className="text-pink-400" />
+              <h2 className="text-lg font-semibold">Jeux d'images input</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Un jeu d'images = 
+              {config.video.mode === 'image-first' 
+                ? ' 1 IMAGE FIRST pour le modèle vidéo'
+                : ' 1 couple (IMAGE FIRST + IMAGE LAST) pour le modèle vidéo'
+              }
+            </p>
+
+            {/* Option: First frame = Image primaire - CHECKBOX VISIBLE */}
+            <div className="p-4 bg-pink-500/5 border border-pink-500/30 rounded-lg mb-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.quantities.firstFrameIsPrimary}
+                  onChange={() => updateConfig('quantities', { firstFrameIsPrimary: !config.quantities.firstFrameIsPrimary })}
+                  className="mt-1 w-5 h-5 rounded border-2 border-pink-500 text-pink-500 focus:ring-pink-500 accent-pink-500"
+                />
+                <div className="flex-1">
+                  <div className="font-semibold text-pink-400 flex items-center gap-2">
+                    <LinkIcon size={16} />
+                    Choisir Image Primaire comme First Frame
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {config.quantities.firstFrameIsPrimary 
+                      ? '✓ L\'image primaire (T2I) sera directement connectée au nœud vidéo - PAS de génération I2I pour first frame'
+                      : 'Le first frame sera généré par I2I (édition) à partir de l\'image primaire'
+                    }
+                  </p>
+                </div>
+              </label>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">
+                  Jeux d'images par plan
+                </Label>
+                <Select 
+                  value={String(config.quantities.imageSetsPerPlan)} 
+                  onValueChange={(v) => updateConfig('quantities', { imageSetsPerPlan: parseInt(v) })}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">
+                  Vidéos par jeu d'images
+                </Label>
+                <Select 
+                  value={String(config.quantities.videosPerImageSet)} 
+                  onValueChange={(v) => updateConfig('quantities', { videosPerImageSet: parseInt(v) })}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                Total par plan: <span className="text-white font-medium">{config.quantities.imageSetsPerPlan}</span> jeu(x) × <span className="text-white font-medium">{config.quantities.videosPerImageSet}</span> vidéo(s) = <span className="text-emerald-400 font-semibold">{config.quantities.imageSetsPerPlan * config.quantities.videosPerImageSet}</span> vidéos/plan
+              </p>
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 8: DURÉE DES VIDÉOS */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <ClockIcon size={20} className="text-orange-400" />
+              <h2 className="text-lg font-semibold">Durée des vidéos</h2>
+            </div>
+            
+            <div className="flex gap-4">
+              <button
+                onClick={() => updateConfig('video', { duration: 5 })}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                  config.video.duration === 5
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-border/50 hover:border-border'
+                }`}
               >
+                <div className="text-2xl font-bold">5</div>
+                <div className="text-sm text-muted-foreground">secondes</div>
+              </button>
+              
+              <button
+                onClick={() => updateConfig('video', { duration: 10 })}
+                className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                  config.video.duration === 10
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-border/50 hover:border-border'
+                }`}
+              >
+                <div className="text-2xl font-bold">10</div>
+                <div className="text-sm text-muted-foreground">secondes</div>
+              </button>
+            </div>
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SECTION 9: ESTIMATION DU BUDGET */}
+          {/* ============================================================ */}
+          <Card className="p-6 border-emerald-500/30 bg-emerald-500/5">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSignIcon size={20} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold">Estimation du budget</h2>
+            </div>
+
+            {budget && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="p-3 bg-background/50 rounded-lg">
+                    <div className="text-muted-foreground mb-1">LLM</div>
+                    <div className="font-mono text-xs text-muted-foreground mb-1">{budget.llm.model}</div>
+                    <div className="text-emerald-400">{formatCurrency(budget.llm.cost, budget.currency)}</div>
+                  </div>
+                  
+                  <div className="p-3 bg-background/50 rounded-lg">
+                    <div className="text-muted-foreground mb-1">Images T2I</div>
+                    <div className="text-xs text-muted-foreground mb-1">{budget.t2i.count} × {formatCurrency(budget.t2i.costPerImage, budget.currency)}</div>
+                    <div className="text-emerald-400">{formatCurrency(budget.t2i.total, budget.currency)}</div>
+                  </div>
+                  
+                  <div className="p-3 bg-background/50 rounded-lg">
+                    <div className="text-muted-foreground mb-1">Images I2I</div>
+                    <div className="text-xs text-muted-foreground mb-1">{budget.i2i.count} × {formatCurrency(budget.i2i.costPerImage, budget.currency)}</div>
+                    <div className="text-emerald-400">{formatCurrency(budget.i2i.total, budget.currency)}</div>
+                  </div>
+                  
+                  <div className="p-3 bg-background/50 rounded-lg">
+                    <div className="text-muted-foreground mb-1">Vidéos</div>
+                    <div className="text-xs text-muted-foreground mb-1">{budget.video.count} × {budget.video.duration}s × {formatCurrency(budget.video.costPerSecond, budget.currency)}/s</div>
+                    <div className="text-emerald-400">{formatCurrency(budget.video.total, budget.currency)}</div>
+                  </div>
+                </div>
+                
+                <div className="pt-4 border-t border-emerald-500/20 flex items-center justify-between">
+                  <span className="text-sm font-medium">Total estimé</span>
+                  <span className="text-2xl font-bold text-emerald-400">
+                    ~{formatCurrency(budget.total, budget.currency)}
+                  </span>
+                </div>
+                
+                <p className="text-xs text-muted-foreground">
+                  💡 Estimation basée sur 3 personnages et 3 décors. Le coût réel dépend du contenu analysé.
+                </p>
+              </div>
+            )}
+          </Card>
+
+          {/* ============================================================ */}
+          {/* SYSTEM PROMPT */}
+          {/* ============================================================ */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileTextIcon size={20} className="text-muted-foreground" />
+                <span className="font-medium">System Prompt</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowPromptDialog(true)}>
                 Voir / Éditer
               </Button>
             </div>
           </Card>
 
-          {/* Configuration Qualité */}
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <SparklesIcon size={20} className="text-emerald-400" />
-              <h2 className="text-lg font-semibold">Qualité de génération</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Sélecteur de qualité */}
-              <div className="col-span-2">
-                <Label className="mb-3 block">Niveau de qualité des images</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setConfig({ ...config, quality: 'normal' as QualityLevel })}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      config.quality === 'normal' 
-                        ? 'border-violet-500 bg-violet-500/10' 
-                        : 'border-border/50 hover:border-border'
-                    }`}
-                  >
-                    <div className="font-semibold mb-1">Normal</div>
-                    <p className="text-xs text-muted-foreground">
-                      Génération rapide, qualité standard
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Modèles : nano-banana / nano-banana edit
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfig({ ...config, quality: 'elevee' as QualityLevel })}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      config.quality === 'elevee' 
-                        ? 'border-emerald-500 bg-emerald-500/10' 
-                        : 'border-border/50 hover:border-border'
-                    }`}
-                  >
-                    <div className="font-semibold mb-1 flex items-center gap-2">
-                      Élevée
-                      <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-                        Recommandé
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Qualité supérieure, résolution 2K
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Modèles : nano-banana-pro / edit
-                    </p>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Models & Specs - Collapsible - NOUVELLE STRUCTURE EXHAUSTIVE */}
-          <Card className="p-0 overflow-hidden">
-            <Collapsible open={modelsSpecsOpen} onOpenChange={setModelsSpecsOpen}>
-              <CollapsibleTrigger asChild>
-                <button className="w-full p-6 flex items-center justify-between hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <SettingsIcon size={20} className="text-orange-400" />
-                    <h2 className="text-lg font-semibold">Models & Specs</h2>
-                    <Badge variant="outline" className="text-xs ml-2">
-                      {config.quality === 'elevee' ? 'PROD' : 'TEST'}
-                    </Badge>
-                  </div>
-                  <ChevronDownIcon 
-                    size={20} 
-                    className={`text-muted-foreground transition-transform ${modelsSpecsOpen ? 'rotate-180' : ''}`} 
-                  />
-                </button>
-              </CollapsibleTrigger>
-              
-              <CollapsibleContent>
-                <div className="px-6 pb-6 space-y-6 border-t border-border/30 pt-4">
-                  {/* Note info + Reset */}
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      Ces paramètres s'appliquent à <strong>tous</strong> vos projets futurs.
-                    </p>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={handleResetCreativePlan}
-                      className="text-xs gap-1 h-7"
-                    >
-                      <RotateCcw size={12} />
-                      Reset
-                    </Button>
-                  </div>
-                  
-                  {/* ============================================ */}
-                  {/* SECTION TEST - Config pour bouton Test Rapide */}
-                  {/* ============================================ */}
-                  <div className="space-y-4 p-4 rounded-lg border bg-amber-500/5 border-amber-500/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
-                        <span className="text-amber-400 font-bold text-sm">T</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-amber-400">PARAMÈTRES TEST</h4>
-                          <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">Bouton "Test Rapide" en haut</span>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">Génération rapide • Petites dimensions • Modèles économiques</p>
-                      </div>
-                    </div>
-                    
-                    {/* Mode Frame TEST */}
-                    <div className="mb-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2 block">Mode de génération vidéo</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => updateCreativePlan(s => ({
-                            ...s,
-                            test: { 
-                              ...s.test, 
-                              frameMode: 'first-last' as FrameMode,
-                              // Auto-sélectionner un modèle compatible first+last
-                              videoModel: 'kling-v2.5-turbo-pro-first-last'
-                            }
-                          }))}
-                          className={`p-3 rounded-lg border-2 transition-all text-left ${
-                            (creativePlanSettings.test?.frameMode || 'first-last') === 'first-last'
-                              ? 'border-amber-500 bg-amber-500/10'
-                              : 'border-border/50 hover:border-border'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold mb-1">🎬 FIRST + LAST frames</div>
-                          <p className="text-[10px] text-muted-foreground">
-                            2 images (début + fin) • Animation interpolée
-                          </p>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => updateCreativePlan(s => ({
-                            ...s,
-                            test: { 
-                              ...s.test, 
-                              frameMode: 'first-only' as FrameMode,
-                              // Auto-sélectionner un modèle compatible first-only
-                              videoModel: 'kling-v2.6-pro-i2v'
-                            }
-                          }))}
-                          className={`p-3 rounded-lg border-2 transition-all text-left ${
-                            creativePlanSettings.test?.frameMode === 'first-only'
-                              ? 'border-amber-500 bg-amber-500/10'
-                              : 'border-border/50 hover:border-border'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold mb-1">🖼️ FIRST frame seul</div>
-                          <p className="text-[10px] text-muted-foreground">
-                            1 image (début) • Kling v2.6 Pro I2V
-                          </p>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Modèles TEST */}
-                    <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle T2I</Label>
-                        <Select
-                          value={creativePlanSettings.test?.textToImageModel || 'google/nano-banana/text-to-image'}
-                          onValueChange={(v) => updateCreativePlan(s => ({
-                            ...s,
-                            test: { ...s.test, textToImageModel: v }
-                          }))}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_TEXT_TO_IMAGE_MODELS.map(m => (
-                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Edit</Label>
-                        <Select
-                          value={creativePlanSettings.test?.editModel || 'google/nano-banana/edit'}
-                          onValueChange={(v) => updateCreativePlan(s => ({
-                            ...s,
-                            test: { ...s.test, editModel: v }
-                          }))}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_EDIT_MODELS.map(m => (
-                              <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Vidéo</Label>
-                        <Select
-                          value={creativePlanSettings.test?.videoModel || 'kling-v2.6-pro-i2v'}
-                          onValueChange={(v) => updateCreativePlan(s => ({
-                            ...s,
-                            test: { ...s.test, videoModel: v }
-                          }))}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_VIDEO_MODELS
-                              .filter(m => {
-                                // Filtrer selon le mode frame
-                                const frameMode = creativePlanSettings.test?.frameMode || 'first-last';
-                                if (frameMode === 'first-only') return m.supportsFirstOnly;
-                                return m.supportsStartEnd;
-                              })
-                              .map(m => (
-                                <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Durée vidéo (sec)</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={30}
-                          className="h-8 text-xs"
-                          value={creativePlanSettings.test?.videoDuration || 5}
-                          onChange={(e) => updateCreativePlan(s => ({
-                            ...s,
-                            test: { ...s.test, videoDuration: parseInt(e.target.value) || 5 }
-                          }))}
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Dimensions TEST - Tableau exhaustif */}
-                    <div className="mt-4 pt-4 border-t border-amber-500/20">
-                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-3 block">
-                        Dimensions en pixels (largeur × hauteur)
-                      </Label>
-                      <div className="grid gap-2 grid-cols-2 md:grid-cols-4 text-xs">
-                        <DimensionInput label="Perso primaire" dims={creativePlanSettings.test?.characterPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterPrimary: d } }))} />
-                        <DimensionInput label="Perso face" dims={creativePlanSettings.test?.characterFace} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterFace: d } }))} />
-                        <DimensionInput label="Perso profil" dims={creativePlanSettings.test?.characterProfile} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterProfile: d } }))} />
-                        <DimensionInput label="Perso dos" dims={creativePlanSettings.test?.characterBack} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, characterBack: d } }))} />
-                        <DimensionInput label="Décor primaire" dims={creativePlanSettings.test?.decorPrimary} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorPrimary: d } }))} />
-                        <DimensionInput label="Décor angle 2" dims={creativePlanSettings.test?.decorAngle2} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorAngle2: d } }))} />
-                        <DimensionInput label="Décor plongée" dims={creativePlanSettings.test?.decorPlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorPlongee: d } }))} />
-                        <DimensionInput label="Décor contre-pl." dims={creativePlanSettings.test?.decorContrePlongee} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, decorContrePlongee: d } }))} />
-                        <DimensionInput label="Plan first" dims={creativePlanSettings.test?.planFirst} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, planFirst: d } }))} />
-                        {/* Plan last uniquement en mode first-last */}
-                        {(creativePlanSettings.test?.frameMode || 'first-last') === 'first-last' && (
-                          <DimensionInput label="Plan last" dims={creativePlanSettings.test?.planLast} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, planLast: d } }))} />
-                        )}
-                        <DimensionInput label="Vidéo" dims={creativePlanSettings.test?.videoDimensions} onChange={(d) => updateCreativePlan(s => ({ ...s, test: { ...s.test, videoDimensions: d } }))} />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* ============================================ */}
-                  {/* SECTION PROD - Config pour bouton Production */}
-                  {/* ============================================ */}
-                  <div className="space-y-4 p-4 rounded-lg border bg-emerald-500/10 border-emerald-500/50 ring-2 ring-emerald-500/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                        <span className="text-emerald-400 font-bold text-sm">P</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-emerald-400">PARAMÈTRES PRODUCTION</h4>
-                          <span className="text-[10px] bg-emerald-500 text-black px-2 py-0.5 rounded-full font-bold">Bouton "Générer" en bas</span>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">WaveSpeed • Nano Banana Pro Ultra • Aspect Ratio + Resolution</p>
-                      </div>
-                    </div>
-                    
-                    {/* Mode Frame PROD */}
-                    <div className="mb-4 p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2 block">Mode de génération vidéo</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => updateCreativePlan(s => ({
-                            ...s,
-                            prod: { 
-                              ...s.prod, 
-                              frameMode: 'first-last' as FrameMode,
-                              // Auto-sélectionner un modèle compatible first+last
-                              videoModel: 'kling-v2.1-start-end'
-                            }
-                          }))}
-                          className={`p-3 rounded-lg border-2 transition-all text-left ${
-                            (creativePlanSettings.prod?.frameMode || 'first-last') === 'first-last'
-                              ? 'border-emerald-500 bg-emerald-500/10'
-                              : 'border-border/50 hover:border-border'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold mb-1">🎬 FIRST + LAST frames</div>
-                          <p className="text-[10px] text-muted-foreground">
-                            2 images (début + fin) • Animation interpolée
-                          </p>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => updateCreativePlan(s => ({
-                            ...s,
-                            prod: { 
-                              ...s.prod, 
-                              frameMode: 'first-only' as FrameMode,
-                              // Auto-sélectionner un modèle compatible first-only
-                              videoModel: 'kling-v2.6-pro-i2v'
-                            }
-                          }))}
-                          className={`p-3 rounded-lg border-2 transition-all text-left ${
-                            creativePlanSettings.prod?.frameMode === 'first-only'
-                              ? 'border-emerald-500 bg-emerald-500/10'
-                              : 'border-border/50 hover:border-border'
-                          }`}
-                        >
-                          <div className="text-xs font-semibold mb-1">🖼️ FIRST frame seul</div>
-                          <p className="text-[10px] text-muted-foreground">
-                            1 image (début) • Kling v2.6 Pro I2V
-                          </p>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Modèles PROD - FIXES (non modifiables) + Résolution + Vidéo */}
-                    <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-                      {/* Modèle T2I - FIXE */}
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle T2I (fixe)</Label>
-                        <div className="h-8 px-3 flex items-center text-xs bg-emerald-500/10 rounded border border-emerald-500/30 text-emerald-300">
-                          Nano Banana Pro Ultra
-                        </div>
-                      </div>
-                      {/* Modèle Edit - FIXE */}
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Edit (fixe)</Label>
-                        <div className="h-8 px-3 flex items-center text-xs bg-emerald-500/10 rounded border border-emerald-500/30 text-emerald-300">
-                          Nano Banana Pro Edit Ultra
-                        </div>
-                      </div>
-                      {/* Résolution globale */}
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Résolution</Label>
-                        <Select
-                          value={creativePlanSettings.prod?.resolution || '4k'}
-                          onValueChange={(v) => updateCreativePlan(s => ({
-                            ...s,
-                            prod: { ...s.prod, resolution: v as WaveSpeedResolution }
-                          }))}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_RESOLUTIONS.map(r => (
-                              <SelectItem key={r.id} value={r.id} className="text-xs">
-                                {r.label} - {r.description}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {/* Modèle Vidéo */}
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Modèle Vidéo</Label>
-                        <Select
-                          value={creativePlanSettings.prod?.videoModel || 'kling-v2.1-start-end'}
-                          onValueChange={(v) => updateCreativePlan(s => ({
-                            ...s,
-                            prod: { ...s.prod, videoModel: v }
-                          }))}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_VIDEO_MODELS
-                              .filter(m => {
-                                // Filtrer selon le mode frame
-                                const frameMode = creativePlanSettings.prod?.frameMode || 'first-last';
-                                if (frameMode === 'first-only') return m.supportsFirstOnly;
-                                return m.supportsStartEnd;
-                              })
-                              .map(m => (
-                                <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    
-                    {/* Durée vidéo */}
-                    <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">Durée vidéo (sec)</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={30}
-                          className="h-8 text-xs"
-                          value={creativePlanSettings.prod?.videoDuration || 10}
-                          onChange={(e) => updateCreativePlan(s => ({
-                            ...s,
-                            prod: { ...s.prod, videoDuration: parseInt(e.target.value) || 10 }
-                          }))}
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Aspect Ratios PROD */}
-                    <div className="mt-4 pt-4 border-t border-emerald-500/20">
-                      <Label className="text-[10px] text-muted-foreground uppercase tracking-wide mb-3 block">
-                        Aspect Ratios (WaveSpeed)
-                      </Label>
-                      
-                      {/* Personnages */}
-                      <div className="mb-4">
-                        <p className="text-[10px] text-emerald-400 mb-2 font-medium">Personnages</p>
-                        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-                          <AspectRatioSelect 
-                            label="Primaire" 
-                            value={creativePlanSettings.prod?.characterPrimaryRatio || '9:16'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterPrimaryRatio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Visage face" 
-                            value={creativePlanSettings.prod?.characterFaceRatio || '1:1'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterFaceRatio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Profil" 
-                            value={creativePlanSettings.prod?.characterProfileRatio || '1:1'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterProfileRatio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Vue de dos" 
-                            value={creativePlanSettings.prod?.characterBackRatio || '9:16'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, characterBackRatio: r } }))} 
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Décors */}
-                      <div className="mb-4">
-                        <p className="text-[10px] text-emerald-400 mb-2 font-medium">Décors</p>
-                        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-                          <AspectRatioSelect 
-                            label="Primaire" 
-                            value={creativePlanSettings.prod?.decorPrimaryRatio || '16:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorPrimaryRatio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Angle 2" 
-                            value={creativePlanSettings.prod?.decorAngle2Ratio || '16:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorAngle2Ratio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Plongée" 
-                            value={creativePlanSettings.prod?.decorPlongeeRatio || '16:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorPlongeeRatio: r } }))} 
-                          />
-                          <AspectRatioSelect 
-                            label="Contre-plongée" 
-                            value={creativePlanSettings.prod?.decorContrePlongeeRatio || '16:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, decorContrePlongeeRatio: r } }))} 
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Plans (First/Last frames) */}
-                      <div>
-                        <p className="text-[10px] text-emerald-400 mb-2 font-medium">
-                          {(creativePlanSettings.prod?.frameMode || 'first-last') === 'first-only' 
-                            ? 'Plans (First frame uniquement pour vidéo)'
-                            : 'Plans (First/Last frames pour vidéo)'
-                          }
-                        </p>
-                        <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-                          <AspectRatioSelect 
-                            label="First frame" 
-                            value={creativePlanSettings.prod?.planFirstRatio || '21:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, planFirstRatio: r } }))} 
-                          />
-                          {/* Last frame uniquement en mode first-last */}
-                          {(creativePlanSettings.prod?.frameMode || 'first-last') === 'first-last' && (
-                            <AspectRatioSelect 
-                              label="Last frame" 
-                              value={creativePlanSettings.prod?.planLastRatio || '21:9'} 
-                              onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, planLastRatio: r } }))} 
-                            />
-                          )}
-                          <AspectRatioSelect 
-                            label="Vidéo" 
-                            value={creativePlanSettings.prod?.videoRatio || '16:9'} 
-                            onChange={(r) => updateCreativePlan(s => ({ ...s, prod: { ...s.prod, videoRatio: r } }))} 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Configuration Média */}
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <SparklesIcon size={20} className="text-violet-400" />
-              <h2 className="text-lg font-semibold">Génération des médias</h2>
-            </div>
-
-            {/* Options */}
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 bg-muted/20 rounded-lg">
-                <Checkbox
-                  id="generateMediaDirectly"
-                  checked={config.generateMediaDirectly}
-                  onCheckedChange={(checked) => 
-                    setConfig({ ...config, generateMediaDirectly: checked as boolean })
-                  }
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <Label htmlFor="generateMediaDirectly" className="font-medium cursor-pointer">
-                    Générer les médias directement
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    L'IA génère automatiquement images et vidéos après création du canvas.
-                  </p>
-                </div>
-              </div>
-
-              {/* Paramètres Vidéo - Nouvelle logique N × M */}
-              <div className="pt-4 border-t border-border/30 space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <LayersIcon size={16} className="text-blue-400" />
-                  <span className="text-sm font-medium">Configuration par plan</span>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* N = Couples par plan */}
-                  <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                    <Label htmlFor="couplesPerPlan" className="mb-2 flex items-center gap-2 text-sm font-medium text-blue-400">
-                      <ImageIcon size={14} />
-                      N = Couples d'images par plan
-                    </Label>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Chaque couple = 1 first-frame + 1 last-frame (mises en scène différentes)
-                    </p>
-                    <Select
-                      value={String(config.settings?.couplesPerPlan || 1)}
-                      onValueChange={(value) => 
-                        setConfig({ 
-                          ...config, 
-                          settings: { ...config.settings, couplesPerPlan: parseInt(value) } 
-                        })
-                      }
-                    >
-                      <SelectTrigger id="couplesPerPlan" className="border-blue-500/30">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 couple (défaut)</SelectItem>
-                        <SelectItem value="2">2 couples</SelectItem>
-                        <SelectItem value="3">3 couples</SelectItem>
-                        <SelectItem value="4">4 couples</SelectItem>
-                        <SelectItem value="5">5 couples</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* M = Vidéos par couple */}
-                  <div className="p-4 bg-violet-500/5 border border-violet-500/20 rounded-lg">
-                    <Label htmlFor="videosPerCouple" className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-400">
-                      <VideoIcon size={14} />
-                      M = Vidéos par couple
-                    </Label>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Nombre de variations vidéo générées pour chaque couple d'images
-                    </p>
-                    <Select
-                      value={String(config.settings?.videosPerCouple || 4)}
-                      onValueChange={(value) => 
-                        setConfig({ 
-                          ...config, 
-                          settings: { ...config.settings, videosPerCouple: parseInt(value) } 
-                        })
-                      }
-                    >
-                      <SelectTrigger id="videosPerCouple" className="border-violet-500/30">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 vidéo</SelectItem>
-                        <SelectItem value="2">2 vidéos</SelectItem>
-                        <SelectItem value="4">4 vidéos (défaut)</SelectItem>
-                        <SelectItem value="6">6 vidéos</SelectItem>
-                        <SelectItem value="8">8 vidéos</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Résumé visuel N × M */}
-                <div className="p-3 bg-muted/30 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm">
-                    <InfoIcon size={14} className="text-muted-foreground" />
-                    <span className="text-muted-foreground">
-                      Pour chaque plan : <span className="text-blue-400 font-medium">{config.settings?.couplesPerPlan || 1}</span> couple(s) × <span className="text-violet-400 font-medium">{config.settings?.videosPerCouple || 4}</span> vidéo(s) = <span className="text-emerald-400 font-semibold">{(config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4)}</span> vidéos/plan
-                    </span>
-                  </div>
-                </div>
-
-                {/* Autres paramètres vidéo */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div>
-                    <Label htmlFor="videoDuration" className="mb-2 flex items-center gap-2 text-sm">
-                      ⏱️ Durée vidéo
-                    </Label>
-                    <Select
-                      value={String(config.settings?.videoDuration || 10)}
-                      onValueChange={(value) => 
-                        setConfig({ 
-                          ...config, 
-                          settings: { ...config.settings, videoDuration: parseInt(value) } 
-                        })
-                      }
-                    >
-                      <SelectTrigger id="videoDuration">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 secondes</SelectItem>
-                        <SelectItem value="10">10 secondes</SelectItem>
-                        <SelectItem value="15">15 secondes</SelectItem>
-                        <SelectItem value="20">20 secondes</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="videoAspectRatio" className="mb-2 flex items-center gap-2 text-sm">
-                      📐 Format vidéo
-                    </Label>
-                    <Select
-                      value={config.settings?.videoAspectRatio || '16:9'}
-                      onValueChange={(value) => 
-                        setConfig({ 
-                          ...config, 
-                          settings: { ...config.settings, videoAspectRatio: value } 
-                        })
-                      }
-                    >
-                      <SelectTrigger id="videoAspectRatio">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="16:9">16:9 (Paysage)</SelectItem>
-                        <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
-                        <SelectItem value="1:1">1:1 (Carré)</SelectItem>
-                        <SelectItem value="4:3">4:3 (Standard)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Estimation du budget */}
-          <Card className="p-6 border-emerald-500/30 bg-emerald-500/5">
-            <div className="flex items-center gap-2 mb-4">
-              <EuroIcon size={20} className="text-emerald-400" />
-              <h2 className="text-lg font-semibold">Estimation du budget</h2>
-            </div>
-
-            {/* Modèles utilisés */}
-            <div className="space-y-3 mb-6">
-              <div className="text-sm font-medium text-muted-foreground">Modèles utilisés :</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="p-3 bg-background/50 rounded-lg border border-border/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ImageIcon size={14} className="text-blue-400" />
-                    <span className="text-sm font-medium">Text-to-Image (primaires)</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Nano Banana Pro Ultra (WaveSpeed)</p>
-                  <p className="text-xs text-emerald-400 font-mono">0.02€ / image</p>
-                </div>
-                <div className="p-3 bg-background/50 rounded-lg border border-border/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CopyIcon size={14} className="text-violet-400" />
-                    <span className="text-sm font-medium">Edit (variantes + frames)</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Nano Banana Pro Edit Ultra (WaveSpeed)</p>
-                  <p className="text-xs text-emerald-400 font-mono">0.025€ / image</p>
-                </div>
-                <div className="p-3 bg-background/50 rounded-lg border border-border/30 md:col-span-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <VideoIcon size={14} className="text-amber-400" />
-                    <span className="text-sm font-medium">Vidéo First+Last Frame</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Kling v2.6 Pro First+Last (WaveSpeed)</p>
-                  <p className="text-xs text-emerald-400 font-mono">0.08€ × durée (secondes) / vidéo</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Calcul dynamique */}
-            <div className="p-4 bg-background/80 rounded-lg border border-emerald-500/20">
-              <div className="text-sm font-medium mb-3">Estimation pour un projet type :</div>
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                {/* Hypothèses */}
-                <div className="space-y-1">
-                  <p className="text-muted-foreground">Personnages estimés : <span className="text-white">~3</span></p>
-                  <p className="text-muted-foreground">Décors estimés : <span className="text-white">~3</span></p>
-                  <p className="text-muted-foreground">Plans estimés : <span className="text-white">~6</span></p>
-                </div>
-                {/* Détails */}
-                <div className="space-y-1 border-l border-border/30 pl-4">
-                  <p className="text-blue-400">
-                    Images primaires : {3 + 3} × 0.02€ = <span className="font-mono">{((3 + 3) * 0.02).toFixed(2)}€</span>
-                  </p>
-                  <p className="text-violet-400">
-                    Variantes : {(3 + 3) * 3} × 0.025€ = <span className="font-mono">{((3 + 3) * 3 * 0.025).toFixed(2)}€</span>
-                  </p>
-                  <p className="text-blue-400">
-                    Frames (N={config.settings?.couplesPerPlan || 1}) : {6 * (config.settings?.couplesPerPlan || 1) * 2} × 0.025€ = <span className="font-mono">{(6 * (config.settings?.couplesPerPlan || 1) * 2 * 0.025).toFixed(2)}€</span>
-                  </p>
-                  <p className="text-amber-400">
-                    Vidéos (N×M={config.settings?.couplesPerPlan || 1}×{config.settings?.videosPerCouple || 4}) : {6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4)} × {(config.settings?.videoDuration || 10) * 0.08}€ = <span className="font-mono">{(6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4) * (config.settings?.videoDuration || 10) * 0.08).toFixed(2)}€</span>
-                  </p>
-                </div>
-              </div>
-              
-              {/* Total estimé */}
-              <div className="mt-4 pt-4 border-t border-emerald-500/20 flex items-center justify-between">
-                <span className="text-sm font-medium">Budget estimé total :</span>
-                <span className="text-2xl font-bold text-emerald-400">
-                  ~{(
-                    // Primaires (perso + décors)
-                    (3 + 3) * 0.02 +
-                    // Variantes (3 par perso/décor)
-                    (3 + 3) * 3 * 0.025 +
-                    // Frames first/last (2 × N couples × plans)
-                    6 * (config.settings?.couplesPerPlan || 1) * 2 * 0.025 +
-                    // Vidéos (N × M × plans × durée × coût)
-                    6 * (config.settings?.couplesPerPlan || 1) * (config.settings?.videosPerCouple || 4) * (config.settings?.videoDuration || 10) * 0.08
-                  ).toFixed(2)}€
-                </span>
-              </div>
-              
-              <p className="text-xs text-muted-foreground mt-2">
-                💡 Ce budget varie selon le nombre réel de personnages, décors et plans analysés par l'IA.
-              </p>
-            </div>
-          </Card>
-
-          {/* Action */}
-          <div className="flex justify-end gap-4">
+          {/* ============================================================ */}
+          {/* BOUTONS D'ACTION */}
+          {/* ============================================================ */}
+          <div className="flex justify-end gap-4 pt-4">
             <Button
               variant="outline"
               onClick={() => router.push(`/local/briefs/${params.id}`)}
@@ -1911,7 +1324,7 @@ export default function GenerateProjectPage() {
               ) : (
                 <>
                   <PlayIcon size={16} />
-                  🎬 Générer (Production)
+                  Générer le projet
                 </>
               )}
             </Button>
@@ -1919,7 +1332,9 @@ export default function GenerateProjectPage() {
         </div>
       </main>
 
-      {/* Dialog System Prompt */}
+      {/* ============================================================ */}
+      {/* DIALOG: System Prompt */}
+      {/* ============================================================ */}
       <Dialog open={showPromptDialog} onOpenChange={setShowPromptDialog}>
         <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
           <DialogHeader>
@@ -1931,62 +1346,71 @@ export default function GenerateProjectPage() {
           
           <ScrollArea className="flex-1 min-h-0">
             <Textarea
-              value={config.systemPrompt}
-              onChange={(e) => setConfig({ ...config, systemPrompt: e.target.value })}
+              value={config.systemPrompt || BUILTIN_SYSTEM_PROMPT}
+              onChange={(e) => setConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
               rows={25}
               className="font-mono text-xs"
             />
           </ScrollArea>
           
-          {/* Checkbox sauvegarder par défaut */}
-          <div className="flex items-center gap-3 py-3 px-1 border-t border-border/30">
-            <Checkbox
-              id="saveAsDefault"
-              checked={savePromptAsDefault}
-              onCheckedChange={(checked) => setSavePromptAsDefault(checked as boolean)}
-            />
-            <Label htmlFor="saveAsDefault" className="text-sm cursor-pointer">
-              Sauvegarder comme prompt par défaut
-            </Label>
-          </div>
-          
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                setConfig({ ...config, systemPrompt: BUILTIN_SYSTEM_PROMPT });
-                // Effacer aussi la sauvegarde
-                localStorage.removeItem(STORAGE_KEY_SYSTEM_PROMPT);
-                setSavePromptAsDefault(false);
-              }}
+              onClick={() => setConfig(prev => ({ ...prev, systemPrompt: BUILTIN_SYSTEM_PROMPT }))}
             >
-              Réinitialiser (défaut)
+              Réinitialiser
             </Button>
-            <Button 
-              onClick={() => {
-                // Sauvegarder si demandé
-                if (savePromptAsDefault && config.systemPrompt) {
-                  localStorage.setItem(STORAGE_KEY_SYSTEM_PROMPT, config.systemPrompt);
-                }
-                setShowPromptDialog(false);
-              }}
-            >
-              {savePromptAsDefault ? 'Sauvegarder & Fermer' : 'Fermer'}
+            <Button onClick={() => setShowPromptDialog(false)}>
+              Fermer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Génération - UI épurée */}
+      {/* ============================================================ */}
+      {/* DIALOG: Nouveau Preset */}
+      {/* ============================================================ */}
+      <Dialog open={showNewPresetDialog} onOpenChange={setShowNewPresetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouveau preset</DialogTitle>
+            <DialogDescription>
+              Sauvegardez la configuration actuelle comme preset réutilisable.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Label htmlFor="presetName" className="mb-2 block">Nom du preset</Label>
+            <Input
+              id="presetName"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="Ex: Ma config production 4K"
+            />
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewPresetDialog(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleCreatePreset} disabled={!newPresetName.trim()}>
+              Créer le preset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* DIALOG: Génération en cours */}
+      {/* ============================================================ */}
       <Dialog open={showReasoningDialog} onOpenChange={(open) => !generating && setShowReasoningDialog(open)}>
         <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col overflow-hidden bg-zinc-950 border-zinc-800">
-          {/* Header minimaliste */}
           <div className="flex-shrink-0 pb-4 border-b border-zinc-800">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 {generating ? (
-                  <div className="w-10 h-10 rounded-full bg-[#00ff41]/20 flex items-center justify-center flex-shrink-0">
-                    <Loader2Icon size={20} className="animate-spin text-[#00ff41]" />
+                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <Loader2Icon size={20} className="animate-spin text-blue-400" />
                   </div>
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
@@ -1997,27 +1421,22 @@ export default function GenerateProjectPage() {
                   <h2 className="text-lg font-semibold text-white">
                     {generating ? 'Génération en cours' : 'Génération terminée'}
                   </h2>
-                  <p className="text-xs text-zinc-500 whitespace-nowrap">
-                    {isTestVideoMode 
-                      ? '🎬 Test Vidéo (sans LLM) • Prompts fixes' 
-                      : `${LLM_PROVIDERS[llmProvider].label}: ${config.settings?.testMode ? `${LLM_PROVIDERS[llmProvider].testModel} (Test)` : config.aiModel}${llmProvider === 'openai' ? ` • Reasoning ${config.reasoningLevel || 'high'}` : ''}`
-                    }
+                  <p className="text-xs text-zinc-500">
+                    {config.llm.provider === 'openai' ? 'OpenAI' : 'Mistral'}: {config.llm.model}
                   </p>
                 </div>
               </div>
               
-              {/* Phases en mode compact */}
               <div className="flex items-center gap-2 flex-shrink-0">
-                <PhaseIndicator phase="analysis" label={isTestVideoMode ? "Images" : "Analyse"} />
+                <PhaseIndicator phase="analysis" label="Analyse" />
                 <div className="w-6 h-px bg-zinc-700" />
-                <PhaseIndicator phase="canvas" label={isTestVideoMode ? "Vidéos" : "Canvas"} />
+                <PhaseIndicator phase="canvas" label="Canvas" />
                 <div className="w-6 h-px bg-zinc-700" />
                 <PhaseIndicator phase="redirect" label="OK" />
               </div>
             </div>
           </div>
           
-          {/* Zone de log - Sans bordure interne */}
           <div className="flex-1 min-h-0 overflow-auto py-4">
             <pre className="text-sm whitespace-pre-wrap font-sans text-zinc-300 leading-relaxed">
               {reasoning || '⏳ Initialisation...'}
@@ -2025,14 +1444,13 @@ export default function GenerateProjectPage() {
             <div ref={reasoningEndRef} />
           </div>
           
-          {/* Footer discret */}
           {!generating && (
             <div className="flex-shrink-0 pt-4 border-t border-zinc-800">
               <Button 
                 onClick={() => setShowReasoningDialog(false)}
                 className="w-full bg-zinc-800 hover:bg-zinc-700 text-white"
               >
-                Continuer vers le canvas
+                Fermer
               </Button>
             </div>
           )}

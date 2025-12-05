@@ -365,7 +365,7 @@ export const editImageAction = async ({
           cost: provider.getCost({ size }),
         });
       }
-    } else if (provider.model.modelId === 'gpt-image-1') {
+    } else if (modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         prompt,
         images,

@@ -515,7 +515,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
           targetId: connection.target!,
           sourceNode,
           targetNode,
-          position: { x: (event as MouseEvent)?.clientX || 0, y: (event as MouseEvent)?.clientY || 0 },
+          position: { x: (event as unknown as MouseEvent)?.clientX || 0, y: (event as unknown as MouseEvent)?.clientY || 0 },
         });
 
         // Créer un edge temporaire "replace" pour montrer visuellement
@@ -1177,7 +1177,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
 
   useEffect(() => {
     // Quand on clique sur un nœud, activer le scroll interne pour ce nœud
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleMouseDown = (e: globalThis.MouseEvent) => {
       const target = e.target as HTMLElement;
       const nodeElement = target.closest('.react-flow__node');
       

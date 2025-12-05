@@ -168,11 +168,16 @@ export interface CanvasStructure {
   
   // Mode frame: 'first-last' (2 images) ou 'first-only' (1 image)
   frameMode: FrameMode;
+  
+  // NOUVELLES OPTIONS
+  generateSecondaryImages: boolean;             // Générer les images I2I (défaut: true)
+  firstFrameIsPrimary: boolean;                 // First frame = image primaire directe (défaut: false)
 }
 
 // ========== CRÉATION PERSONNAGE ==========
 // Nouveau système : 1 image primaire (text-to-image) + 3 variantes (edit depuis primaire)
 // Layout: [Narratif] --- [Prompt Primary] → [Image Primary] → [Variantes] → [Collection]
+// Si generateSecondaryImages = false, on ne crée que l'image primaire
 function createCharacterStructure(
   character: GeneratedCharacter,
   startX: number,
@@ -184,16 +189,25 @@ function createCharacterStructure(
   const textPromptNodeId = nodeId('text-prompt');  // NOUVEAU: nœud prompt éditable
   const collectionNodeId = nodeId('collection-perso');
   
-  // 4 images : primary (référence) + 3 variantes
+  // NOUVELLE LOGIQUE: si generateSecondaryImages = false, on ne crée que l'image primaire
+  const generateVariants = structure.generateSecondaryImages !== false;
+  
+  // Images à créer selon le mode
   const imageNodeIds: Record<string, string> = {
-    primary: nodeId('img-primary'),   // IMAGE PRIMAIRE (text-to-image)
-    face: nodeId('img-face'),         // Variante 1 : visage de face (edit)
-    profile: nodeId('img-profile'),   // Variante 2 : visage de profil (edit)
-    back: nodeId('img-back'),         // Variante 3 : vue de dos (edit)
+    primary: nodeId('img-primary'),   // IMAGE PRIMAIRE (text-to-image) - TOUJOURS
   };
   
-  // Ordre de génération : primary d'abord (text-to-image), puis les 3 variantes EN PARALLÈLE (edit)
-  const generationOrder = ['primary', 'face', 'profile', 'back'];
+  // Ajouter les variantes seulement si nécessaire
+  if (generateVariants) {
+    imageNodeIds.face = nodeId('img-face');         // Variante 1 : visage de face (edit)
+    imageNodeIds.profile = nodeId('img-profile');   // Variante 2 : visage de profil (edit)
+    imageNodeIds.back = nodeId('img-back');         // Variante 3 : vue de dos (edit)
+  }
+  
+  // Ordre de génération
+  const generationOrder = generateVariants 
+    ? ['primary', 'face', 'profile', 'back']
+    : ['primary'];
 
   // Texte narratif (description du personnage - informatif uniquement)
   const narrativeContent = `# ${character.name}\n\n${character.description}\n\n**Code référence:** ${character.referenceCode}`;
@@ -233,11 +247,22 @@ function createCharacterStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 3. Nœuds IMAGE (1 primaire + 3 variantes) - décalés pour laisser place au prompt
+  // 3. Nœuds IMAGE - décalés pour laisser place au prompt
   const imageY = startY;
   const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  const imageConfigs = [
+  // Configuration de base: image primaire TOUJOURS
+  const imageConfigs: Array<{
+    key: string;
+    id: string;
+    label: string;
+    prompt: string;
+    x: number;
+    y: number;
+    aspectRatio: string;
+    isReference: boolean;
+    generationType: string;
+  }> = [
     { 
       key: 'primary', 
       id: imageNodeIds.primary, 
@@ -248,37 +273,43 @@ function createCharacterStructure(
       isReference: true,
       generationType: 'text-to-image' // Généré par text-to-image
     },
-    { 
-      key: 'face', 
-      id: imageNodeIds.face, 
-      label: 'Visage face', 
-      prompt: character.prompts.face, 
-      x: 1, y: 0, 
-      aspectRatio: IMAGE_RATIOS.character.face, 
-      isReference: false,
-      generationType: 'edit' // Généré par edit depuis primaire
-    },
-    { 
-      key: 'profile', 
-      id: imageNodeIds.profile, 
-      label: 'Visage profil', 
-      prompt: character.prompts.profile, 
-      x: 0, y: 1, 
-      aspectRatio: IMAGE_RATIOS.character.profile, 
-      isReference: false,
-      generationType: 'edit'
-    },
-    { 
-      key: 'back', 
-      id: imageNodeIds.back, 
-      label: 'Vue de dos', 
-      prompt: character.prompts.back, 
-      x: 1, y: 1, 
-      aspectRatio: IMAGE_RATIOS.character.back, 
-      isReference: false,
-      generationType: 'edit'
-    },
   ];
+  
+  // Ajouter les variantes seulement si generateSecondaryImages = true
+  if (generateVariants) {
+    imageConfigs.push(
+      { 
+        key: 'face', 
+        id: imageNodeIds.face, 
+        label: 'Visage face', 
+        prompt: character.prompts.face, 
+        x: 1, y: 0, 
+        aspectRatio: IMAGE_RATIOS.character.face, 
+        isReference: false,
+        generationType: 'edit' // Généré par edit depuis primaire
+      },
+      { 
+        key: 'profile', 
+        id: imageNodeIds.profile, 
+        label: 'Visage profil', 
+        prompt: character.prompts.profile, 
+        x: 0, y: 1, 
+        aspectRatio: IMAGE_RATIOS.character.profile, 
+        isReference: false,
+        generationType: 'edit'
+      },
+      { 
+        key: 'back', 
+        id: imageNodeIds.back, 
+        label: 'Vue de dos', 
+        prompt: character.prompts.back, 
+        x: 1, y: 1, 
+        aspectRatio: IMAGE_RATIOS.character.back, 
+        isReference: false,
+        generationType: 'edit'
+      },
+    );
+  }
 
   const prompts: Record<string, string> = {};
   const aspectRatios: Record<string, string> = {};
@@ -319,7 +350,10 @@ function createCharacterStructure(
   }
 
   // 4. Nœud COLLECTION - positionné à droite des images
-  const collectionX = imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
+  // Position adaptée selon qu'on a les variantes ou non
+  const collectionX = generateVariants 
+    ? imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X
+    : imageStartX + LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   const collectionY = startY + LAYOUT.IMAGE_NODE_HEIGHT_9_16 / 2;
   
   structure.collectionNodes.push({
@@ -343,15 +377,17 @@ function createCharacterStructure(
     type: 'default',
   });
 
-  // 6. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
-  const variantKeys = ['face', 'profile', 'back'];
-  for (const key of variantKeys) {
-    structure.edges.push({
-      id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
-      source: imageNodeIds.primary,
-      target: imageNodeIds[key],
-      type: 'default',
-    });
+  // 6. Edges : Primaire → Variantes (seulement si on génère les variantes)
+  if (generateVariants) {
+    const variantKeys = ['face', 'profile', 'back'];
+    for (const key of variantKeys) {
+      structure.edges.push({
+        id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
+        source: imageNodeIds.primary,
+        target: imageNodeIds[key],
+        type: 'default',
+      });
+    }
   }
 
   // 7. Edges : images → collection
@@ -364,7 +400,7 @@ function createCharacterStructure(
     });
   }
 
-  // 6. Tracking avec info de génération
+  // 8. Tracking avec info de génération
   structure.characterCollectionIds[character.id] = collectionNodeId;
   structure.characterImageMap[character.id] = {
     nodeIds: Object.values(imageNodeIds),
@@ -379,6 +415,7 @@ function createCharacterStructure(
 // ========== CRÉATION DÉCOR (anciennement LIEU) ==========
 // Nouveau système : 1 image primaire (text-to-image) + 3 variantes (edit depuis primaire)
 // Layout: [Narratif] --- [Prompt Primary] → [Image Primary] → [Variantes] → [Collection]
+// Si generateSecondaryImages = false, on ne crée que l'image primaire
 function createDecorStructure(
   decor: GeneratedDecor | GeneratedLocation,
   startX: number,
@@ -390,16 +427,25 @@ function createDecorStructure(
   const textPromptNodeId = nodeId('text-prompt-decor');  // NOUVEAU: nœud prompt éditable
   const collectionNodeId = nodeId('collection-decor');
   
-  // 4 images : primary (référence) + 3 variantes
+  // NOUVELLE LOGIQUE: si generateSecondaryImages = false, on ne crée que l'image primaire
+  const generateVariants = structure.generateSecondaryImages !== false;
+  
+  // Images à créer selon le mode
   const imageNodeIds: Record<string, string> = {
-    primary: nodeId('img-primary'),       // IMAGE PRIMAIRE (text-to-image)
-    angle2: nodeId('img-angle2'),         // Variante 1 : nouvel angle (edit)
-    plongee: nodeId('img-plongee'),       // Variante 2 : plongée (edit)
-    contrePlongee: nodeId('img-contre'),  // Variante 3 : contre-plongée (edit)
+    primary: nodeId('img-primary'),       // IMAGE PRIMAIRE (text-to-image) - TOUJOURS
   };
   
-  // Ordre de génération : primary d'abord (text-to-image), puis les 3 variantes EN PARALLÈLE (edit)
-  const generationOrder = ['primary', 'angle2', 'plongee', 'contrePlongee'];
+  // Ajouter les variantes seulement si nécessaire
+  if (generateVariants) {
+    imageNodeIds.angle2 = nodeId('img-angle2');         // Variante 1 : nouvel angle (edit)
+    imageNodeIds.plongee = nodeId('img-plongee');       // Variante 2 : plongée (edit)
+    imageNodeIds.contrePlongee = nodeId('img-contre');  // Variante 3 : contre-plongée (edit)
+  }
+  
+  // Ordre de génération
+  const generationOrder = generateVariants
+    ? ['primary', 'angle2', 'plongee', 'contrePlongee']
+    : ['primary'];
 
   // Texte narratif - adapter selon le format (nouveau décor ou ancien lieu)
   const narrativeContent = `# ${decor.name}\n\n${decor.description}\n\n**Code référence:** ${decor.referenceCode}`;
@@ -443,11 +489,21 @@ function createDecorStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 3. Nœuds IMAGE (1 primaire + 3 variantes) - décalés pour laisser place au prompt
+  // 3. Nœuds IMAGE - décalés pour laisser place au prompt
   const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
-  // Disposition 2x2 comme les personnages
-  const imageConfigs = [
+  // Configuration de base: image primaire TOUJOURS
+  const imageConfigs: Array<{
+    key: string;
+    id: string;
+    label: string;
+    prompt: string;
+    x: number;
+    y: number;
+    aspectRatio: string;
+    isReference: boolean;
+    generationType: string;
+  }> = [
     { 
       key: 'primary', 
       id: imageNodeIds.primary, 
@@ -458,37 +514,43 @@ function createDecorStructure(
       isReference: true,
       generationType: 'text-to-image'
     },
-    { 
-      key: 'angle2', 
-      id: imageNodeIds.angle2, 
-      label: 'Nouvel angle', 
-      prompt: angle2Prompt, 
-      x: 1, y: 0,
-      aspectRatio: IMAGE_RATIOS.decor.angle2, 
-      isReference: false,
-      generationType: 'edit'
-    },
-    { 
-      key: 'plongee', 
-      id: imageNodeIds.plongee, 
-      label: 'Plongée', 
-      prompt: plongeePrompt, 
-      x: 0, y: 1,
-      aspectRatio: IMAGE_RATIOS.decor.plongee, 
-      isReference: false,
-      generationType: 'edit'
-    },
-    { 
-      key: 'contrePlongee', 
-      id: imageNodeIds.contrePlongee, 
-      label: 'Contre-plongée', 
-      prompt: contrePlongeePrompt, 
-      x: 1, y: 1,
-      aspectRatio: IMAGE_RATIOS.decor.contrePlongee, 
-      isReference: false,
-      generationType: 'edit'
-    },
   ];
+  
+  // Ajouter les variantes seulement si generateSecondaryImages = true
+  if (generateVariants) {
+    imageConfigs.push(
+      { 
+        key: 'angle2', 
+        id: imageNodeIds.angle2, 
+        label: 'Nouvel angle', 
+        prompt: angle2Prompt, 
+        x: 1, y: 0,
+        aspectRatio: IMAGE_RATIOS.decor.angle2, 
+        isReference: false,
+        generationType: 'edit'
+      },
+      { 
+        key: 'plongee', 
+        id: imageNodeIds.plongee, 
+        label: 'Plongée', 
+        prompt: plongeePrompt, 
+        x: 0, y: 1,
+        aspectRatio: IMAGE_RATIOS.decor.plongee, 
+        isReference: false,
+        generationType: 'edit'
+      },
+      { 
+        key: 'contrePlongee', 
+        id: imageNodeIds.contrePlongee, 
+        label: 'Contre-plongée', 
+        prompt: contrePlongeePrompt, 
+        x: 1, y: 1,
+        aspectRatio: IMAGE_RATIOS.decor.contrePlongee, 
+        isReference: false,
+        generationType: 'edit'
+      },
+    );
+  }
 
   const prompts: Record<string, string> = {};
   const aspectRatios: Record<string, string> = {};
@@ -499,7 +561,7 @@ function createDecorStructure(
     aspectRatios[config.key] = config.aspectRatio;
     generationTypes[config.key] = config.generationType;
     
-    // Décors = 16:9, disposition 2x2 comme les personnages
+    // Décors = 16:9
     structure.imageNodes.push({
       id: config.id,
       type: 'image',
@@ -523,8 +585,11 @@ function createDecorStructure(
     });
   }
 
-  // 4. Nœud COLLECTION - positionné à droite de la grille 2x2 (comme personnages)
-  const collectionX = imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
+  // 4. Nœud COLLECTION - positionné à droite des images
+  // Position adaptée selon qu'on a les variantes ou non
+  const collectionX = generateVariants 
+    ? imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X
+    : imageStartX + LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   const collectionY = startY + LAYOUT.IMAGE_NODE_HEIGHT_16_9 / 2;
   
   structure.collectionNodes.push({
@@ -548,15 +613,17 @@ function createDecorStructure(
     type: 'default',
   });
 
-  // 6. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
-  const variantKeys = ['angle2', 'plongee', 'contrePlongee'];
-  for (const key of variantKeys) {
-    structure.edges.push({
-      id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
-      source: imageNodeIds.primary,
-      target: imageNodeIds[key],
-      type: 'default',
-    });
+  // 6. Edges : Primaire → Variantes (seulement si on génère les variantes)
+  if (generateVariants) {
+    const variantKeys = ['angle2', 'plongee', 'contrePlongee'];
+    for (const key of variantKeys) {
+      structure.edges.push({
+        id: `edge-${imageNodeIds.primary}-${imageNodeIds[key]}`,
+        source: imageNodeIds.primary,
+        target: imageNodeIds[key],
+        type: 'default',
+      });
+    }
   }
 
   // 7. Edges : images → collection
@@ -597,6 +664,7 @@ function createLocationStructure(
 // Crée les prompts + N couples d'images de first/last frame dans la section FRAMES
 // Les vidéos sont créées séparément dans la section SCÈNES
 // NOUVEAU: Supporte N couples par plan pour plus de variété de mises en scène
+// NOUVEAU: Supporte generateSecondaryImages et firstFrameIsPrimary
 function createPlanFramesStructure(
   plan: GeneratedPlan,
   scene: GeneratedScene,
@@ -608,6 +676,10 @@ function createPlanFramesStructure(
   height: number;
   textActionNodeId: string;
   couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+  // Pour firstFrameIsPrimary: IDs des collections à connecter directement aux vidéos
+  primaryCollectionIds?: string[];
+  skipSecondaryImages: boolean;
+  firstFrameIsPrimary: boolean;
   // Rétrocompatibilité
   imageDepartNodeId: string;
   imageFinNodeId: string;
@@ -622,6 +694,19 @@ function createPlanFramesStructure(
   // Mode frame: first-last ou first-only
   const frameMode = structure.frameMode || 'first-last';
   const isFirstOnly = frameMode === 'first-only';
+  
+  // NOUVELLES OPTIONS
+  const generateSecondaryImages = structure.generateSecondaryImages !== false;
+  const firstFrameIsPrimary = structure.firstFrameIsPrimary || false;
+  
+  // Si on ne génère pas les images secondaires, on skip cette section
+  const skipSecondaryImages = !generateSecondaryImages;
+  
+  // DEBUG LOG
+  console.log(`[createPlanFramesStructure] Plan ${plan.id}:`);
+  console.log(`  → generateSecondaryImages: ${generateSecondaryImages}`);
+  console.log(`  → firstFrameIsPrimary: ${firstFrameIsPrimary}`);
+  console.log(`  → shouldCreateFrameImages: ${generateSecondaryImages && !firstFrameIsPrimary}`);
 
   // Ratio pour les images de plan (21:9 cinémascope)
   const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
@@ -720,11 +805,35 @@ function createPlanFramesStructure(
   
   const couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[] = [];
   const planCouples: PlanCoupleInfo[] = [];
+  
+  // Collecter les IDs des collections primaires pour firstFrameIsPrimary
+  const primaryCollectionIds: string[] = [];
+  if (firstFrameIsPrimary) {
+    // Ajouter les collections de personnages
+    for (const charRef of plan.characterRefs) {
+      const collectionId = structure.characterCollectionIds[charRef];
+      if (collectionId) primaryCollectionIds.push(collectionId);
+    }
+    // Ajouter la collection du décor
+    const decorRef = plan.decorRef || plan.locationRef;
+    if (decorRef) {
+      const collectionId = structure.locationCollectionIds[decorRef];
+      if (collectionId) primaryCollectionIds.push(collectionId);
+    }
+  }
+  
+  // Si firstFrameIsPrimary OU skipSecondaryImages, ne pas créer les nœuds images I2I
+  const shouldCreateFrameImages = generateSecondaryImages && !firstFrameIsPrimary;
 
   for (let coupleIdx = 0; coupleIdx < couplesPerPlan; coupleIdx++) {
     const coupleX = col3StartX + coupleIdx * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP);
-    const imageDepartNodeId = nodeId(`img-plan-depart-${coupleIdx}`);
-    const imageFinNodeId = nodeId(`img-plan-fin-${coupleIdx}`);
+    // Si on ne crée pas les images, on utilise des IDs placeholder qui seront ignorés
+    const imageDepartNodeId = shouldCreateFrameImages 
+      ? nodeId(`img-plan-depart-${coupleIdx}`) 
+      : `skip-depart-${coupleIdx}`;
+    const imageFinNodeId = shouldCreateFrameImages 
+      ? nodeId(`img-plan-fin-${coupleIdx}`) 
+      : `skip-fin-${coupleIdx}`;
     
     // Variante du prompt pour différentes mises en scène (sauf premier couple = prompt original)
     const couplePromptSuffix = coupleIdx > 0 
@@ -735,54 +844,57 @@ function createPlanFramesStructure(
     
     couples.push({ coupleIndex: coupleIdx, imageDepartNodeId, imageFinNodeId });
 
-    // Label COUPLE si plusieurs couples
-    if (couplesPerPlan > 1) {
+    // Ne créer les nœuds visuels que si on génère les images secondaires
+    if (shouldCreateFrameImages) {
+      // Label COUPLE si plusieurs couples
+      if (couplesPerPlan > 1) {
+        structure.labelNodes.push({
+          id: nodeId(`label-couple-${coupleIdx}`),
+          type: 'label',
+          position: { x: coupleX, y: startY + LABEL_OFFSET_Y - 60 },
+          data: {
+            text: `COUPLE ${coupleIdx + 1}`,
+            fontSize: 48,
+            color: coupleIdx === 0 ? '#60a5fa' : '#a78bfa', // Premier en bleu, autres en violet
+          },
+        });
+      }
+
+      // FIRST FRAME IMAGE
       structure.labelNodes.push({
-        id: nodeId(`label-couple-${coupleIdx}`),
+        id: nodeId(`label-first-frame-${coupleIdx}`),
         type: 'label',
-        position: { x: coupleX, y: startY + LABEL_OFFSET_Y - 60 },
+        position: { x: coupleX, y: startY + LABEL_OFFSET_Y },
         data: {
-          text: `COUPLE ${coupleIdx + 1}`,
-          fontSize: 48,
-          color: coupleIdx === 0 ? '#60a5fa' : '#a78bfa', // Premier en bleu, autres en violet
+          text: couplesPerPlan > 1 ? 'FIRST' : 'FIRST FRAME',
+          fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
+          color: '#60a5fa',
         },
+      });
+      
+      structure.imageNodes.push({
+        id: imageDepartNodeId,
+        type: 'image',
+        position: { x: coupleX, y: startY },
+        data: {
+          label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Départ${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
+          instructions: couplePromptDepart,
+          aspectRatio: planImageRatio,
+          isPlanImage: true,
+          planId: plan.id,
+          frameType: 'depart',
+          coupleIndex: coupleIdx,
+          generationType: 'edit',
+          characterRefs: plan.characterRefs,
+          decorRef: plan.decorRef || plan.locationRef,
+        },
+        width: LAYOUT.IMAGE_NODE_WIDTH,
+        height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
       });
     }
 
-    // FIRST FRAME IMAGE
-    structure.labelNodes.push({
-      id: nodeId(`label-first-frame-${coupleIdx}`),
-      type: 'label',
-      position: { x: coupleX, y: startY + LABEL_OFFSET_Y },
-      data: {
-        text: couplesPerPlan > 1 ? 'FIRST' : 'FIRST FRAME',
-        fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
-        color: '#60a5fa',
-      },
-    });
-    
-    structure.imageNodes.push({
-      id: imageDepartNodeId,
-      type: 'image',
-      position: { x: coupleX, y: startY },
-      data: {
-        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Départ${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
-        instructions: couplePromptDepart,
-        aspectRatio: planImageRatio,
-        isPlanImage: true,
-        planId: plan.id,
-        frameType: 'depart',
-        coupleIndex: coupleIdx,
-        generationType: 'edit',
-        characterRefs: plan.characterRefs,
-        decorRef: plan.decorRef || plan.locationRef,
-      },
-      width: LAYOUT.IMAGE_NODE_WIDTH,
-      height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
-    });
-
-    // LAST FRAME IMAGE (en dessous) - UNIQUEMENT en mode first-last
-    if (!isFirstOnly) {
+    // LAST FRAME IMAGE (en dessous) - UNIQUEMENT si on génère les images ET en mode first-last
+    if (shouldCreateFrameImages && !isFirstOnly) {
       structure.labelNodes.push({
         id: nodeId(`label-last-frame-${coupleIdx}`),
         type: 'label',
@@ -815,64 +927,66 @@ function createPlanFramesStructure(
       });
     }
 
-    // ========== EDGES : Prompts → Images de ce couple ==========
-    structure.edges.push({
-      id: `edge-${textFirstFrameNodeId}-${imageDepartNodeId}-${nanoid(4)}`,
-      source: textFirstFrameNodeId,
-      target: imageDepartNodeId,
-      type: 'default',
-    });
-
-    // Edge vers LAST uniquement en mode first-last
-    if (!isFirstOnly) {
+    // ========== EDGES : Prompts → Images de ce couple (seulement si on crée les images) ==========
+    if (shouldCreateFrameImages) {
       structure.edges.push({
-        id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
-        source: textLastFrameNodeId,
-        target: imageFinNodeId,
+        id: `edge-${textFirstFrameNodeId}-${imageDepartNodeId}-${nanoid(4)}`,
+        source: textFirstFrameNodeId,
+        target: imageDepartNodeId,
         type: 'default',
       });
-    }
 
-    // ========== EDGES : Collections → Images de ce couple ==========
-    for (const charRef of plan.characterRefs) {
-      const collectionId = structure.characterCollectionIds[charRef];
-      if (collectionId) {
+      // Edge vers LAST uniquement en mode first-last
+      if (!isFirstOnly) {
         structure.edges.push({
-          id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
-          source: collectionId,
-          target: imageDepartNodeId,
+          id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
+          source: textLastFrameNodeId,
+          target: imageFinNodeId,
           type: 'default',
         });
-        // Edge vers LAST uniquement en mode first-last
-        if (!isFirstOnly) {
+      }
+
+      // ========== EDGES : Collections → Images de ce couple ==========
+      for (const charRef of plan.characterRefs) {
+        const collectionId = structure.characterCollectionIds[charRef];
+        if (collectionId) {
           structure.edges.push({
-            id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+            id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
             source: collectionId,
-            target: imageFinNodeId,
+            target: imageDepartNodeId,
             type: 'default',
           });
+          // Edge vers LAST uniquement en mode first-last
+          if (!isFirstOnly) {
+            structure.edges.push({
+              id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+              source: collectionId,
+              target: imageFinNodeId,
+              type: 'default',
+            });
+          }
         }
       }
-    }
 
-    const decorRef = plan.decorRef || plan.locationRef;
-    if (decorRef) {
-      const collectionId = structure.locationCollectionIds[decorRef];
-      if (collectionId) {
-        structure.edges.push({
-          id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
-          source: collectionId,
-          target: imageDepartNodeId,
-          type: 'default',
-        });
-        // Edge vers LAST uniquement en mode first-last
-        if (!isFirstOnly) {
+      const decorRefInner = plan.decorRef || plan.locationRef;
+      if (decorRefInner) {
+        const collectionId = structure.locationCollectionIds[decorRefInner];
+        if (collectionId) {
           structure.edges.push({
-            id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+            id: `edge-${collectionId}-${imageDepartNodeId}-${nanoid(4)}`,
             source: collectionId,
-            target: imageFinNodeId,
+            target: imageDepartNodeId,
             type: 'default',
           });
+          // Edge vers LAST uniquement en mode first-last
+          if (!isFirstOnly) {
+            structure.edges.push({
+              id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+              source: collectionId,
+              target: imageFinNodeId,
+              type: 'default',
+            });
+          }
         }
       }
     }
@@ -880,8 +994,8 @@ function createPlanFramesStructure(
     // Tracking pour ce couple
     planCouples.push({
       coupleIndex: coupleIdx,
-      imageDepartNodeId,
-      imageFinNodeId: isFirstOnly ? '' : imageFinNodeId, // Vide en mode first-only
+      imageDepartNodeId: shouldCreateFrameImages ? imageDepartNodeId : '',
+      imageFinNodeId: (shouldCreateFrameImages && !isFirstOnly) ? imageFinNodeId : '',
       promptDepart: couplePromptDepart,
       promptFin: isFirstOnly ? '' : couplePromptFin,
       aspectRatio: planImageRatio,
@@ -898,31 +1012,38 @@ function createPlanFramesStructure(
     characterRefs: plan.characterRefs,
     decorRef: decorRef || undefined,
     // Rétrocompatibilité : premier couple
-    imageDepartNodeId: couples[0].imageDepartNodeId,
-    imageFinNodeId: couples[0].imageFinNodeId,
+    imageDepartNodeId: shouldCreateFrameImages ? couples[0].imageDepartNodeId : '',
+    imageFinNodeId: shouldCreateFrameImages ? couples[0].imageFinNodeId : '',
     promptDepart,
     promptFin,
     aspectRatio: planImageRatio,
   };
 
-  // Calcul dimensions (avec N couples)
-  const totalWidth = col3StartX - startX + couplesPerPlan * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP) - COUPLE_GAP;
+  // Calcul dimensions (avec N couples) - réduit si pas d'images secondaires
+  const effectiveWidth = shouldCreateFrameImages 
+    ? col3StartX - startX + couplesPerPlan * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP) - COUPLE_GAP
+    : col2X - startX + LAYOUT.TEXT_NODE_WIDTH; // Juste les prompts texte
   const totalHeight = row2Y - startY + LAYOUT.IMAGE_NODE_HEIGHT_21_9;
   
   return { 
-    width: totalWidth, 
+    width: effectiveWidth, 
     height: totalHeight,
     textActionNodeId,
     couples,
+    // NOUVELLES OPTIONS
+    primaryCollectionIds,
+    skipSecondaryImages,
+    firstFrameIsPrimary,
     // Rétrocompatibilité
-    imageDepartNodeId: couples[0].imageDepartNodeId,
-    imageFinNodeId: couples[0].imageFinNodeId,
+    imageDepartNodeId: shouldCreateFrameImages ? couples[0].imageDepartNodeId : '',
+    imageFinNodeId: shouldCreateFrameImages ? couples[0].imageFinNodeId : '',
   };
 }
 
 // ========== CRÉATION VIDÉOS POUR UN PLAN ==========
 // Crée les nœuds vidéo (dans la section SCÈNES)
 // NOUVEAU: Crée M vidéos par couple × N couples = N×M vidéos par plan
+// NOUVEAU: Supporte firstFrameIsPrimary (connexion directe aux collections)
 function createPlanVideosStructure(
   plan: GeneratedPlan,
   scene: GeneratedScene,
@@ -931,6 +1052,10 @@ function createPlanVideosStructure(
   frameNodeIds: { 
     textActionNodeId: string; 
     couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    // NOUVELLES OPTIONS
+    primaryCollectionIds?: string[];
+    skipSecondaryImages?: boolean;
+    firstFrameIsPrimary?: boolean;
     // Rétrocompatibilité
     imageDepartNodeId?: string; 
     imageFinNodeId?: string;
@@ -945,12 +1070,21 @@ function createPlanVideosStructure(
   const videoGap = LAYOUT.VIDEO_GAP;
   const coupleRowGap = 100; // Gap entre rangées de vidéos de couples différents
   
+  // NOUVELLES OPTIONS
+  const firstFrameIsPrimary = frameNodeIds.firstFrameIsPrimary || structure.firstFrameIsPrimary || false;
+  const skipSecondaryImages = frameNodeIds.skipSecondaryImages || !structure.generateSecondaryImages;
+  const primaryCollectionIds = frameNodeIds.primaryCollectionIds || [];
+  const isFirstOnly = structure.frameMode === 'first-only';
+  
   // Pour chaque couple, créer M vidéos
-  const couples = frameNodeIds.couples || [{ 
-    coupleIndex: 0, 
-    imageDepartNodeId: frameNodeIds.imageDepartNodeId!, 
-    imageFinNodeId: frameNodeIds.imageFinNodeId! 
-  }];
+  // CORRECTION: Vérifier aussi si le tableau est vide (pas juste undefined)
+  const couples = (frameNodeIds.couples && frameNodeIds.couples.length > 0) 
+    ? frameNodeIds.couples 
+    : [{ 
+        coupleIndex: 0, 
+        imageDepartNodeId: frameNodeIds.imageDepartNodeId || '', 
+        imageFinNodeId: frameNodeIds.imageFinNodeId || '' 
+      }];
 
   let currentY = startY;
   let maxRowWidth = 0;
@@ -984,34 +1118,58 @@ function createPlanVideosStructure(
           copyIndex: globalVideoIndex + 1,  // Rétrocompatibilité
           totalCopies: couplesPerPlan * videosPerCouple,
           duration,
-          model: 'kling-v2.6-pro-first-last',
-          usesFirstLastFrame: true,
+          model: isFirstOnly ? 'kling-v2.6-pro' : 'kling-v2.6-pro-first-last',
+          usesFirstLastFrame: !isFirstOnly,  // false si first-only, true si first-last
         },
         width: LAYOUT.VIDEO_NODE_WIDTH,
         height: LAYOUT.VIDEO_NODE_HEIGHT,
       });
 
-      // Edges : Images du couple + Prompt Action → Vidéo
-      structure.edges.push({
-        id: `edge-${couple.imageDepartNodeId}-${videoId}-${nanoid(4)}`,
-        source: couple.imageDepartNodeId,
-        target: videoId,
-        type: 'default',
-      });
+      // Edges : Images → Vidéo
+      // Logique:
+      // - Si skipSecondaryImages OU firstFrameIsPrimary → connecter aux collections primaires
+      // - Sinon → connecter aux images I2I (first/last frames)
+      
+      if (skipSecondaryImages || firstFrameIsPrimary) {
+        // Mode direct: connecter les collections primaires (T2I) à la vidéo
+        if (primaryCollectionIds.length > 0) {
+          for (const collectionId of primaryCollectionIds) {
+            structure.edges.push({
+              id: `edge-${collectionId}-${videoId}-primary-${nanoid(4)}`,
+              source: collectionId,
+              target: videoId,
+              type: 'default',
+            });
+          }
+        }
+      } else if (couple.imageDepartNodeId && !couple.imageDepartNodeId.startsWith('skip-')) {
+        // Mode normal: connecter les images I2I (first/last frames) à la vidéo
+        structure.edges.push({
+          id: `edge-${couple.imageDepartNodeId}-${videoId}-${nanoid(4)}`,
+          source: couple.imageDepartNodeId,
+          target: videoId,
+          type: 'default',
+        });
 
-      structure.edges.push({
-        id: `edge-${couple.imageFinNodeId}-${videoId}-${nanoid(4)}`,
-        source: couple.imageFinNodeId,
-        target: videoId,
-        type: 'default',
-      });
+        if (couple.imageFinNodeId && !couple.imageFinNodeId.startsWith('skip-')) {
+          structure.edges.push({
+            id: `edge-${couple.imageFinNodeId}-${videoId}-${nanoid(4)}`,
+            source: couple.imageFinNodeId,
+            target: videoId,
+            type: 'default',
+          });
+        }
+      }
 
-      structure.edges.push({
-        id: `edge-${frameNodeIds.textActionNodeId}-${videoId}-${nanoid(4)}`,
-        source: frameNodeIds.textActionNodeId,
-        target: videoId,
-        type: 'default',
-      });
+      // Connecter le prompt action à la vidéo SEULEMENT s'il existe
+      if (frameNodeIds.textActionNodeId) {
+        structure.edges.push({
+          id: `edge-${frameNodeIds.textActionNodeId}-${videoId}-${nanoid(4)}`,
+          source: frameNodeIds.textActionNodeId,
+          target: videoId,
+          type: 'default',
+        });
+      }
     }
 
     // Mettre à jour les vidéoNodeIds dans le planImageMap pour ce couple
@@ -1049,6 +1207,9 @@ function createSceneStructure(
   frameNodeIdsMap: Map<string, { 
     textActionNodeId: string; 
     couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    primaryCollectionIds?: string[];
+    skipSecondaryImages?: boolean;
+    firstFrameIsPrimary?: boolean;
     imageDepartNodeId: string; 
     imageFinNodeId: string;
   }>,
@@ -1143,6 +1304,9 @@ export interface GenerationConfig {
   videoAspectRatio?: string;
   testMode?: boolean;
   frameMode?: FrameMode;      // 'first-last' (2 images) ou 'first-only' (1 image)
+  // NOUVELLES OPTIONS
+  generateSecondaryImages?: boolean;  // Générer les images I2I (défaut: true)
+  firstFrameIsPrimary?: boolean;      // First frame = image primaire directe (défaut: false)
 }
 
 export function generateCanvasFromProject(
@@ -1161,7 +1325,14 @@ export function generateCanvasFromProject(
   
   // Mode frame: first-last (2 images) ou first-only (1 image)
   const frameMode: FrameMode = config?.frameMode || 'first-last';
+  
+  // NOUVELLES OPTIONS
+  const generateSecondaryImages = config?.generateSecondaryImages !== false; // true par défaut
+  const firstFrameIsPrimary = config?.firstFrameIsPrimary || false;
+  
   console.log(`[CanvasGenerator] Mode frame: ${frameMode}`);
+  console.log(`[CanvasGenerator] Generate secondary images: ${generateSecondaryImages}`);
+  console.log(`[CanvasGenerator] First frame is primary: ${firstFrameIsPrimary}`);
   
   // Structure pour tracking
   const structure: CanvasStructure = {
@@ -1186,6 +1357,9 @@ export function generateCanvasFromProject(
       aspectRatio: videoAspectRatio,
     },
     frameMode,
+    // NOUVELLES OPTIONS
+    generateSecondaryImages,
+    firstFrameIsPrimary,
   };
 
   // Couleurs des sections
@@ -1289,114 +1463,279 @@ export function generateCanvasFromProject(
   // ================================================================================
   // SECTION 2 : FIRST AND LAST FRAMES (au milieu)
   // Contient : Prompts action + Prompts first/last + Images first/last
+  // CONDITIONNEL: Seulement si generateSecondaryImages = true
   // ================================================================================
   
-  const section2StartX = section1StartX + section1Width + LAYOUT.SECTION_GAP;
-  let section2StartY = LAYOUT.MARGIN;
-  let section2ContentY = section2StartY + 200;
-  let section2MaxX = section2StartX;
-  let section2MaxY = section2ContentY;
-
   // Map pour stocker les IDs des frames par plan (pour les connecter aux vidéos)
   // NOUVEAU: inclut N couples par plan
   const frameNodeIdsMap = new Map<string, { 
     textActionNodeId: string;
     couples: { coupleIndex: number; imageDepartNodeId: string; imageFinNodeId: string }[];
+    primaryCollectionIds?: string[];
+    skipSecondaryImages?: boolean;
+    firstFrameIsPrimary?: boolean;
     // Rétrocompatibilité
     imageDepartNodeId: string; 
     imageFinNodeId: string; 
   }>();
 
-  // Label géant de section - adapté au mode frame
-  const frameSectionLabel = frameMode === 'first-only' 
-    ? '🎬 FIRST FRAMES' 
-    : '🎬 FIRST AND LAST FRAMES';
-  structure.labelNodes.push({
-    id: nodeId('label-section-frames'),
-    type: 'label',
-    position: { x: section2StartX, y: section2StartY },
-    data: {
-      text: frameSectionLabel,
-      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
-      color: SECTION_COLORS.frames,
-    },
-  });
+  // Variables pour la section 2 (avec valeurs par défaut si section non créée)
+  let section2Width = 0;
+  let section2StartX = section1StartX + section1Width + LAYOUT.SECTION_GAP;
+  
+  // SEULEMENT créer la section 2 si generateSecondaryImages = true
+  if (generateSecondaryImages) {
+    console.log('[CanvasGenerator] Création de la section FIRST FRAMES (generateSecondaryImages=true)');
+    
+    let section2StartY = LAYOUT.MARGIN;
+    let section2ContentY = section2StartY + 200;
+    let section2MaxX = section2StartX;
+    let section2MaxY = section2ContentY;
 
-  // GRAND ESPACE après le label géant
-  section2ContentY = section2StartY + 400;
-
-  // Créer les frames pour chaque scène/plan
-  for (let i = 0; i < project.scenes.length; i++) {
-    const scene = project.scenes[i];
-    scene.color = getSceneColor(i);
-
-    // Label de scène dans la section frames
+    // Label géant de section - adapté au mode frame
+    const frameSectionLabel = frameMode === 'first-only' 
+      ? '🎬 FIRST FRAMES' 
+      : '🎬 FIRST AND LAST FRAMES';
     structure.labelNodes.push({
-      id: nodeId(`label-frames-scene-${i}`),
+      id: nodeId('label-section-frames'),
       type: 'label',
-      position: { x: section2StartX, y: section2ContentY },
+      position: { x: section2StartX, y: section2StartY },
       data: {
-        text: `SCÈNE ${scene.sceneNumber}: ${scene.title.toUpperCase()}`,
-        fontSize: 72,
+        text: frameSectionLabel,
+        fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
         color: SECTION_COLORS.frames,
       },
     });
-    section2ContentY += 200; // Plus d'espace après le label de scène
 
-    // Frames de chaque plan (N couples par plan)
-    for (const plan of scene.plans) {
-      const result = createPlanFramesStructure(
-        plan,
-        scene,
-        section2StartX,
-        section2ContentY,
-        structure
-      );
-      
-      // Stocker tous les couples pour ce plan
-      frameNodeIdsMap.set(plan.id, {
-        textActionNodeId: result.textActionNodeId,
-        couples: result.couples,
-        // Rétrocompatibilité : premier couple
-        imageDepartNodeId: result.imageDepartNodeId,
-        imageFinNodeId: result.imageFinNodeId,
+    // GRAND ESPACE après le label géant
+    section2ContentY = section2StartY + 400;
+
+    // Créer les frames pour chaque scène/plan
+    for (let i = 0; i < project.scenes.length; i++) {
+      const scene = project.scenes[i];
+      scene.color = getSceneColor(i);
+
+      // Label de scène dans la section frames
+      structure.labelNodes.push({
+        id: nodeId(`label-frames-scene-${i}`),
+        type: 'label',
+        position: { x: section2StartX, y: section2ContentY },
+        data: {
+          text: `SCÈNE ${scene.sceneNumber}: ${scene.title.toUpperCase()}`,
+          fontSize: 72,
+          color: SECTION_COLORS.frames,
+        },
       });
-      
-      section2ContentY += result.height + LAYOUT.PLAN_GAP;
-      section2MaxX = Math.max(section2MaxX, section2StartX + result.width);
+      section2ContentY += 200; // Plus d'espace après le label de scène
+
+      // Frames de chaque plan (N couples par plan)
+      for (const plan of scene.plans) {
+        const result = createPlanFramesStructure(
+          plan,
+          scene,
+          section2StartX,
+          section2ContentY,
+          structure
+        );
+        
+        // Stocker tous les couples pour ce plan
+        frameNodeIdsMap.set(plan.id, {
+          textActionNodeId: result.textActionNodeId,
+          couples: result.couples,
+          primaryCollectionIds: result.primaryCollectionIds,
+          skipSecondaryImages: result.skipSecondaryImages,
+          firstFrameIsPrimary: result.firstFrameIsPrimary,
+          // Rétrocompatibilité : premier couple
+          imageDepartNodeId: result.imageDepartNodeId,
+          imageFinNodeId: result.imageFinNodeId,
+        });
+        
+        section2ContentY += result.height + LAYOUT.PLAN_GAP;
+        section2MaxX = Math.max(section2MaxX, section2StartX + result.width);
+      }
+
+      section2ContentY += LAYOUT.VERTICAL_GAP / 2;
     }
 
-    section2ContentY += LAYOUT.VERTICAL_GAP / 2;
+    section2MaxY = section2ContentY;
+
+    // Rectangle de fond section 2
+    section2Width = section2MaxX - section2StartX + LAYOUT.SECTION_PADDING * 2;
+    const section2Height = section2MaxY - section2StartY + LAYOUT.SECTION_PADDING;
+    
+    structure.shapeNodes.push({
+      id: nodeId('shape-section-frames'),
+      type: 'shape',
+      position: { x: section2StartX - LAYOUT.SECTION_PADDING/2, y: section2StartY - LAYOUT.SECTION_PADDING/2 },
+      data: {
+        color: SECTION_COLORS.frames,
+        opacity: 5,
+        borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
+      },
+      style: {
+        width: section2Width,
+        height: section2Height,
+      },
+      zIndex: LAYOUT.SHAPE_Z_INDEX,
+    });
+  } else {
+    // generateSecondaryImages = false : PAS de section FIRST FRAMES mais on crée les PROMPTS ACTION
+    console.log('[CanvasGenerator] Section FIRST FRAMES SAUTÉE (generateSecondaryImages=false)');
+    console.log('[CanvasGenerator] Création des PROMPTS ACTION uniquement');
+    console.log(`[CanvasGenerator] firstFrameIsPrimary = ${firstFrameIsPrimary}`);
+    console.log(`[CanvasGenerator] couplesPerPlan = ${couplesPerPlan}`);
+    
+    // ================================================================================
+    // SECTION 2bis : PROMPTS ACTION (version légère quand pas d'images secondaires)
+    // ================================================================================
+    
+    let section2bisStartY = LAYOUT.MARGIN;
+    let section2bisContentY = section2bisStartY + 200;
+    
+    // Label géant de section
+    structure.labelNodes.push({
+      id: nodeId('label-section-prompts-action'),
+      type: 'label',
+      position: { x: section2StartX, y: section2bisStartY },
+      data: {
+        text: '📝 PROMPTS ACTION',
+        fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+        color: SECTION_COLORS.frames,
+      },
+    });
+    
+    section2bisContentY = section2bisStartY + 400;
+    
+    // Pour chaque plan, créer le prompt action et stocker les infos
+    for (let i = 0; i < project.scenes.length; i++) {
+      const scene = project.scenes[i];
+      scene.color = getSceneColor(i);
+      
+      // Label de scène
+      structure.labelNodes.push({
+        id: nodeId(`label-prompts-scene-${i}`),
+        type: 'label',
+        position: { x: section2StartX, y: section2bisContentY },
+        data: {
+          text: `SCÈNE ${scene.sceneNumber}: ${scene.title.toUpperCase()}`,
+          fontSize: 72,
+          color: SECTION_COLORS.frames,
+        },
+      });
+      section2bisContentY += 200;
+      
+      for (const plan of scene.plans) {
+        // Créer le nœud PROMPT ACTION
+        const textActionNodeId = nodeId('text-action');
+        const textContent = `## Plan ${scene.sceneNumber}.${plan.planNumber}\n\n**Action:** ${plan.prompt}${plan.cameraMovement ? `\n\n📷 *${plan.cameraMovement}*` : ''}`;
+        
+        structure.textNodes.push({
+          id: textActionNodeId,
+          type: 'text',
+          position: { x: section2StartX, y: section2bisContentY },
+          data: {
+            generated: { text: textContent },
+            updatedAt: new Date().toISOString(),
+          },
+          width: LAYOUT.TEXT_NODE_WIDTH,
+        });
+        
+        section2bisContentY += LAYOUT.TEXT_NODE_HEIGHT + LAYOUT.NODE_GAP_Y;
+        
+        // Collecter les IDs des collections primaires pour ce plan
+        const primaryCollectionIds: string[] = [];
+        
+        // Collections de personnages
+        for (const charRef of plan.characterRefs) {
+          const collectionId = structure.characterCollectionIds[charRef];
+          if (collectionId) primaryCollectionIds.push(collectionId);
+        }
+        
+        // Collection du décor
+        const decorRef = plan.decorRef || plan.locationRef;
+        if (decorRef) {
+          const collectionId = structure.locationCollectionIds[decorRef];
+          if (collectionId) primaryCollectionIds.push(collectionId);
+        }
+        
+        // IMPORTANT: Créer les couples virtuels pour permettre la création des vidéos
+        // Même sans images secondaires, on a besoin de couples pour itérer sur les vidéos
+        const virtualCouples = Array.from({ length: couplesPerPlan }, (_, coupleIdx) => ({
+          coupleIndex: coupleIdx,
+          imageDepartNodeId: '', // Pas d'image, connexion directe aux collections
+          imageFinNodeId: '',    // Pas d'image, connexion directe aux collections
+        }));
+        
+        // Stocker avec textActionNodeId pour la connexion aux vidéos
+        frameNodeIdsMap.set(plan.id, {
+          textActionNodeId, // CORRECTION: Prompt action créé et connecté aux vidéos
+          couples: virtualCouples,
+          primaryCollectionIds,
+          skipSecondaryImages: true,
+          firstFrameIsPrimary,
+          imageDepartNodeId: '',
+          imageFinNodeId: '',
+        });
+        
+        // Initialiser planImageMap pour le tracking des vidéos
+        const planCouples: PlanCoupleInfo[] = virtualCouples.map(vc => ({
+          coupleIndex: vc.coupleIndex,
+          imageDepartNodeId: '',
+          imageFinNodeId: '',
+          promptDepart: plan.promptImageDepart || '',
+          promptFin: plan.promptImageFin || '',
+          aspectRatio: '21:9',
+          videoNodeIds: [], // Sera rempli par createPlanVideosStructure
+        }));
+        
+        structure.planImageMap[plan.id] = {
+          planId: plan.id,
+          couples: planCouples,
+          characterRefs: plan.characterRefs,
+          decorRef: decorRef || undefined,
+          imageDepartNodeId: '',
+          imageFinNodeId: '',
+          promptDepart: plan.promptImageDepart || '',
+          promptFin: plan.promptImageFin || '',
+          aspectRatio: '21:9',
+        };
+        
+        console.log(`[CanvasGenerator] Plan ${plan.id}: prompt action créé, ${virtualCouples.length} couples virtuels, ${primaryCollectionIds.length} collections primaires`);
+      }
+      
+      section2bisContentY += LAYOUT.VERTICAL_GAP / 4;
+    }
+    
+    // Rectangle de fond section 2bis (plus petit car juste les prompts)
+    section2Width = LAYOUT.TEXT_NODE_WIDTH + LAYOUT.SECTION_PADDING * 2;
+    const section2bisHeight = section2bisContentY - section2bisStartY + LAYOUT.SECTION_PADDING;
+    
+    structure.shapeNodes.push({
+      id: nodeId('shape-section-prompts-action'),
+      type: 'shape',
+      position: { x: section2StartX - LAYOUT.SECTION_PADDING/2, y: section2bisStartY - LAYOUT.SECTION_PADDING/2 },
+      data: {
+        color: SECTION_COLORS.frames,
+        opacity: 5,
+        borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
+      },
+      style: {
+        width: section2Width,
+        height: section2bisHeight,
+      },
+      zIndex: LAYOUT.SHAPE_Z_INDEX,
+    });
   }
-
-  section2MaxY = section2ContentY;
-
-  // Rectangle de fond section 2
-  const section2Width = section2MaxX - section2StartX + LAYOUT.SECTION_PADDING * 2;
-  const section2Height = section2MaxY - section2StartY + LAYOUT.SECTION_PADDING;
-  
-  structure.shapeNodes.push({
-    id: nodeId('shape-section-frames'),
-    type: 'shape',
-    position: { x: section2StartX - LAYOUT.SECTION_PADDING/2, y: section2StartY - LAYOUT.SECTION_PADDING/2 },
-    data: {
-      color: SECTION_COLORS.frames,
-      opacity: 5,
-      borderRadius: LAYOUT.SECTION_BORDER_RADIUS,
-    },
-    style: {
-      width: section2Width,
-      height: section2Height,
-    },
-    zIndex: LAYOUT.SHAPE_Z_INDEX,
-  });
 
   // ================================================================================
   // SECTION 3 : SCÈNES - VIDÉOS UNIQUEMENT (à droite)
   // Contient : Uniquement les nœuds vidéo
   // ================================================================================
   
-  const section3StartX = section2StartX + section2Width + LAYOUT.SECTION_GAP;
+  // Position de la section 3 : après section 2 si elle existe, sinon après section 1
+  const section3StartX = generateSecondaryImages 
+    ? section2StartX + section2Width + LAYOUT.SECTION_GAP
+    : section1StartX + section1Width + LAYOUT.SECTION_GAP;
   let section3StartY = LAYOUT.MARGIN;
 
   // Label géant de section
@@ -1621,8 +1960,15 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
         decorCollectionId,
         locationCollectionId: decorCollectionId, // Alias
         // Flag pour le nouveau workflow
-        usesFirstLastFrame: true,
+        usesFirstLastFrame: structure.frameMode !== 'first-only',
+        // NOUVEAU: Flags pour génération directe depuis les collections primaires
+        skipSecondaryImages: structure.generateSecondaryImages === false,
+        firstFrameIsPrimary: structure.firstFrameIsPrimary || false,
       };
     }),
+    
+    // NOUVEAU: Flags globaux pour le mode de génération
+    skipSecondaryImages: structure.generateSecondaryImages === false,
+    firstFrameIsPrimary: structure.firstFrameIsPrimary || false,
   };
 }

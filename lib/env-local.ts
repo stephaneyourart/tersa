@@ -19,7 +19,7 @@ export const localEnv = createEnv({
 
     // Batch processing
     BATCH_MAX_CONCURRENCY: z.string().transform(Number).default('10'),
-    BATCH_REQUEST_TIMEOUT: z.string().transform(Number).default('300000'),
+    BATCH_REQUEST_TIMEOUT: z.string().transform(Number).default('720000'),
 
     // DaVinci Resolve Integration
     DAVINCI_RESOLVE_ENABLED: z.string().transform((v) => v === 'true').default('false'),

@@ -8,7 +8,7 @@ import { saveFromUrl, saveBase64 } from '../storage-local';
 
 // Configuration par défaut
 const DEFAULT_MAX_CONCURRENCY = 10;
-const DEFAULT_TIMEOUT = 300000; // 5 minutes
+const DEFAULT_TIMEOUT = 720000; // 12 minutes
 
 // Types
 export type BatchJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';

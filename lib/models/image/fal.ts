@@ -100,7 +100,7 @@ async function callFalImageApi(
 
   // Polling pour le résultat
   let attempts = 0;
-  const maxAttempts = 60; // 5 minutes max
+  const maxAttempts = 144; // 12 minutes max
   
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 5000));

@@ -194,11 +194,11 @@ function createVideoGenerateFunction(
   const provider = modelConfig.providers.find(p => p.id === providerId);
   if (!provider) return null;
 
-  return async (settings, index) => {
-    const result = await provider.model.generate({
+  return async (settings) => {
+    const result = await (provider as typeof modelConfig.providers[0]).model.generate({
       prompt: settings.prompt,
       imagePrompt: settings.inputs?.imageUrl,
-      duration: (settings.duration as 5) || 5,
+      duration: (settings.duration || 5) as 5 | 10,
       aspectRatio: settings.aspectRatio || '16:9',
     });
     return result;
@@ -218,9 +218,10 @@ function createImageGenerateFunction(
   const provider = modelConfig.providers.find((p: { id: string }) => p.id === providerId);
   if (!provider) return null;
 
-  return async (settings, index) => {
+  return async (settings) => {
     // Adapter selon l'interface du modèle image
-    const result = await (provider.model as { generate: (params: Record<string, unknown>) => Promise<string> }).generate({
+    const typedProvider = provider as typeof modelConfig.providers[0];
+    const result = await (typedProvider.model as unknown as { generate: (params: Record<string, unknown>) => Promise<string> }).generate({
       prompt: settings.prompt,
       seed: settings.seed,
       width: parseInt(settings.resolution?.split('x')[0] || '1024'),

@@ -1,10 +1,11 @@
 /**
  * CONFIGURATION DES MODÈLES VIDÉO WAVESPEED
  * 
- * CE FICHIER EST LA SOURCE DE VÉRITÉ pour tous les modèles vidéo.
+ * ⚠️ DEPRECATED: Ce fichier est conservé pour compatibilité.
+ * 
+ * → NOUVELLE SOURCE DE VÉRITÉ: lib/models-registry.ts
  * 
  * Les IDs utilisés sont les VRAIS endpoints WaveSpeed (pas d'alias).
- * 
  * Basé sur la documentation officielle WaveSpeed API v3.
  */
 

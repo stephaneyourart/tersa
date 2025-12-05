@@ -20,7 +20,7 @@ export const runway = (modelId: 'gen4_turbo' | 'gen3a_turbo'): VideoModel => ({
     });
 
     const startTime = Date.now();
-    const maxPollTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const maxPollTime = 12 * 60 * 1000; // 12 minutes in milliseconds
 
     while (Date.now() - startTime < maxPollTime) {
       const task = await client.tasks.retrieve(response.id);

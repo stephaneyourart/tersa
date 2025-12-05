@@ -85,7 +85,7 @@ export const SignUpForm = () => {
       </form>
       <div className="mt-4">
         <Turnstile
-          siteKey={env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+          siteKey={env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
           onSuccess={setCaptchaToken}
         />
       </div>

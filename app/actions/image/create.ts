@@ -422,7 +422,7 @@ export const generateImageAction = async ({
       };
     }
     
-    if (provider.model.modelId === 'gpt-image-1') {
+    if (modelId === 'gpt-image-1') {
       const generatedImageResponse = await generateGptImage1Image({
         instructions,
         prompt,
