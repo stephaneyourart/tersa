@@ -614,6 +614,68 @@ export const fLog = {
     fileLog('ERROR', 'API', `${endpoint} → ${status}: ${error}`, {}),
 
   // ============================================================
+  // PROJET - Configuration complète
+  // ============================================================
+  projectStart: (projectName: string, briefId: string, config: {
+    llmProvider?: string;
+    llmModel?: string;
+    reasoningLevel?: string;
+    t2iModel?: string;
+    i2iModel?: string;
+    videoModel?: string;
+    t2iResolution?: string;
+    i2iResolution?: string;
+    videoMode?: string;
+    videoDuration?: number;
+    plansCount?: number;
+    imageSetsPerPlan?: number;
+    videosPerImageSet?: number;
+    generateSecondaryImages?: boolean;
+    firstFrameIsPrimary?: boolean;
+    testMode?: boolean;
+  }) => {
+    fileLog('INFO', 'GENERATION', `🎬 === NOUVEAU PROJET: ${projectName} ===`, { 
+      details: {
+        briefId,
+        projectName,
+        config: {
+          // LLM
+          llm: {
+            provider: config.llmProvider,
+            model: config.llmModel,
+            reasoningLevel: config.reasoningLevel,
+          },
+          // Images
+          t2i: {
+            model: config.t2iModel,
+            resolution: config.t2iResolution,
+          },
+          i2i: {
+            model: config.i2iModel,
+            resolution: config.i2iResolution,
+          },
+          // Vidéo
+          video: {
+            model: config.videoModel,
+            mode: config.videoMode,
+            duration: config.videoDuration,
+          },
+          // Quantités
+          quantities: {
+            plansCount: config.plansCount,
+            imageSetsPerPlan: config.imageSetsPerPlan,
+            videosPerImageSet: config.videosPerImageSet,
+            generateSecondaryImages: config.generateSecondaryImages,
+            firstFrameIsPrimary: config.firstFrameIsPrimary,
+          },
+          // Mode
+          testMode: config.testMode,
+        },
+      }
+    });
+  },
+
+  // ============================================================
   // GÉNÉRATION (séquences)
   // ============================================================
   genStart: (sessionId: string, config: Record<string, unknown>) =>

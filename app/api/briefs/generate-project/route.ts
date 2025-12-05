@@ -13,6 +13,7 @@ import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import type { GeneratedProjectStructure } from '@/types/generated-project';
 import { generateCanvasFromProject } from '@/lib/brief-canvas-generator';
+import { fLog } from '@/lib/file-logger';
 
 // ========== SYSTEM PROMPT ==========
 // Import des configurations par défaut
@@ -329,6 +330,26 @@ export async function POST(request: NextRequest) {
     }
 
     const projectName = customProjectName || `${briefData.title} v1`;
+
+    // LOG: Configuration complète du projet
+    fLog.projectStart(projectName, briefId, {
+      llmProvider: llmProvider,
+      llmModel: modelToUse,
+      reasoningLevel: config?.reasoningLevel,
+      t2iModel: config?.settings?.imageModel,
+      i2iModel: config?.settings?.editModel,
+      videoModel: config?.settings?.videoModel,
+      t2iResolution: config?.settings?.resolution,
+      i2iResolution: config?.settings?.resolution,
+      videoMode: config?.settings?.frameMode,
+      videoDuration: config?.settings?.videoDuration,
+      plansCount: config?.settings?.plansCount,
+      imageSetsPerPlan: config?.settings?.couplesPerPlan,
+      videosPerImageSet: config?.settings?.videosPerCouple,
+      generateSecondaryImages: config?.settings?.generateSecondaryImages,
+      firstFrameIsPrimary: config?.settings?.firstFrameIsPrimary,
+      testMode: isTestMode,
+    });
 
     // Créer le stream SSE
     const stream = new ReadableStream({
