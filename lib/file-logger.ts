@@ -14,6 +14,54 @@ import path from 'path';
 const LOGS_DIR = path.join(process.cwd(), 'logs');
 const MAX_AGE_DAYS = 3;
 
+// Timezone français
+const TIMEZONE = 'Europe/Paris';
+
+/**
+ * Formater une date en heure française (Europe/Paris)
+ * Format: YYYY-MM-DDTHH:mm:ss.sss (sans le Z car ce n'est plus UTC)
+ */
+function formatDateFR(date: Date): string {
+  // Utiliser Intl.DateTimeFormat pour obtenir les composants en heure française
+  const formatter = new Intl.DateTimeFormat('fr-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
+  
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const minute = get('minute');
+  const second = get('second');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}`;
+}
+
+/**
+ * Obtenir la date du jour en format YYYY-MM-DD (heure française)
+ */
+function getTodayDateFR(): string {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('fr-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(now); // Format: YYYY-MM-DD
+}
+
 // Types
 export type LogLevel = 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'DEBUG' | 'API';
 export type LogCategory = 'IMAGE' | 'VIDEO' | 'LLM' | 'API' | 'SYSTEM' | 'GENERATION';
@@ -36,9 +84,9 @@ function ensureLogsDir(): void {
   }
 }
 
-// Obtenir le nom du fichier log du jour
+// Obtenir le nom du fichier log du jour (en heure française)
 function getTodayLogFile(): string {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = getTodayDateFR(); // YYYY-MM-DD en heure française
   return path.join(LOGS_DIR, `${today}.log`);
 }
 
@@ -121,7 +169,7 @@ export function fileLog(
   }
 ): void {
   const entry: LogEntry = {
-    timestamp: new Date().toISOString(),
+    timestamp: formatDateFR(new Date()), // Heure française (Europe/Paris)
     level,
     category,
     message,
