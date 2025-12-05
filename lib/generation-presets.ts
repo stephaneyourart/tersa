@@ -47,8 +47,14 @@ const BUILT_IN_PRESETS: GenerationPreset[] = [
       },
       t2i: {
         model: 'nano-banana-pro-ultra-wavespeed',
-        aspectRatio: '16:9',
-        resolution: '4k',
+        character: {
+          aspectRatio: '9:16',  // Portrait pour personnages
+          resolution: '4k',
+        },
+        decor: {
+          aspectRatio: '16:9',  // Paysage pour décors
+          resolution: '4k',
+        },
       },
       i2i: {
         model: 'nano-banana-pro-edit-ultra-wavespeed',
@@ -84,8 +90,14 @@ const BUILT_IN_PRESETS: GenerationPreset[] = [
       },
       t2i: {
         model: 'nano-banana-wavespeed',
-        aspectRatio: '16:9',
-        resolution: '4k',
+        character: {
+          aspectRatio: '9:16',
+          resolution: '4k',
+        },
+        decor: {
+          aspectRatio: '16:9',
+          resolution: '4k',
+        },
       },
       i2i: {
         model: 'nano-banana-edit-wavespeed',
@@ -155,11 +167,30 @@ function generatePresetId(): string {
  * pour s'assurer que tous les champs existent (migrations)
  */
 function mergeWithDefaults(config: GenerationConfig): GenerationConfig {
+  // Migration: ancienne structure T2I sans character/decor
+  const t2iConfig = config.t2i || {} as any;
+  const hasNewStructure = t2iConfig.character && t2iConfig.decor;
+  
   return {
     ...DEFAULT_GENERATION_CONFIG,
     ...config,
     llm: { ...DEFAULT_GENERATION_CONFIG.llm, ...config.llm },
-    t2i: { ...DEFAULT_GENERATION_CONFIG.t2i, ...config.t2i },
+    t2i: hasNewStructure ? {
+      model: t2iConfig.model ?? DEFAULT_GENERATION_CONFIG.t2i.model,
+      character: { ...DEFAULT_GENERATION_CONFIG.t2i.character, ...t2iConfig.character },
+      decor: { ...DEFAULT_GENERATION_CONFIG.t2i.decor, ...t2iConfig.decor },
+    } : {
+      // Migration depuis l'ancienne structure
+      model: t2iConfig.model ?? DEFAULT_GENERATION_CONFIG.t2i.model,
+      character: {
+        aspectRatio: t2iConfig.aspectRatio ?? DEFAULT_GENERATION_CONFIG.t2i.character.aspectRatio,
+        resolution: t2iConfig.resolution ?? DEFAULT_GENERATION_CONFIG.t2i.character.resolution,
+      },
+      decor: {
+        aspectRatio: t2iConfig.aspectRatio ?? DEFAULT_GENERATION_CONFIG.t2i.decor.aspectRatio,
+        resolution: t2iConfig.resolution ?? DEFAULT_GENERATION_CONFIG.t2i.decor.resolution,
+      },
+    },
     i2i: { ...DEFAULT_GENERATION_CONFIG.i2i, ...config.i2i },
     video: { ...DEFAULT_GENERATION_CONFIG.video, ...config.video },
     quantities: { ...DEFAULT_GENERATION_CONFIG.quantities, ...config.quantities },

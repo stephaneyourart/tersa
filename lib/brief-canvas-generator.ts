@@ -172,6 +172,10 @@ export interface CanvasStructure {
   // NOUVELLES OPTIONS
   generateSecondaryImages: boolean;             // Générer les images I2I (défaut: true)
   firstFrameIsPrimary: boolean;                 // First frame = image primaire directe (défaut: false)
+  
+  // RATIOS T2I PAR TYPE D'ENTITÉ
+  t2iCharacterAspectRatio: string;              // Ratio pour les personnages (défaut: 9:16)
+  t2iDecorAspectRatio: string;                  // Ratio pour les décors (défaut: 16:9)
 }
 
 // ========== CRÉATION PERSONNAGE ==========
@@ -251,6 +255,9 @@ function createCharacterStructure(
   const imageY = startY;
   const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
+  // UTILISER LE RATIO PERSONNALISÉ DEPUIS LA STRUCTURE (transmis depuis l'UI)
+  const characterPrimaryAspectRatio = structure.t2iCharacterAspectRatio || IMAGE_RATIOS.character.primary;
+  
   // Configuration de base: image primaire TOUJOURS
   const imageConfigs: Array<{
     key: string;
@@ -269,7 +276,7 @@ function createCharacterStructure(
       label: 'Primaire (Réf)', 
       prompt: enrichPrimaryPrompt(primaryPrompt), 
       x: 0, y: 0, 
-      aspectRatio: IMAGE_RATIOS.character.primary, 
+      aspectRatio: characterPrimaryAspectRatio, // UTILISE LE RATIO DE L'UI
       isReference: true,
       generationType: 'text-to-image' // Généré par text-to-image
     },
@@ -284,7 +291,7 @@ function createCharacterStructure(
         label: 'Visage face', 
         prompt: character.prompts.face, 
         x: 1, y: 0, 
-        aspectRatio: IMAGE_RATIOS.character.face, 
+        aspectRatio: IMAGE_RATIOS.character.face, // Face reste en 1:1
         isReference: false,
         generationType: 'edit' // Généré par edit depuis primaire
       },
@@ -294,7 +301,7 @@ function createCharacterStructure(
         label: 'Visage profil', 
         prompt: character.prompts.profile, 
         x: 0, y: 1, 
-        aspectRatio: IMAGE_RATIOS.character.profile, 
+        aspectRatio: IMAGE_RATIOS.character.profile, // Profile reste en 1:1
         isReference: false,
         generationType: 'edit'
       },
@@ -304,7 +311,7 @@ function createCharacterStructure(
         label: 'Vue de dos', 
         prompt: character.prompts.back, 
         x: 1, y: 1, 
-        aspectRatio: IMAGE_RATIOS.character.back, 
+        aspectRatio: characterPrimaryAspectRatio, // Dos utilise le même ratio que le primaire
         isReference: false,
         generationType: 'edit'
       },
@@ -492,6 +499,9 @@ function createDecorStructure(
   // 3. Nœuds IMAGE - décalés pour laisser place au prompt
   const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
+  // UTILISER LE RATIO PERSONNALISÉ DEPUIS LA STRUCTURE (transmis depuis l'UI)
+  const decorPrimaryAspectRatio = structure.t2iDecorAspectRatio || IMAGE_RATIOS.decor.primary;
+  
   // Configuration de base: image primaire TOUJOURS
   const imageConfigs: Array<{
     key: string;
@@ -510,7 +520,7 @@ function createDecorStructure(
       label: 'Primaire (Réf)', 
       prompt: enrichPrimaryPrompt(primaryPrompt), 
       x: 0, y: 0,
-      aspectRatio: IMAGE_RATIOS.decor.primary, 
+      aspectRatio: decorPrimaryAspectRatio, // UTILISE LE RATIO DE L'UI
       isReference: true,
       generationType: 'text-to-image'
     },
@@ -525,7 +535,7 @@ function createDecorStructure(
         label: 'Nouvel angle', 
         prompt: angle2Prompt, 
         x: 1, y: 0,
-        aspectRatio: IMAGE_RATIOS.decor.angle2, 
+        aspectRatio: decorPrimaryAspectRatio, // Utilise le même ratio que le primaire
         isReference: false,
         generationType: 'edit'
       },
@@ -535,7 +545,7 @@ function createDecorStructure(
         label: 'Plongée', 
         prompt: plongeePrompt, 
         x: 0, y: 1,
-        aspectRatio: IMAGE_RATIOS.decor.plongee, 
+        aspectRatio: decorPrimaryAspectRatio, // Utilise le même ratio que le primaire
         isReference: false,
         generationType: 'edit'
       },
@@ -545,7 +555,7 @@ function createDecorStructure(
         label: 'Contre-plongée', 
         prompt: contrePlongeePrompt, 
         x: 1, y: 1,
-        aspectRatio: IMAGE_RATIOS.decor.contrePlongee, 
+        aspectRatio: decorPrimaryAspectRatio, // Utilise le même ratio que le primaire
         isReference: false,
         generationType: 'edit'
       },
@@ -710,8 +720,11 @@ function createPlanFramesStructure(
   console.log(`  → firstFrameIsPrimary: ${firstFrameIsPrimary}`);
   console.log(`  → shouldCreateFrameImages: ${!firstFrameIsPrimary} (first frames toujours créées si firstFrameIsPrimary=false)`);
 
-  // Ratio pour les images de plan (21:9 cinémascope)
-  const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
+  // Ratio pour les images de plan (first/last frames) - UTILISE LE RATIO I2I DE L'UI
+  // Quand 1 frame en input, le ratio de la vidéo découle du frame
+  // Si non spécifié ou ambiguïté, défaut à 16:9
+  const planImageRatio = structure.videoSettings?.aspectRatio || '16:9';
+  console.log(`[CanvasGenerator] Plan image ratio (I2I): ${planImageRatio}`);
 
   // Layout constants - TRÈS ESPACÉ
   const LABEL_OFFSET_Y = -200; // Plus haut pour éviter chevauchement
@@ -1322,6 +1335,9 @@ export interface GenerationConfig {
   // NOUVELLES OPTIONS
   generateSecondaryImages?: boolean;  // Générer les images I2I (défaut: true)
   firstFrameIsPrimary?: boolean;      // First frame = image primaire directe (défaut: false)
+  // RATIOS T2I PAR TYPE D'ENTITÉ
+  t2iCharacterAspectRatio?: string;   // Ratio pour les personnages (défaut: 9:16)
+  t2iDecorAspectRatio?: string;       // Ratio pour les décors (défaut: 16:9)
 }
 
 export function generateCanvasFromProject(
@@ -1345,9 +1361,15 @@ export function generateCanvasFromProject(
   const generateSecondaryImages = config?.generateSecondaryImages !== false; // true par défaut
   const firstFrameIsPrimary = config?.firstFrameIsPrimary || false;
   
+  // RATIOS T2I PAR TYPE D'ENTITÉ (transmis depuis l'UI)
+  const t2iCharacterAspectRatio = config?.t2iCharacterAspectRatio || IMAGE_RATIOS.character.primary;
+  const t2iDecorAspectRatio = config?.t2iDecorAspectRatio || IMAGE_RATIOS.decor.primary;
+  
   console.log(`[CanvasGenerator] Mode frame: ${frameMode}`);
   console.log(`[CanvasGenerator] Generate secondary images: ${generateSecondaryImages}`);
   console.log(`[CanvasGenerator] First frame is primary: ${firstFrameIsPrimary}`);
+  console.log(`[CanvasGenerator] T2I Character aspect ratio: ${t2iCharacterAspectRatio}`);
+  console.log(`[CanvasGenerator] T2I Decor aspect ratio: ${t2iDecorAspectRatio}`);
   
   // Structure pour tracking
   const structure: CanvasStructure = {
@@ -1375,6 +1397,9 @@ export function generateCanvasFromProject(
     // NOUVELLES OPTIONS
     generateSecondaryImages,
     firstFrameIsPrimary,
+    // RATIOS T2I PAR TYPE D'ENTITÉ
+    t2iCharacterAspectRatio,
+    t2iDecorAspectRatio,
   };
 
   // Couleurs des sections

@@ -208,6 +208,10 @@ export async function generateAllMediaParallel(
       if (!nodeId) continue;
       
       const isPrimary = i === 0;
+      // Fallback approprié selon le type de vue : 9:16 pour primaire/dos, 1:1 pour face/profile
+      const defaultRatio = (viewType === 'primary' || viewType === 'back') 
+        ? IMAGE_RATIOS.character.primary 
+        : IMAGE_RATIOS.character.face;
       allImageTasks.push({
         nodeId,
         type: isPrimary ? 'primary' : 'variant',
@@ -215,7 +219,7 @@ export async function generateAllMediaParallel(
         entityId: char.characterId,
         viewType,
         prompt: char.prompts[viewType],
-        aspectRatio: char.aspectRatios[viewType] || (isPrimary ? IMAGE_RATIOS.character.primary : '1:1'),
+        aspectRatio: char.aspectRatios[viewType] || defaultRatio,
         referenceImageId: isPrimary ? undefined : (char.primaryNodeId || char.imageNodeIds[0]),
       });
     }

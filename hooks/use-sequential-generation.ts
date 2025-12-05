@@ -432,7 +432,9 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
         const isReference = i === 0;
         const stepId = isReference ? `img-t2i-${nodeId}` : `img-edit-${nodeId}`;
         const prompt = charData.prompts[viewType] || '';
-        const aspectRatio = charData.aspectRatios[viewType] || '1:1';
+        // Fallback approprié selon le type de vue : 9:16 pour personnages primaires, 1:1 pour face/profile
+        const defaultRatio = (viewType === 'primary' || viewType === 'back') ? '9:16' : '1:1';
+        const aspectRatio = charData.aspectRatios[viewType] || defaultRatio;
 
         steps.push({
           id: stepId,

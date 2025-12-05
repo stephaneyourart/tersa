@@ -29,15 +29,26 @@ export interface LLMConfig {
 }
 
 /**
- * Configuration Text-to-Image (images primaires)
+ * Configuration Text-to-Image pour un type d'entité (personnages ou décors)
  */
-export interface T2IConfig {
-  /** ID du modèle (endpoint WaveSpeed réel) */
-  model: string;
+export interface T2IEntityConfig {
   /** Aspect ratio */
   aspectRatio: AspectRatio;
   /** Résolution */
   resolution: Resolution;
+}
+
+/**
+ * Configuration Text-to-Image (images primaires)
+ * Séparée entre personnages et décors pour permettre des ratios différents
+ */
+export interface T2IConfig {
+  /** ID du modèle (endpoint WaveSpeed réel) - commun aux personnages et décors */
+  model: string;
+  /** Configuration pour les personnages */
+  character: T2IEntityConfig;
+  /** Configuration pour les décors */
+  decor: T2IEntityConfig;
 }
 
 /**
@@ -119,8 +130,14 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
 
 export const DEFAULT_T2I_CONFIG: T2IConfig = {
   model: 'nano-banana-pro-ultra-wavespeed',
-  aspectRatio: '16:9',
-  resolution: '4k',
+  character: {
+    aspectRatio: '9:16',  // Portrait pour personnages (pied à la tête)
+    resolution: '4k',
+  },
+  decor: {
+    aspectRatio: '16:9',  // Paysage pour décors
+    resolution: '4k',
+  },
 };
 
 export const DEFAULT_I2I_CONFIG: I2IConfig = {
@@ -218,7 +235,11 @@ function mergeConfig(
 ): GenerationConfig {
   return {
     llm: { ...defaults.llm, ...partial.llm },
-    t2i: { ...defaults.t2i, ...partial.t2i },
+    t2i: { 
+      model: partial.t2i?.model ?? defaults.t2i.model,
+      character: { ...defaults.t2i.character, ...partial.t2i?.character },
+      decor: { ...defaults.t2i.decor, ...partial.t2i?.decor },
+    },
     i2i: { ...defaults.i2i, ...partial.i2i },
     video: { ...defaults.video, ...partial.video },
     quantities: { ...defaults.quantities, ...partial.quantities },
@@ -244,6 +265,12 @@ export function validateConfig(config: GenerationConfig): { valid: boolean; erro
   // Validation T2I
   if (!config.t2i.model) {
     errors.push('Modèle T2I requis');
+  }
+  if (!config.t2i.character?.aspectRatio) {
+    errors.push('Aspect ratio T2I personnages requis');
+  }
+  if (!config.t2i.decor?.aspectRatio) {
+    errors.push('Aspect ratio T2I décors requis');
   }
 
   // Validation I2I
@@ -297,7 +324,12 @@ export function configToLegacyFormat(config: GenerationConfig): Record<string, u
       videoAspectRatio: config.i2i.aspectRatio, // Vidéo hérite du ratio I2I
       couplesPerPlan: config.quantities.imageSetsPerPlan,
       videosPerCouple: config.quantities.videosPerImageSet,
-      resolution: config.t2i.resolution,
+      resolution: config.t2i.character.resolution, // Utilise la résolution personnage par défaut
+      // NOUVEAU: Ratios T2I par type d'entité
+      t2iCharacterAspectRatio: config.t2i.character.aspectRatio,
+      t2iCharacterResolution: config.t2i.character.resolution,
+      t2iDecorAspectRatio: config.t2i.decor.aspectRatio,
+      t2iDecorResolution: config.t2i.decor.resolution,
       // Nouvelles options
       generateSecondaryImages: config.quantities.generateSecondaryImages,
       firstFrameIsPrimary: config.quantities.firstFrameIsPrimary,

@@ -591,6 +591,13 @@ ${briefData.content}`
           console.log(`[API] First frame is primary: ${firstFrameIsPrimary}`);
           console.log(`[API] Full config.settings:`, JSON.stringify(config?.settings, null, 2));
 
+          // NOUVEAUX RATIOS T2I par type d'entité
+          const t2iCharacterAspectRatio = config?.settings?.t2iCharacterAspectRatio || '9:16';
+          const t2iDecorAspectRatio = config?.settings?.t2iDecorAspectRatio || '16:9';
+          
+          console.log(`[API] T2I Character aspect ratio: ${t2iCharacterAspectRatio}`);
+          console.log(`[API] T2I Decor aspect ratio: ${t2iDecorAspectRatio}`);
+          
           // Générer les nœuds du canvas (avec N couples × M vidéos par plan)
           const canvasData = generateCanvasFromProject(projectStructure, isTestMode, videoCopies, {
             couplesPerPlan,
@@ -600,6 +607,9 @@ ${briefData.content}`
             frameMode,
             generateSecondaryImages,
             firstFrameIsPrimary,
+            // NOUVEAUX RATIOS T2I
+            t2iCharacterAspectRatio,
+            t2iDecorAspectRatio,
           });
           
           // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)

@@ -63,6 +63,8 @@ import {
   REASONING_LEVELS,
   getVideoModelsForMode,
   modelSupportsReasoning,
+  getT2IModel,
+  getI2IModel,
   type LLMProvider,
   type AspectRatio,
   type Resolution,
@@ -394,7 +396,9 @@ export default function GenerateProjectPage() {
     const providerLabel = config.llm.provider === 'openai' ? 'OpenAI' : 'Mistral';
     setReasoning(`🎬 GÉNÉRATION DE PROJET
    → LLM: ${providerLabel} (${config.llm.model})
-   → T2I: Ratio ${config.t2i.aspectRatio} (${config.t2i.resolution || 'défaut'})
+   → T2I Personnages: ${config.t2i.character.aspectRatio} (${config.t2i.character.resolution})
+   → T2I Décors: ${config.t2i.decor.aspectRatio} (${config.t2i.decor.resolution})
+   → I2I (frames): ${config.i2i.aspectRatio} (${config.i2i.resolution})
    → Mode vidéo: ${config.video.mode === 'image-first' ? 'IMAGE FIRST' : 'IMAGES FIRST AND LAST'}
    → Plans: ${config.quantities.plansCount}
    → Jeux d'images: ${config.quantities.imageSetsPerPlan} par plan
@@ -491,8 +495,12 @@ export default function GenerateProjectPage() {
                 t2iModel: config.t2i.model,
                 i2iModel: config.i2i.model,
                 videoModel: config.video.model,
-                t2iResolution: config.t2i.resolution,
+                t2iCharacterResolution: config.t2i.character.resolution,
+                t2iDecorResolution: config.t2i.decor.resolution,
+                t2iCharacterAspectRatio: config.t2i.character.aspectRatio,
+                t2iDecorAspectRatio: config.t2i.decor.aspectRatio,
                 i2iResolution: config.i2i.resolution,
+                i2iAspectRatio: config.i2i.aspectRatio,
               };
               
               console.log('[Generate] Modèles stockés:', generationModels);
@@ -820,71 +828,207 @@ export default function GenerateProjectPage() {
             </div>
 
             <div className="space-y-6">
-              {/* T2I - Text to Image */}
+              {/* T2I - Modèle commun */}
               <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-blue-400 font-semibold">T2I</span>
                   <span className="text-sm text-muted-foreground">Text to Image (images primaires)</span>
                 </div>
                 
-                <div className="space-y-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Modèle T2I (commun personnages & décors)</Label>
+                  <Select 
+                    value={config.t2i.model} 
+                    onValueChange={(v) => {
+                      const newModel = getT2IModel(v);
+                      const supportedRatios = newModel?.supportedAspectRatios || [];
+                      const supportedResolutions = newModel?.supportedResolutions || [];
+                      // Vérifier et ajuster ratio/résolution personnages
+                      const charRatio = supportedRatios.includes(config.t2i.character.aspectRatio)
+                        ? config.t2i.character.aspectRatio
+                        : (supportedRatios[0] as AspectRatio) || '9:16';
+                      const charRes = supportedResolutions.includes(config.t2i.character.resolution)
+                        ? config.t2i.character.resolution
+                        : (supportedResolutions[0] as Resolution) || '4k';
+                      // Vérifier et ajuster ratio/résolution décors
+                      const decorRatio = supportedRatios.includes(config.t2i.decor.aspectRatio)
+                        ? config.t2i.decor.aspectRatio
+                        : (supportedRatios[0] as AspectRatio) || '16:9';
+                      const decorRes = supportedResolutions.includes(config.t2i.decor.resolution)
+                        ? config.t2i.decor.resolution
+                        : (supportedResolutions[0] as Resolution) || '4k';
+                      setConfig(prev => ({
+                        ...prev,
+                        t2i: {
+                          model: v,
+                          character: { aspectRatio: charRatio, resolution: charRes },
+                          decor: { aspectRatio: decorRatio, resolution: decorRes },
+                        }
+                      }));
+                    }}
+                  >
+                    <SelectTrigger className="text-xs font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {T2I_MODELS.map(model => (
+                        <SelectItem key={model.id} value={model.id} className="text-xs font-mono">
+                          {model.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* T2I - Personnages */}
+              <div className="p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-cyan-400 font-semibold">T2I Personnages</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Ratio et résolution pour les images primaires de personnages (vue pied à la tête)
+                </p>
+                
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Modèle</Label>
-                    <Select 
-                      value={config.t2i.model} 
-                      onValueChange={(v) => updateConfig('t2i', { model: v })}
-                    >
-                      <SelectTrigger className="text-xs font-mono">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {T2I_MODELS.map(model => (
-                          <SelectItem key={model.id} value={model.id} className="text-xs font-mono">
-                            {model.displayName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
+                    {(() => {
+                      const t2iModel = getT2IModel(config.t2i.model);
+                      const supportedRatios = t2iModel?.supportedAspectRatios || [];
+                      const filteredRatios = ASPECT_RATIOS.filter(ar => supportedRatios.includes(ar.id));
+                      return (
+                        <Select 
+                          value={config.t2i.character.aspectRatio} 
+                          onValueChange={(v) => setConfig(prev => ({
+                            ...prev,
+                            t2i: {
+                              ...prev.t2i,
+                              character: { ...prev.t2i.character, aspectRatio: v as AspectRatio }
+                            }
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredRatios.map(ar => (
+                              <SelectItem key={ar.id} value={ar.id}>
+                                {ar.label} <span className="text-muted-foreground">({ar.description})</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
-                      <Select 
-                        value={config.t2i.aspectRatio} 
-                        onValueChange={(v) => updateConfig('t2i', { aspectRatio: v as AspectRatio })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ASPECT_RATIOS.map(ar => (
-                            <SelectItem key={ar.id} value={ar.id}>
-                              {ar.label} <span className="text-muted-foreground">({ar.description})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
-                      <Select 
-                        value={config.t2i.resolution} 
-                        onValueChange={(v) => updateConfig('t2i', { resolution: v as Resolution })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {RESOLUTIONS.map(r => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.label}
-                          </SelectItem>
-                        ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
+                    {(() => {
+                      const t2iModel = getT2IModel(config.t2i.model);
+                      const supportedResolutions = t2iModel?.supportedResolutions || [];
+                      const filteredResolutions = RESOLUTIONS.filter(r => supportedResolutions.includes(r.id));
+                      return (
+                        <Select 
+                          value={config.t2i.character.resolution} 
+                          onValueChange={(v) => setConfig(prev => ({
+                            ...prev,
+                            t2i: {
+                              ...prev.t2i,
+                              character: { ...prev.t2i.character, resolution: v as Resolution }
+                            }
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredResolutions.map(r => (
+                              <SelectItem key={r.id} value={r.id}>
+                                {r.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* T2I - Décors */}
+              <div className="p-4 bg-green-500/5 border border-green-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-green-400 font-semibold">T2I Décors</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Ratio et résolution pour les images primaires de décors
+                </p>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
+                    {(() => {
+                      const t2iModel = getT2IModel(config.t2i.model);
+                      const supportedRatios = t2iModel?.supportedAspectRatios || [];
+                      const filteredRatios = ASPECT_RATIOS.filter(ar => supportedRatios.includes(ar.id));
+                      return (
+                        <Select 
+                          value={config.t2i.decor.aspectRatio} 
+                          onValueChange={(v) => setConfig(prev => ({
+                            ...prev,
+                            t2i: {
+                              ...prev.t2i,
+                              decor: { ...prev.t2i.decor, aspectRatio: v as AspectRatio }
+                            }
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredRatios.map(ar => (
+                              <SelectItem key={ar.id} value={ar.id}>
+                                {ar.label} <span className="text-muted-foreground">({ar.description})</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
+                  </div>
+                  
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
+                    {(() => {
+                      const t2iModel = getT2IModel(config.t2i.model);
+                      const supportedResolutions = t2iModel?.supportedResolutions || [];
+                      const filteredResolutions = RESOLUTIONS.filter(r => supportedResolutions.includes(r.id));
+                      return (
+                        <Select 
+                          value={config.t2i.decor.resolution} 
+                          onValueChange={(v) => setConfig(prev => ({
+                            ...prev,
+                            t2i: {
+                              ...prev.t2i,
+                              decor: { ...prev.t2i.decor, resolution: v as Resolution }
+                            }
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredResolutions.map(r => (
+                              <SelectItem key={r.id} value={r.id}>
+                                {r.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -904,7 +1048,22 @@ export default function GenerateProjectPage() {
                     <Label className="text-xs text-muted-foreground mb-1 block">Modèle</Label>
                     <Select 
                       value={config.i2i.model} 
-                      onValueChange={(v) => updateConfig('i2i', { model: v })}
+                      onValueChange={(v) => {
+                        const newModel = getI2IModel(v);
+                        const supportedRatios = newModel?.supportedAspectRatios || [];
+                        // Si le ratio actuel n'est pas supporté, réinitialiser au premier supporté
+                        const currentRatio = config.i2i.aspectRatio;
+                        const newRatio = supportedRatios.includes(currentRatio) 
+                          ? currentRatio 
+                          : (supportedRatios[0] as AspectRatio) || '16:9';
+                        // Même logique pour la résolution
+                        const supportedResolutions = newModel?.supportedResolutions || [];
+                        const currentResolution = config.i2i.resolution;
+                        const newResolution = supportedResolutions.includes(currentResolution)
+                          ? currentResolution
+                          : (supportedResolutions[0] as Resolution) || '4k';
+                        updateConfig('i2i', { model: v, aspectRatio: newRatio, resolution: newResolution });
+                      }}
                     >
                       <SelectTrigger className="text-xs font-mono">
                         <SelectValue />
@@ -922,40 +1081,54 @@ export default function GenerateProjectPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Aspect Ratio</Label>
-                      <Select 
-                        value={config.i2i.aspectRatio} 
-                        onValueChange={(v) => updateConfig('i2i', { aspectRatio: v as AspectRatio })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ASPECT_RATIOS.map(ar => (
-                            <SelectItem key={ar.id} value={ar.id}>
-                              {ar.label} <span className="text-muted-foreground">({ar.description})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {(() => {
+                        const i2iModel = getI2IModel(config.i2i.model);
+                        const supportedRatios = i2iModel?.supportedAspectRatios || [];
+                        const filteredRatios = ASPECT_RATIOS.filter(ar => supportedRatios.includes(ar.id));
+                        return (
+                          <Select 
+                            value={config.i2i.aspectRatio} 
+                            onValueChange={(v) => updateConfig('i2i', { aspectRatio: v as AspectRatio })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredRatios.map(ar => (
+                                <SelectItem key={ar.id} value={ar.id}>
+                                  {ar.label} <span className="text-muted-foreground">({ar.description})</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()}
                     </div>
                     
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Résolution</Label>
-                      <Select 
-                        value={config.i2i.resolution} 
-                        onValueChange={(v) => updateConfig('i2i', { resolution: v as Resolution })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {RESOLUTIONS.map(r => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {(() => {
+                        const i2iModel = getI2IModel(config.i2i.model);
+                        const supportedResolutions = i2iModel?.supportedResolutions || [];
+                        const filteredResolutions = RESOLUTIONS.filter(r => supportedResolutions.includes(r.id));
+                        return (
+                          <Select 
+                            value={config.i2i.resolution} 
+                            onValueChange={(v) => updateConfig('i2i', { resolution: v as Resolution })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredResolutions.map(r => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  {r.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -1271,7 +1444,10 @@ export default function GenerateProjectPage() {
                   </div>
                   
                   <div className="p-3 bg-background/50 rounded-lg">
-                    <div className="text-muted-foreground mb-1">Images T2I <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded ml-1">{config.t2i.aspectRatio}</span></div>
+                    <div className="text-muted-foreground mb-1">Images T2I 
+                      <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded ml-1">Perso: {config.t2i.character.aspectRatio}</span>
+                      <span className="text-[10px] bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded ml-1">Décor: {config.t2i.decor.aspectRatio}</span>
+                    </div>
                     <div className="text-xs text-muted-foreground mb-1">{budget.t2i.count} × {formatCurrency(budget.t2i.costPerImage, budget.currency)}</div>
                     <div className="text-emerald-400">{formatCurrency(budget.t2i.total, budget.currency)}</div>
                   </div>
