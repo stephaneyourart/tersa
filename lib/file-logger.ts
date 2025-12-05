@@ -180,47 +180,376 @@ export function fileLog(
 }
 
 // ============================================================
-// HELPERS PAR CATÉGORIE
+// IMPORT DES SOURCES DE VÉRITÉ DES MODÈLES
+// ============================================================
+
+import {
+  T2I_MODELS,
+  I2I_MODELS,
+  VIDEO_MODELS,
+  LLM_MODELS,
+  type ImageModel,
+  type VideoModel,
+  type LLMModel,
+  type LLMProvider,
+} from './models-registry';
+
+// Trouver un modèle T2I par son ID (matching partiel)
+function findT2IModel(modelId: string): ImageModel | undefined {
+  return T2I_MODELS.find(m => 
+    m.id === modelId || 
+    m.id.includes(modelId) || 
+    modelId.includes(m.id.split('/').pop() || '')
+  );
+}
+
+// Trouver un modèle I2I par son ID (matching partiel)
+function findI2IModel(modelId: string): ImageModel | undefined {
+  return I2I_MODELS.find(m => 
+    m.id === modelId || 
+    m.id.includes(modelId) || 
+    modelId.includes(m.id.split('/').pop() || '')
+  );
+}
+
+// Trouver un modèle vidéo par son ID (matching partiel)
+function findVideoModel(modelId: string): VideoModel | undefined {
+  return VIDEO_MODELS.find(m => 
+    m.id === modelId || 
+    m.id.includes(modelId) || 
+    modelId.includes(m.id.split('/').pop() || '')
+  );
+}
+
+// Trouver un modèle LLM par son ID
+function findLLMModel(provider: LLMProvider, modelId: string): LLMModel | undefined {
+  return LLM_MODELS[provider]?.find(m => m.id === modelId);
+}
+
+// ============================================================
+// INTERFACES POUR LES LOGS STRUCTURÉS
+// ============================================================
+
+interface ImageGenerationLog {
+  type: 'T2I' | 'I2I';
+  nodeId: string;
+  model: {
+    id: string;
+    displayName: string;
+    type: string;
+    supportedAspectRatios: string[];
+    supportedResolutions: string[];
+    costPerImage: number;
+    description: string;
+  } | null;
+  params: {
+    aspectRatio?: string;
+    resolution?: string;
+    promptLength?: number;
+    sourceImagesCount?: number;
+    testMode?: boolean;
+  };
+}
+
+interface VideoGenerationLog {
+  nodeId: string;
+  model: {
+    id: string;
+    displayName: string;
+    supportsImageFirst: boolean;
+    supportsImagesFirstLast: boolean;
+    supportedDurations: number[];
+    guidanceField: string;
+    guidanceDefault: number;
+    guidanceRange: [number, number];
+    lastImageField: string | null;
+    costPerSecond: number;
+    description: string;
+  } | null;
+  params: {
+    mode: 'first-only' | 'first+last';
+    duration: number;
+    hasFirstFrame: boolean;
+    hasLastFrame: boolean;
+    promptLength?: number;
+  };
+}
+
+interface LLMGenerationLog {
+  provider: LLMProvider;
+  model: {
+    id: string;
+    displayName: string;
+    supportsReasoning: boolean;
+    description: string;
+    costPer1MInput: number;
+    costPer1MOutput: number;
+  } | null;
+  params: {
+    reasoningLevel?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
+}
+
+// ============================================================
+// HELPERS PAR CATÉGORIE - AVEC JSON COMPLET
 // ============================================================
 
 export const fLog = {
-  // IMAGES
-  imageStart: (nodeId: string, model: string, prompt?: string) =>
-    fileLog('INFO', 'IMAGE', `Démarrage génération`, { nodeId, model, details: prompt ? { prompt: prompt.slice(0, 100) } : undefined }),
+  // ============================================================
+  // IMAGES T2I (Text-to-Image)
+  // ============================================================
+  t2iStart: (nodeId: string, modelId: string, params: { 
+    aspectRatio?: string; 
+    resolution?: string; 
+    promptLength?: number;
+    testMode?: boolean;
+  }) => {
+    const modelSpec = findT2IModel(modelId);
+    const logData: ImageGenerationLog = {
+      type: 'T2I',
+      nodeId,
+      model: modelSpec ? {
+        id: modelSpec.id,
+        displayName: modelSpec.displayName,
+        type: modelSpec.type,
+        supportedAspectRatios: modelSpec.supportedAspectRatios,
+        supportedResolutions: modelSpec.supportedResolutions,
+        costPerImage: modelSpec.costPerImage,
+        description: modelSpec.description,
+      } : null,
+      params,
+    };
+    fileLog('INFO', 'IMAGE', `[T2I] Démarrage`, { nodeId, model: modelId, details: logData });
+  },
   
-  imageSuccess: (nodeId: string, model: string, url: string, duration: number) =>
-    fileLog('SUCCESS', 'IMAGE', `Généré: ${url.slice(0, 80)}...`, { nodeId, model, duration }),
+  t2iSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
+    const modelSpec = findT2IModel(modelId);
+    fileLog('SUCCESS', 'IMAGE', `[T2I] Généré en ${duration}ms`, { 
+      nodeId, 
+      model: modelId, 
+      duration,
+      details: {
+        url: url.slice(0, 100),
+        modelSpec: modelSpec ? { id: modelSpec.id, cost: modelSpec.costPerImage } : null,
+      }
+    });
+  },
+
+  // ============================================================
+  // IMAGES I2I (Image-to-Image / Edit)
+  // ============================================================
+  i2iStart: (nodeId: string, modelId: string, params: { 
+    aspectRatio?: string; 
+    resolution?: string; 
+    promptLength?: number;
+    sourceImagesCount?: number;
+    testMode?: boolean;
+  }) => {
+    const modelSpec = findI2IModel(modelId);
+    const logData: ImageGenerationLog = {
+      type: 'I2I',
+      nodeId,
+      model: modelSpec ? {
+        id: modelSpec.id,
+        displayName: modelSpec.displayName,
+        type: modelSpec.type,
+        supportedAspectRatios: modelSpec.supportedAspectRatios,
+        supportedResolutions: modelSpec.supportedResolutions,
+        costPerImage: modelSpec.costPerImage,
+        description: modelSpec.description,
+      } : null,
+      params,
+    };
+    fileLog('INFO', 'IMAGE', `[I2I] Démarrage (${params.sourceImagesCount || 1} source(s))`, { nodeId, model: modelId, details: logData });
+  },
   
-  imageError: (nodeId: string, model: string, error: string, details?: Record<string, unknown>) =>
-    fileLog('ERROR', 'IMAGE', `Échec: ${error}`, { nodeId, model, details }),
+  i2iSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
+    const modelSpec = findI2IModel(modelId);
+    fileLog('SUCCESS', 'IMAGE', `[I2I] Généré en ${duration}ms`, { 
+      nodeId, 
+      model: modelId, 
+      duration,
+      details: {
+        url: url.slice(0, 100),
+        modelSpec: modelSpec ? { id: modelSpec.id, cost: modelSpec.costPerImage } : null,
+      }
+    });
+  },
+
+  // ============================================================
+  // IMAGES - Rétrocompatibilité (détecte automatiquement T2I vs I2I)
+  // ============================================================
+  imageStart: (nodeId: string, modelId: string, prompt?: string) => {
+    const isI2I = modelId.includes('edit');
+    const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    const logData: ImageGenerationLog = {
+      type: isI2I ? 'I2I' : 'T2I',
+      nodeId,
+      model: modelSpec ? {
+        id: modelSpec.id,
+        displayName: modelSpec.displayName,
+        type: modelSpec.type,
+        supportedAspectRatios: modelSpec.supportedAspectRatios,
+        supportedResolutions: modelSpec.supportedResolutions,
+        costPerImage: modelSpec.costPerImage,
+        description: modelSpec.description,
+      } : null,
+      params: { promptLength: prompt?.length },
+    };
+    fileLog('INFO', 'IMAGE', `Démarrage génération`, { nodeId, model: modelId, details: logData });
+  },
+  
+  imageSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
+    const isI2I = modelId.includes('edit');
+    const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    fileLog('SUCCESS', 'IMAGE', `Généré en ${duration}ms`, { 
+      nodeId, 
+      model: modelId, 
+      duration,
+      details: {
+        type: isI2I ? 'I2I' : 'T2I',
+        url: url.slice(0, 100),
+        modelSpec: modelSpec ? { id: modelSpec.id, cost: modelSpec.costPerImage } : null,
+      }
+    });
+  },
+  
+  imageError: (nodeId: string, modelId: string, error: string, details?: Record<string, unknown>) => {
+    const isI2I = modelId.includes('edit');
+    const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    fileLog('ERROR', 'IMAGE', `Échec: ${error}`, { 
+      nodeId, 
+      model: modelId, 
+      details: {
+        ...details,
+        type: isI2I ? 'I2I' : 'T2I',
+        modelSpec: modelSpec ? { id: modelSpec.id } : null,
+      }
+    });
+  },
   
   imagePolling: (nodeId: string, attempt: number, status: string) =>
     fileLog('DEBUG', 'IMAGE', `Polling #${attempt}: ${status}`, { nodeId }),
 
-  // VIDEOS
-  videoStart: (nodeId: string, model: string, duration: number, mode: string) =>
-    fileLog('INFO', 'VIDEO', `Démarrage génération ${duration}s mode=${mode}`, { nodeId, model }),
+  // ============================================================
+  // VIDEOS - AVEC JSON COMPLET DU MODÈLE
+  // ============================================================
+  videoStart: (nodeId: string, modelId: string, duration: number, mode: string) => {
+    const modelSpec = findVideoModel(modelId);
+    const logData: VideoGenerationLog = {
+      nodeId,
+      model: modelSpec ? {
+        id: modelSpec.id,
+        displayName: modelSpec.displayName,
+        supportsImageFirst: modelSpec.supportsImageFirst,
+        supportsImagesFirstLast: modelSpec.supportsImagesFirstLast,
+        supportedDurations: modelSpec.supportedDurations,
+        guidanceField: modelSpec.guidanceField,
+        guidanceDefault: modelSpec.guidanceDefault,
+        guidanceRange: modelSpec.guidanceRange,
+        lastImageField: modelSpec.lastImageField,
+        costPerSecond: modelSpec.costPerSecond,
+        description: modelSpec.description,
+      } : null,
+      params: {
+        mode: mode as 'first-only' | 'first+last',
+        duration,
+        hasFirstFrame: true,
+        hasLastFrame: mode === 'first+last',
+      },
+    };
+    fileLog('INFO', 'VIDEO', `Démarrage génération ${duration}s mode=${mode}`, { nodeId, model: modelId, details: logData });
+  },
   
-  videoSuccess: (nodeId: string, model: string, url: string, duration: number) =>
-    fileLog('SUCCESS', 'VIDEO', `Généré: ${url.slice(0, 80)}...`, { nodeId, model, duration }),
+  videoSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
+    const modelSpec = findVideoModel(modelId);
+    fileLog('SUCCESS', 'VIDEO', `Généré en ${duration}ms`, { 
+      nodeId, 
+      model: modelId, 
+      duration,
+      details: {
+        url: url.slice(0, 100),
+        modelSpec: modelSpec ? { 
+          id: modelSpec.id, 
+          costPerSecond: modelSpec.costPerSecond,
+          guidanceField: modelSpec.guidanceField,
+        } : null,
+      }
+    });
+  },
   
-  videoError: (nodeId: string, model: string, error: string, details?: Record<string, unknown>) =>
-    fileLog('ERROR', 'VIDEO', `Échec: ${error}`, { nodeId, model, details }),
+  videoError: (nodeId: string, modelId: string, error: string, details?: Record<string, unknown>) => {
+    const modelSpec = findVideoModel(modelId);
+    fileLog('ERROR', 'VIDEO', `Échec: ${error}`, { 
+      nodeId, 
+      model: modelId, 
+      details: {
+        ...details,
+        modelSpec: modelSpec ? { 
+          id: modelSpec.id,
+          supportsImageFirst: modelSpec.supportsImageFirst,
+          supportsImagesFirstLast: modelSpec.supportsImagesFirstLast,
+          lastImageField: modelSpec.lastImageField,
+        } : null,
+      }
+    });
+  },
   
   videoPolling: (nodeId: string, attempt: number, status: string) =>
     fileLog('DEBUG', 'VIDEO', `Polling #${attempt}: ${status}`, { nodeId }),
 
-  // LLM
-  llmStart: (provider: string, model: string) =>
-    fileLog('INFO', 'LLM', `Démarrage ${provider}/${model}`, { model }),
+  // ============================================================
+  // LLM - AVEC JSON COMPLET DU MODÈLE
+  // ============================================================
+  llmStart: (provider: LLMProvider, modelId: string, params?: { reasoningLevel?: string; temperature?: number }) => {
+    const modelSpec = findLLMModel(provider, modelId);
+    const logData: LLMGenerationLog = {
+      provider,
+      model: modelSpec ? {
+        id: modelSpec.id,
+        displayName: modelSpec.displayName,
+        supportsReasoning: modelSpec.supportsReasoning,
+        description: modelSpec.description,
+        costPer1MInput: modelSpec.costPer1MInput,
+        costPer1MOutput: modelSpec.costPer1MOutput,
+      } : null,
+      params: params || {},
+    };
+    fileLog('INFO', 'LLM', `Démarrage ${provider}/${modelId}`, { model: modelId, details: logData });
+  },
   
-  llmSuccess: (provider: string, model: string, tokens: number, duration: number) =>
-    fileLog('SUCCESS', 'LLM', `Réponse ${tokens} tokens`, { model, duration }),
+  llmSuccess: (provider: LLMProvider, modelId: string, tokens: number, duration: number) => {
+    const modelSpec = findLLMModel(provider, modelId);
+    fileLog('SUCCESS', 'LLM', `Réponse ${tokens} tokens en ${duration}ms`, { 
+      model: modelId, 
+      duration,
+      details: {
+        tokens,
+        modelSpec: modelSpec ? { 
+          id: modelSpec.id, 
+          costPer1MInput: modelSpec.costPer1MInput,
+          costPer1MOutput: modelSpec.costPer1MOutput,
+        } : null,
+      }
+    });
+  },
   
-  llmError: (provider: string, model: string, error: string) =>
-    fileLog('ERROR', 'LLM', `Échec: ${error}`, { model }),
+  llmError: (provider: LLMProvider, modelId: string, error: string) => {
+    const modelSpec = findLLMModel(provider, modelId);
+    fileLog('ERROR', 'LLM', `Échec: ${error}`, { 
+      model: modelId,
+      details: {
+        provider,
+        modelSpec: modelSpec ? { id: modelSpec.id } : null,
+      }
+    });
+  },
 
+  // ============================================================
   // API
+  // ============================================================
   apiCall: (endpoint: string, method: string, params?: Record<string, unknown>) =>
     fileLog('API', 'API', `${method} ${endpoint}`, { details: params }),
   
@@ -230,7 +559,9 @@ export const fLog = {
   apiError: (endpoint: string, status: number, error: string) =>
     fileLog('ERROR', 'API', `${endpoint} → ${status}: ${error}`, {}),
 
+  // ============================================================
   // GÉNÉRATION (séquences)
+  // ============================================================
   genStart: (sessionId: string, config: Record<string, unknown>) =>
     fileLog('INFO', 'GENERATION', `=== SESSION DÉMARRÉE: ${sessionId} ===`, { details: config }),
   
@@ -243,7 +574,9 @@ export const fLog = {
   genError: (sessionId: string, error: string, details?: Record<string, unknown>) =>
     fileLog('ERROR', 'GENERATION', `Session ${sessionId}: ${error}`, { details }),
 
+  // ============================================================
   // SYSTÈME
+  // ============================================================
   system: (message: string, details?: Record<string, unknown>) =>
     fileLog('INFO', 'SYSTEM', message, { details }),
   

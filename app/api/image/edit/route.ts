@@ -55,7 +55,14 @@ export async function POST(request: NextRequest) {
 
     const effectiveProjectId = projectId || 'local-generation';
 
-    fLog.imageStart(nodeId, model, prompt);
+    // Log avec tous les paramètres du modèle depuis la source de vérité
+    fLog.i2iStart(nodeId, model, {
+      aspectRatio,
+      resolution,
+      promptLength: prompt?.length,
+      sourceImagesCount: sourceImages.length,
+      testMode,
+    });
     console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}${testMode ? ' (MODE TEST)' : ''}`);
     console.log(`[API Image Edit] Source images: ${sourceImages.length}, prompt: ${prompt.substring(0, 80)}...`);
 
@@ -88,11 +95,11 @@ export async function POST(request: NextRequest) {
       
       if ('error' in result) {
         console.error('[API Image Edit] Erreur:', result.error);
-        fLog.imageError(nodeId, model, result.error);
+        fLog.imageError(nodeId, model, result.error, { testMode: true, aspectRatio });
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
-      fLog.imageSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
+      fLog.i2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -118,11 +125,11 @@ export async function POST(request: NextRequest) {
       
       if ('error' in result) {
         console.error('[API Image Edit] Erreur:', result.error);
-        fLog.imageError(nodeId, model, result.error);
+        fLog.imageError(nodeId, model, result.error, { testMode: false, aspectRatio, resolution });
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
-      fLog.imageSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
+      fLog.i2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,

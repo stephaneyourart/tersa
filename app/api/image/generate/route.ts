@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateImageAction } from '@/app/actions/image/create';
+import { fLog } from '@/lib/file-logger';
 
 // Convertir aspect ratio en size UNIQUEMENT pour le mode TEST
 function aspectRatioToTestSize(aspectRatio: string): string {
@@ -27,6 +28,8 @@ function aspectRatioToTestSize(aspectRatio: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const body = await request.json();
     const { 
@@ -45,6 +48,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!nodeId || !prompt) {
+      fLog.error('Image Generate: paramètres manquants', { nodeId, hasPrompt: !!prompt });
       return NextResponse.json(
         { error: 'nodeId et prompt sont requis' },
         { status: 400 }
@@ -52,6 +56,14 @@ export async function POST(request: NextRequest) {
     }
 
     const effectiveProjectId = projectId || 'local-generation';
+    
+    // Log avec tous les paramètres du modèle depuis la source de vérité
+    fLog.t2iStart(nodeId, model, {
+      aspectRatio,
+      resolution,
+      promptLength: prompt?.length,
+      testMode,
+    });
     
     if (testMode) {
       // ========== MODE TEST ==========
@@ -68,11 +80,15 @@ export async function POST(request: NextRequest) {
         instructions: '',
       });
 
+      const duration = Date.now() - startTime;
+
       if ('error' in result) {
         console.error('[API Image Generate] Erreur:', result.error);
+        fLog.imageError(nodeId, model, result.error, { testMode: true, aspectRatio });
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
+      fLog.t2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -94,11 +110,15 @@ export async function POST(request: NextRequest) {
         instructions: '',
       });
 
+      const duration = Date.now() - startTime;
+
       if ('error' in result) {
         console.error('[API Image Generate] Erreur:', result.error);
+        fLog.imageError(nodeId, model, result.error, { testMode: false, aspectRatio, resolution });
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
+      fLog.t2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -106,7 +126,9 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
+    const duration = Date.now() - startTime;
     console.error('[API Image Generate] Erreur:', error);
+    fLog.error(`Image Generate crash après ${duration}ms: ${error instanceof Error ? error.message : 'Erreur inconnue'}`, { nodeId: 'unknown' });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erreur inconnue' },
       { status: 500 }
