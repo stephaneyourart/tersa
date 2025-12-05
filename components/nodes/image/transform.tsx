@@ -763,7 +763,9 @@ export const ImageTransform = ({
 
   // Handler pour lancer l'upscale
   const handleUpscale = useCallback(async (settings: UpscaleSettings) => {
-    const imageUrl = data.generated?.url;
+    // Utiliser l'URL originale CloudFront si disponible (requise pour Lupa AI)
+    // Sinon fallback sur l'URL locale (ne fonctionnera pas avec Lupa)
+    const imageUrl = (data.generated as { originalUrl?: string })?.originalUrl || data.generated?.url;
     if (!imageUrl) return;
 
     const startTime = Date.now();
