@@ -1,10 +1,11 @@
 /**
- * Système de logging centralisé en FICHIERS
+ * Système de logging centralisé en FICHIERS JSON
  * 
- * - Écrit dans /logs/*.log
+ * FORMAT: JSON Lines (JSONL) - un objet JSON par ligne
+ * - Extension: .jsonl pour affichage joli dans les éditeurs
  * - Un fichier par jour
  * - Auto-nettoyage après 3 jours
- * - Format structuré et grep-able
+ * - Heure française (Europe/Paris)
  */
 
 import fs from 'fs';
@@ -22,7 +23,6 @@ const TIMEZONE = 'Europe/Paris';
  * Format: YYYY-MM-DDTHH:mm:ss.sss (sans le Z car ce n'est plus UTC)
  */
 function formatDateFR(date: Date): string {
-  // Utiliser Intl.DateTimeFormat pour obtenir les composants en heure française
   const formatter = new Intl.DateTimeFormat('fr-CA', {
     timeZone: TIMEZONE,
     year: 'numeric',
@@ -59,22 +59,23 @@ function getTodayDateFR(): string {
     month: '2-digit',
     day: '2-digit',
   });
-  return formatter.format(now); // Format: YYYY-MM-DD
+  return formatter.format(now);
 }
 
 // Types
 export type LogLevel = 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'DEBUG' | 'API';
 export type LogCategory = 'IMAGE' | 'VIDEO' | 'LLM' | 'API' | 'SYSTEM' | 'GENERATION';
 
-interface LogEntry {
+// Interface pour une entrée de log JSON complète
+interface JsonLogEntry {
   timestamp: string;
   level: LogLevel;
   category: LogCategory;
-  message: string;
+  event: string;
   nodeId?: string;
   model?: string;
-  duration?: number;
-  details?: Record<string, unknown>;
+  durationMs?: number;
+  data?: Record<string, unknown>;
 }
 
 // S'assurer que le dossier logs existe
@@ -84,10 +85,10 @@ function ensureLogsDir(): void {
   }
 }
 
-// Obtenir le nom du fichier log du jour (en heure française)
+// Obtenir le nom du fichier log du jour (format JSONL)
 function getTodayLogFile(): string {
-  const today = getTodayDateFR(); // YYYY-MM-DD en heure française
-  return path.join(LOGS_DIR, `${today}.log`);
+  const today = getTodayDateFR();
+  return path.join(LOGS_DIR, `${today}.jsonl`);
 }
 
 // Nettoyer les anciens logs (> 3 jours)
@@ -99,7 +100,7 @@ function cleanOldLogs(): void {
     const maxAge = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
     for (const file of files) {
-      if (!file.endsWith('.log')) continue;
+      if (!file.endsWith('.jsonl') && !file.endsWith('.log')) continue;
       
       const filePath = path.join(LOGS_DIR, file);
       const stats = fs.statSync(filePath);
@@ -114,36 +115,22 @@ function cleanOldLogs(): void {
   }
 }
 
-// Formater une entrée de log
-function formatLogEntry(entry: LogEntry): string {
-  const { timestamp, level, category, message, nodeId, model, duration, details } = entry;
-  
-  let line = `${timestamp} [${level.padEnd(7)}] [${category.padEnd(10)}]`;
-  
-  if (nodeId) line += ` [node:${nodeId}]`;
-  if (model) line += ` [model:${model}]`;
-  if (duration !== undefined) line += ` [${duration}ms]`;
-  
-  line += ` ${message}`;
-  
-  if (details && Object.keys(details).length > 0) {
-    line += ` | ${JSON.stringify(details)}`;
-  }
-  
-  return line;
-}
-
-// Écrire dans le fichier log
-function writeLog(entry: LogEntry): void {
+// Écrire une entrée JSON dans le fichier log
+function writeJsonLog(entry: JsonLogEntry): void {
   try {
     ensureLogsDir();
     const logFile = getTodayLogFile();
-    const line = formatLogEntry(entry) + '\n';
     
-    fs.appendFileSync(logFile, line, 'utf-8');
+    // JSON indenté pour lisibilité (2 espaces) puis compacté sur une ligne
+    const jsonLine = JSON.stringify(entry) + '\n';
     
-    // Aussi afficher en console pour le terminal
-    const consoleMsg = `${entry.timestamp.slice(11, 23)} [${entry.level}] [${entry.category}] ${entry.message}`;
+    fs.appendFileSync(logFile, jsonLine, 'utf-8');
+    
+    // Console: format court pour le terminal
+    const time = entry.timestamp.slice(11, 23);
+    const icon = entry.level === 'ERROR' ? '❌' : entry.level === 'SUCCESS' ? '✅' : entry.level === 'WARN' ? '⚠️' : '📝';
+    const consoleMsg = `${time} ${icon} [${entry.category}] ${entry.event}`;
+    
     if (entry.level === 'ERROR') {
       console.error(consoleMsg);
     } else if (entry.level === 'WARN') {
@@ -156,11 +143,11 @@ function writeLog(entry: LogEntry): void {
   }
 }
 
-// Logger principal
+// Logger principal - écrit du JSON
 export function fileLog(
   level: LogLevel,
   category: LogCategory,
-  message: string,
+  event: string,
   options?: {
     nodeId?: string;
     model?: string;
@@ -168,15 +155,21 @@ export function fileLog(
     details?: Record<string, unknown>;
   }
 ): void {
-  const entry: LogEntry = {
-    timestamp: formatDateFR(new Date()), // Heure française (Europe/Paris)
+  const entry: JsonLogEntry = {
+    timestamp: formatDateFR(new Date()),
     level,
     category,
-    message,
-    ...options,
+    event,
   };
   
-  writeLog(entry);
+  if (options?.nodeId) entry.nodeId = options.nodeId;
+  if (options?.model) entry.model = options.model;
+  if (options?.duration !== undefined) entry.durationMs = options.duration;
+  if (options?.details && Object.keys(options.details).length > 0) {
+    entry.data = options.details;
+  }
+  
+  writeJsonLog(entry);
 }
 
 // ============================================================
@@ -194,28 +187,68 @@ import {
   type LLMProvider,
 } from './models-registry';
 
-// Trouver un modèle T2I par son ID (matching partiel)
+// ============================================================
+// MAPPING DES NOMS "SIMPLIFIÉS" VERS LES VRAIS IDS
+// Source de vérité: models-registry.ts
+// ============================================================
+
+const T2I_MODEL_ALIASES: Record<string, string> = {
+  // Noms simplifiés → vrais IDs WaveSpeed
+  'nano-banana-pro-ultra-wavespeed': 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
+  'nano-banana-pro-wavespeed': 'wavespeed/google/nano-banana-pro/text-to-image',
+  'nano-banana-wavespeed': 'wavespeed/google/nano-banana/text-to-image',
+  'flux-schnell-wavespeed': 'wavespeed/google/nano-banana/text-to-image', // fallback
+};
+
+const I2I_MODEL_ALIASES: Record<string, string> = {
+  // Noms simplifiés → vrais IDs WaveSpeed
+  'nano-banana-pro-edit-ultra-wavespeed': 'wavespeed/google/nano-banana-pro/edit-ultra',
+  'nano-banana-pro-edit-wavespeed': 'wavespeed/google/nano-banana-pro/edit',
+  'nano-banana-edit-wavespeed': 'wavespeed/google/nano-banana/edit',
+};
+
+const VIDEO_MODEL_ALIASES: Record<string, string> = {
+  // Noms simplifiés → vrais IDs WaveSpeed/Kling
+  'kling-v2.6-pro': 'kwaivgi/kling-v2.6-pro/image-to-video',
+  'kling-v2.6-pro-first-last': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', // v2.5 supporte first+last
+  'kling-v2.5-turbo-pro': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
+  'kling-o1': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', // alias legacy
+  'kling-o1-i2v': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', // alias legacy
+};
+
+// Résoudre un ID de modèle (supporte les alias)
+function resolveModelId(modelId: string, aliases: Record<string, string>): string {
+  return aliases[modelId] || modelId;
+}
+
+// Trouver un modèle T2I par son ID (supporte les alias)
 function findT2IModel(modelId: string): ImageModel | undefined {
+  const resolvedId = resolveModelId(modelId, T2I_MODEL_ALIASES);
   return T2I_MODELS.find(m => 
-    m.id === modelId || 
+    m.id === resolvedId || 
+    m.id === modelId ||
     m.id.includes(modelId) || 
     modelId.includes(m.id.split('/').pop() || '')
   );
 }
 
-// Trouver un modèle I2I par son ID (matching partiel)
+// Trouver un modèle I2I par son ID (supporte les alias)
 function findI2IModel(modelId: string): ImageModel | undefined {
+  const resolvedId = resolveModelId(modelId, I2I_MODEL_ALIASES);
   return I2I_MODELS.find(m => 
-    m.id === modelId || 
+    m.id === resolvedId || 
+    m.id === modelId ||
     m.id.includes(modelId) || 
     modelId.includes(m.id.split('/').pop() || '')
   );
 }
 
-// Trouver un modèle vidéo par son ID (matching partiel)
+// Trouver un modèle vidéo par son ID (supporte les alias)
 function findVideoModel(modelId: string): VideoModel | undefined {
+  const resolvedId = resolveModelId(modelId, VIDEO_MODEL_ALIASES);
   return VIDEO_MODELS.find(m => 
-    m.id === modelId || 
+    m.id === resolvedId || 
+    m.id === modelId ||
     m.id.includes(modelId) || 
     modelId.includes(m.id.split('/').pop() || '')
   );
@@ -591,27 +624,34 @@ export const fLog = {
 // UTILITAIRES
 // ============================================================
 
-// Lire les logs d'aujourd'hui
-export function getTodayLogs(): string[] {
+// Lire les logs d'aujourd'hui (retourne des objets JSON)
+export function getTodayLogs(): JsonLogEntry[] {
   try {
     const logFile = getTodayLogFile();
     if (!fs.existsSync(logFile)) return [];
-    return fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean);
+    return fs.readFileSync(logFile, 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        try { return JSON.parse(line); } 
+        catch { return null; }
+      })
+      .filter(Boolean) as JsonLogEntry[];
   } catch {
     return [];
   }
 }
 
-// Lire les N dernières lignes
-export function getRecentLogs(count: number = 100): string[] {
+// Lire les N dernières entrées
+export function getRecentLogs(count: number = 100): JsonLogEntry[] {
   const logs = getTodayLogs();
   return logs.slice(-count);
 }
 
 // Lire les erreurs récentes
-export function getRecentErrors(count: number = 50): string[] {
+export function getRecentErrors(count: number = 50): JsonLogEntry[] {
   const logs = getTodayLogs();
-  return logs.filter(l => l.includes('[ERROR')).slice(-count);
+  return logs.filter(l => l.level === 'ERROR').slice(-count);
 }
 
 // Lister les fichiers de logs disponibles
@@ -619,7 +659,7 @@ export function listLogFiles(): string[] {
   try {
     ensureLogsDir();
     return fs.readdirSync(LOGS_DIR)
-      .filter(f => f.endsWith('.log'))
+      .filter(f => f.endsWith('.jsonl') || f.endsWith('.log'))
       .sort()
       .reverse();
   } catch {
@@ -627,16 +667,26 @@ export function listLogFiles(): string[] {
   }
 }
 
-// Lire un fichier de log spécifique
-export function readLogFile(filename: string): string[] {
+// Lire un fichier de log spécifique (retourne des objets JSON)
+export function readLogFile(filename: string): JsonLogEntry[] {
   try {
     const filePath = path.join(LOGS_DIR, filename);
     if (!fs.existsSync(filePath)) return [];
-    return fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+    return fs.readFileSync(filePath, 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        try { return JSON.parse(line); }
+        catch { return null; }
+      })
+      .filter(Boolean) as JsonLogEntry[];
   } catch {
     return [];
   }
 }
+
+// Exporter le type pour utilisation externe
+export type { JsonLogEntry };
 
 // Nettoyer les vieux logs au démarrage
 cleanOldLogs();
