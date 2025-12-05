@@ -334,6 +334,7 @@ interface LLMGenerationLog {
 export const fLog = {
   // ============================================================
   // IMAGES T2I (Text-to-Image)
+  // SOURCE DE VÉRITÉ UNIQUE: models-registry.ts
   // ============================================================
   t2iStart: (nodeId: string, modelId: string, params: { 
     aspectRatio?: string; 
@@ -342,6 +343,9 @@ export const fLog = {
     testMode?: boolean;
   }) => {
     const modelSpec = findT2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry, jamais le nom inventé
+    const realModelId = modelSpec?.id || modelId;
+    
     const logData: ImageGenerationLog = {
       type: 'T2I',
       nodeId,
@@ -356,14 +360,17 @@ export const fLog = {
       } : null,
       params,
     };
-    fileLog('INFO', 'IMAGE', `[T2I] Démarrage`, { nodeId, model: modelId, details: logData });
+    fileLog('INFO', 'IMAGE', `[T2I] Démarrage`, { nodeId, model: realModelId, details: logData });
   },
   
   t2iSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
     const modelSpec = findT2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('SUCCESS', 'IMAGE', `[T2I] Généré en ${duration}ms`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       duration,
       details: {
         url: url.slice(0, 100),
@@ -374,6 +381,7 @@ export const fLog = {
 
   // ============================================================
   // IMAGES I2I (Image-to-Image / Edit)
+  // SOURCE DE VÉRITÉ UNIQUE: models-registry.ts
   // ============================================================
   i2iStart: (nodeId: string, modelId: string, params: { 
     aspectRatio?: string; 
@@ -384,6 +392,9 @@ export const fLog = {
     sourceImageUrls?: string[];  // URLs des images sources
   }) => {
     const modelSpec = findI2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry, jamais le nom inventé
+    const realModelId = modelSpec?.id || modelId;
+    
     const logData: ImageGenerationLog & { sourceImageUrls?: string[] } = {
       type: 'I2I',
       nodeId,
@@ -406,14 +417,17 @@ export const fLog = {
       // IMAGES SOURCES - CRITIQUES POUR LE DEBUG
       sourceImageUrls: params.sourceImageUrls,
     };
-    fileLog('INFO', 'IMAGE', `[I2I] Démarrage (${params.sourceImagesCount || 1} source(s))`, { nodeId, model: modelId, details: logData });
+    fileLog('INFO', 'IMAGE', `[I2I] Démarrage (${params.sourceImagesCount || 1} source(s))`, { nodeId, model: realModelId, details: logData });
   },
   
   i2iSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
     const modelSpec = findI2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('SUCCESS', 'IMAGE', `[I2I] Généré en ${duration}ms`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       duration,
       details: {
         url: url.slice(0, 100),
@@ -424,10 +438,14 @@ export const fLog = {
 
   // ============================================================
   // IMAGES - Rétrocompatibilité (détecte automatiquement T2I vs I2I)
+  // SOURCE DE VÉRITÉ UNIQUE: models-registry.ts
   // ============================================================
   imageStart: (nodeId: string, modelId: string, prompt?: string) => {
     const isI2I = modelId.includes('edit');
     const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     const logData: ImageGenerationLog = {
       type: isI2I ? 'I2I' : 'T2I',
       nodeId,
@@ -442,15 +460,18 @@ export const fLog = {
       } : null,
       params: { promptLength: prompt?.length },
     };
-    fileLog('INFO', 'IMAGE', `Démarrage génération`, { nodeId, model: modelId, details: logData });
+    fileLog('INFO', 'IMAGE', `Démarrage génération`, { nodeId, model: realModelId, details: logData });
   },
   
   imageSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
     const isI2I = modelId.includes('edit');
     const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('SUCCESS', 'IMAGE', `Généré en ${duration}ms`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       duration,
       details: {
         type: isI2I ? 'I2I' : 'T2I',
@@ -463,9 +484,12 @@ export const fLog = {
   imageError: (nodeId: string, modelId: string, error: string, details?: Record<string, unknown>) => {
     const isI2I = modelId.includes('edit');
     const modelSpec = isI2I ? findI2IModel(modelId) : findT2IModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('ERROR', 'IMAGE', `Échec: ${error}`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       details: {
         ...details,
         type: isI2I ? 'I2I' : 'T2I',
@@ -479,6 +503,7 @@ export const fLog = {
 
   // ============================================================
   // VIDEOS - AVEC JSON COMPLET DU MODÈLE ET IMAGES INPUT
+  // SOURCE DE VÉRITÉ UNIQUE: models-registry.ts
   // ============================================================
   videoStart: (nodeId: string, modelId: string, duration: number, mode: string, inputImages?: {
     firstFrame?: string;
@@ -486,6 +511,9 @@ export const fLog = {
     allImages?: string[];
   }) => {
     const modelSpec = findVideoModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry, jamais le nom inventé
+    const realModelId = modelSpec?.id || modelId;
+    
     const logData: VideoGenerationLog & { inputImages?: { firstFrame?: string; lastFrame?: string; allImages?: string[] } } = {
       nodeId,
       model: modelSpec ? {
@@ -514,14 +542,17 @@ export const fLog = {
         allImages: inputImages.allImages,
       } : undefined,
     };
-    fileLog('INFO', 'VIDEO', `Démarrage génération ${duration}s mode=${mode}`, { nodeId, model: modelId, details: logData });
+    fileLog('INFO', 'VIDEO', `Démarrage génération ${duration}s mode=${mode}`, { nodeId, model: realModelId, details: logData });
   },
   
   videoSuccess: (nodeId: string, modelId: string, url: string, duration: number) => {
     const modelSpec = findVideoModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('SUCCESS', 'VIDEO', `Généré en ${duration}ms`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       duration,
       details: {
         url: url.slice(0, 100),
@@ -536,9 +567,12 @@ export const fLog = {
   
   videoError: (nodeId: string, modelId: string, error: string, details?: Record<string, unknown>) => {
     const modelSpec = findVideoModel(modelId);
+    // TOUJOURS utiliser le vrai ID du registry
+    const realModelId = modelSpec?.id || modelId;
+    
     fileLog('ERROR', 'VIDEO', `Échec: ${error}`, { 
       nodeId, 
-      model: modelId, 
+      model: realModelId, 
       details: {
         ...details,
         modelSpec: modelSpec ? { 
