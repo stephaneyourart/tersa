@@ -64,6 +64,24 @@ interface GenerationResult {
 
 export interface ParallelGenerationOptions {
   quality: QualityLevel;
+  
+  // ============================================================
+  // MODÈLES T2I / I2I - SÉLECTIONNÉS PAR L'UTILISATEUR
+  // Ces valeurs DOIVENT être utilisées à la place de getTextToImageModel/getEditModel
+  // ============================================================
+  /** Modèle Text-to-Image (ex: wavespeed/google/nano-banana-pro/text-to-image-ultra) */
+  t2iModel?: string;
+  /** Modèle Image-to-Image / Edit (ex: wavespeed/google/nano-banana-pro/edit-ultra) */
+  i2iModel?: string;
+  /** Résolution T2I (ex: '4k', '8k') */
+  t2iResolution?: string;
+  /** Résolution I2I (ex: '4k', '8k') */
+  i2iResolution?: string;
+  /** Aspect ratio T2I */
+  t2iAspectRatio?: string;
+  /** Aspect ratio I2I */
+  i2iAspectRatio?: string;
+  
   characterImages: Array<{
     characterId: string;
     imageNodeIds: string[];
@@ -123,6 +141,13 @@ export async function generateAllMediaParallel(
 ): Promise<{ images: GenerationResult[]; videos: GenerationResult[] }> {
   const {
     quality,
+    // MODÈLES T2I/I2I SÉLECTIONNÉS PAR L'UTILISATEUR
+    t2iModel,
+    i2iModel,
+    t2iResolution,
+    i2iResolution,
+    t2iAspectRatio,
+    i2iAspectRatio,
     characterImages,
     decorImages,
     planImages,
@@ -132,6 +157,22 @@ export async function generateAllMediaParallel(
     onImageGenerated,
     onVideoGenerated,
   } = options;
+  
+  // ============================================================
+  // RÉSOLUTION DES MODÈLES : PRIORITÉ AUX SÉLECTIONS UTILISATEUR
+  // ============================================================
+  // Si l'utilisateur a sélectionné un modèle, on l'utilise.
+  // Sinon, fallback sur l'ancien système basé sur "quality"
+  const resolvedT2IModel = t2iModel || getTextToImageModel(quality);
+  const resolvedI2IModel = i2iModel || getEditModel(quality);
+  const resolvedT2IResolution = t2iResolution || (quality === 'elevee' ? '4K' : undefined);
+  const resolvedI2IResolution = i2iResolution || (quality === 'elevee' ? '4K' : undefined);
+  
+  console.log('[ParallelGen] Modèles résolus:');
+  console.log(`  T2I: ${resolvedT2IModel} (résolution: ${resolvedT2IResolution || 'défaut'})`);
+  console.log(`  I2I: ${resolvedI2IModel} (résolution: ${resolvedI2IResolution || 'défaut'})`);
+  if (t2iModel) console.log('  ✓ T2I model from user selection');
+  if (i2iModel) console.log('  ✓ I2I model from user selection');
 
   const imageResults: GenerationResult[] = [];
   const videoResults: GenerationResult[] = [];
@@ -214,10 +255,11 @@ export async function generateAllMediaParallel(
     const results: GenerationResult[] = [];
     
     try {
-      const model = getTextToImageModel(quality);
-      const extraParams = getQualityParams(quality);
+      // UTILISE LE MODÈLE T2I SÉLECTIONNÉ PAR L'UTILISATEUR
+      const model = resolvedT2IModel;
+      const extraParams = resolvedT2IResolution ? { resolution: resolvedT2IResolution } : {};
       
-      console.log(`[ParallelGen] 🚀 Primaire ${primaryTask.entityType}/${primaryTask.entityId}/${primaryTask.viewType}`);
+      console.log(`[ParallelGen] 🚀 Primaire ${primaryTask.entityType}/${primaryTask.entityId}/${primaryTask.viewType} (model: ${model})`);
       
       const result = await generateImage({
         prompt: primaryTask.prompt,
@@ -239,8 +281,9 @@ export async function generateAllMediaParallel(
           
           const variantPromises = myVariants.map(async (variantTask) => {
             try {
-              const editModel = getEditModel(quality);
-              const editParams = getQualityParams(quality);
+              // UTILISE LE MODÈLE I2I SÉLECTIONNÉ PAR L'UTILISATEUR
+              const editModel = resolvedI2IModel;
+              const editParams = resolvedI2IResolution ? { resolution: resolvedI2IResolution } : {};
               
               const variantResult = await generateImageEdit({
                 prompt: variantTask.prompt,
@@ -373,10 +416,11 @@ export async function generateAllMediaParallel(
     // Lancer TOUTES les images de plan EN PARALLÈLE
     const planImagePromises = planImageTasks.map(async (task) => {
       try {
-        const model = getEditModel(quality);
-        const extraParams = getQualityParams(quality);
+        // UTILISE LE MODÈLE I2I SÉLECTIONNÉ PAR L'UTILISATEUR
+        const model = resolvedI2IModel;
+        const extraParams = resolvedI2IResolution ? { resolution: resolvedI2IResolution } : {};
         
-        console.log(`[ParallelGen] Génération image plan ${task.entityId}/${task.viewType}`);
+        console.log(`[ParallelGen] Génération image plan ${task.entityId}/${task.viewType} (model: ${model})`);
         
         // Utiliser la première image de référence pour l'edit
         const mainReference = task.referenceImageUrls?.[0];

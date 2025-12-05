@@ -67,6 +67,14 @@ interface GeneratableNode {
 interface GenerationPanelProps {
   projectId: string;
   testMode?: boolean; // Mode test défini lors de la génération du projet (page précédente)
+  // NOUVEAU: Modèles de génération sélectionnés par l'utilisateur dans la page de génération
+  generationModels?: {
+    t2iModel?: string;
+    i2iModel?: string;
+    videoModel?: string;
+    t2iResolution?: string;
+    i2iResolution?: string;
+  } | null;
 }
 
 // ========== HELPERS ==========
@@ -293,7 +301,7 @@ const MIN_WIDTH = 450;
 const MAX_WIDTH = 1200;
 
 // ========== COMPOSANT PRINCIPAL ==========
-export function GenerationPanel({ projectId, testMode = false }: GenerationPanelProps) {
+export function GenerationPanel({ projectId, testMode = false, generationModels }: GenerationPanelProps) {
   const { getNodes, getEdges, updateNodeData } = useReactFlow();
   const { fetchMedias } = useMediaLibraryStore();
   
@@ -305,20 +313,50 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
   const [sendToDVR, setSendToDVR] = useState(false);
   // testMode est maintenant passé en props depuis la page de génération du projet
   
-  // Modèles pour le test mode (ultra rapide et pas cher)
-  // NOTE: nano-banana-edit (pas pro) pour éviter les problèmes de zoom avec FLUX Kontext
-  const TEST_MODELS = {
-    textToImage: 'flux-schnell-wavespeed',                      // 0.003$ - le plus rapide
-    edit: 'nano-banana-edit-wavespeed',                         // nano-banana edit (pas pro) - plus stable
-    video: 'kling-v2.6-pro-first-last',                         // Garder le même pour la vidéo
+  // ============================================================
+  // MODÈLES DE GÉNÉRATION
+  // PRIORITÉ: modèles sélectionnés par l'utilisateur > fallback hardcodé
+  // ============================================================
+  
+  // Modèles par défaut pour le test mode (ultra rapide et pas cher)
+  const DEFAULT_TEST_MODELS = {
+    textToImage: 'flux-schnell-wavespeed',
+    edit: 'nano-banana-edit-wavespeed',
+    video: 'kling-v2.6-pro-first-last',
   };
   
-  // Modèles pour le mode normal (haute qualité)
-  const NORMAL_MODELS = {
+  // Modèles par défaut pour le mode normal (haute qualité)
+  const DEFAULT_NORMAL_MODELS = {
     textToImage: 'nano-banana-pro-ultra-wavespeed',
     edit: 'nano-banana-pro-edit-ultra-wavespeed',
     video: 'kling-v2.6-pro-first-last',
   };
+  
+  // RÉSOLUTION FINALE: Utiliser les modèles sélectionnés par l'utilisateur si disponibles
+  const resolvedModels = useMemo(() => {
+    const defaults = testMode ? DEFAULT_TEST_MODELS : DEFAULT_NORMAL_MODELS;
+    
+    // Si l'utilisateur a sélectionné des modèles, les utiliser
+    if (generationModels) {
+      const resolved = {
+        textToImage: generationModels.t2iModel || defaults.textToImage,
+        edit: generationModels.i2iModel || defaults.edit,
+        video: generationModels.videoModel || defaults.video,
+        t2iResolution: generationModels.t2iResolution,
+        i2iResolution: generationModels.i2iResolution,
+      };
+      console.log('[GenerationPanel] Modèles résolus (user selection):', resolved);
+      return resolved;
+    }
+    
+    // Sinon, utiliser les defaults selon le mode
+    console.log('[GenerationPanel] Modèles par défaut:', defaults);
+    return { ...defaults, t2iResolution: undefined, i2iResolution: undefined };
+  }, [testMode, generationModels]);
+  
+  // Aliases pour compatibilité avec le code existant
+  const TEST_MODELS = DEFAULT_TEST_MODELS;
+  const NORMAL_MODELS = DEFAULT_NORMAL_MODELS;
   
   // Redimensionnement
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -690,9 +728,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     }
     
     try {
-      const models = testMode ? TEST_MODELS : NORMAL_MODELS;
+      // UTILISER LES MODÈLES RÉSOLUS (sélection utilisateur ou défaut)
       const endpoint = images.length > 0 ? '/api/image/edit' : '/api/image/generate';
-      const selectedModel = images.length > 0 ? models.edit : models.textToImage;
+      const selectedModel = images.length > 0 ? resolvedModels.edit : resolvedModels.textToImage;
+      const selectedResolution = images.length > 0 ? resolvedModels.i2iResolution : resolvedModels.t2iResolution;
       
       // Log de l'appel API
       logImage.api(nodeLabel, endpoint, selectedModel, {
@@ -703,10 +742,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       });
       
       // Paramètres de base
-      // MODE PROD: passer aspectRatio + resolution directement à WaveSpeed
-      // MODE TEST: passer juste aspectRatio (l'API convertira en dimensions)
+      // UTILISER LA RÉSOLUTION SÉLECTIONNÉE PAR L'UTILISATEUR
+      // Sinon fallback sur les settings Creative Plan
       const settings = loadCreativePlanSettings();
-      const resolution = !testMode ? (settings.prod?.resolution || '4k') : undefined;
+      const resolution = selectedResolution || (!testMode ? (settings.prod?.resolution || '4k') : undefined);
       
       const baseParams = { 
         nodeId, 
@@ -714,19 +753,20 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         projectId, 
         aspectRatio, 
         testMode,
-        // En mode PROD, passer la résolution (4k/8k)
+        // Passer la résolution si définie
         ...(resolution ? { resolution } : {}),
       };
       
       // Paramètres spécifiques selon le type (edit ou generate)
       // IMPORTANT: Envoyer originalUrl (CloudFront) avec url pour éviter conversion base64
+      // UTILISER LE MODÈLE SÉLECTIONNÉ PAR L'UTILISATEUR
       const body = images.length > 0 
         ? { 
             ...baseParams, 
-            model: models.edit, 
+            model: selectedModel, 
             sourceImages: images.map(i => ({ url: i.url, originalUrl: i.originalUrl })),
           }
-        : { ...baseParams, model: models.textToImage };
+        : { ...baseParams, model: selectedModel };
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -748,8 +788,8 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       const imageUrl = result.nodeData?.generated?.url || result.nodeData?.url;
       
       if (imageUrl) {
-        const usedModel = images.length > 0 ? models.edit : models.textToImage;
-        logImage.success(nodeLabel, nodeId, imageUrl, usedModel);
+        // UTILISER LE MODÈLE SÉLECTIONNÉ PAR L'UTILISATEUR
+        logImage.success(nodeLabel, nodeId, imageUrl, selectedModel);
         
         // Stocker TOUTES les données retournées par l'API, incluant width/height
         const apiNodeData = result.nodeData || {};
@@ -757,7 +797,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
           ...apiNodeData, // Inclure width, height, isGenerated, etc.
           generated: apiNodeData.generated || { url: imageUrl, type: 'image/png' },
           url: imageUrl,
-          model: usedModel, // Stocker le modèle utilisé (pour l'affichage sous le nœud)
+          model: selectedModel, // Stocker le modèle utilisé (pour l'affichage sous le nœud)
           generating: false,
           generatingStartTime: undefined,
           isGenerated: true, // Marquer explicitement comme généré
@@ -842,8 +882,8 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       logVideo.frames(nodeLabel, firstFrameUrl, lastFrameUrl, frameMode);
     }
     
-    const models = testMode ? TEST_MODELS : NORMAL_MODELS;
-    const selectedModel = models.video;
+    // UTILISER LE MODÈLE VIDÉO SÉLECTIONNÉ PAR L'UTILISATEUR
+    const selectedModel = resolvedModels.video;
     
     // Log de l'appel API
     logVideo.api(nodeLabel, selectedModel, {

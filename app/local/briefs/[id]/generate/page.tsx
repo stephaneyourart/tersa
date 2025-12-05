@@ -483,16 +483,31 @@ export default function GenerateProjectPage() {
               setReasoning(prev => prev + `\n📝 Création du projet local...\n`);
               const newProject = createLocalProject(projName);
               
+              // NOUVEAU: Stocker les modèles de génération sélectionnés par l'utilisateur
+              // Ces modèles seront utilisés par GenerationPanel lors de la génération
+              const generationModels = data.generationModels || {
+                t2iModel: config.t2i.model,
+                i2iModel: config.i2i.model,
+                videoModel: config.video.model,
+                t2iResolution: config.t2i.resolution,
+                i2iResolution: config.i2i.resolution,
+              };
+              
+              console.log('[Generate] Modèles stockés:', generationModels);
+              
               updateLocalProject(newProject.id, { 
                 data: {
                   ...canvasData,
                   generationSequence: generationSequenceData,
                   testMode: false,
+                  // NOUVEAU: Modèles sélectionnés pour la génération future
+                  generationModels,
                 }
               });
               
               createdProjectId = newProject.id;
               setReasoning(prev => prev + `✅ Projet créé : ${createdProjectId}\n`);
+              setReasoning(prev => prev + `📦 Modèles: T2I=${generationModels.t2iModel}, I2I=${generationModels.i2iModel}\n`);
             }
             break;
 

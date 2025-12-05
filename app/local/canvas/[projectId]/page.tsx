@@ -29,6 +29,15 @@ export default function LocalCanvasPage() {
   } | null>(null);
   const [testMode, setTestMode] = useState(false); // Mode test défini lors de la génération du projet
   
+  // NOUVEAU: Modèles de génération sélectionnés par l'utilisateur
+  const [generationModels, setGenerationModels] = useState<{
+    t2iModel?: string;
+    i2iModel?: string;
+    videoModel?: string;
+    t2iResolution?: string;
+    i2iResolution?: string;
+  } | null>(null);
+  
   // Ref pour l'auto-save
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef<string>('');
@@ -50,6 +59,19 @@ export default function LocalCanvasPage() {
     const projectTestMode = (project.data as { testMode?: boolean }).testMode === true;
     console.log('[LocalCanvas] Mode Test:', projectTestMode);
     setTestMode(projectTestMode);
+    
+    // NOUVEAU: Lire les modèles de génération sélectionnés par l'utilisateur
+    const projectGenerationModels = (project.data as { generationModels?: {
+      t2iModel?: string;
+      i2iModel?: string;
+      videoModel?: string;
+      t2iResolution?: string;
+      i2iResolution?: string;
+    } }).generationModels;
+    if (projectGenerationModels) {
+      console.log('[LocalCanvas] Modèles de génération:', projectGenerationModels);
+      setGenerationModels(projectGenerationModels);
+    }
     
     setInitialData({
       nodes: (project.data.nodes || []) as Node[],
@@ -171,7 +193,11 @@ export default function LocalCanvasPage() {
             <Controls />
             <Toolbar />
             <CleanupDialogWrapper />
-            <GenerationPanel projectId={projectId} testMode={testMode} />
+            <GenerationPanel 
+              projectId={projectId} 
+              testMode={testMode}
+              generationModels={generationModels}
+            />
           </Canvas>
           <MediaLibrarySidebar />
         </div>

@@ -569,6 +569,7 @@ ${briefData.content}`
 
           // IMPORTANT: Le projet est créé côté CLIENT (localStorage)
           // L'API envoie les données, le client les stocke
+          // Inclure les modèles T2I/I2I sélectionnés pour la génération future
           controller.enqueue(encoder.encode(sseEvent('project_data', { 
             projectName,
             canvasData: {
@@ -578,6 +579,14 @@ ${briefData.content}`
             },
             projectStructure,
             generationSequence,
+            // NOUVEAU: Modèles sélectionnés par l'utilisateur pour la génération
+            generationModels: {
+              t2iModel: config?.settings?.imageModel || null,
+              i2iModel: config?.settings?.editModel || null,
+              videoModel: config?.settings?.videoModel || null,
+              t2iResolution: config?.settings?.resolution || '4k',
+              i2iResolution: config?.settings?.resolution || '4k',
+            },
           })));
 
           controller.enqueue(encoder.encode(sseEvent('phase_complete', { 
