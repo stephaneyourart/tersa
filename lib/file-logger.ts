@@ -64,7 +64,7 @@ function getTodayDateFR(): string {
 
 // Types
 export type LogLevel = 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'DEBUG' | 'API';
-export type LogCategory = 'IMAGE' | 'VIDEO' | 'LLM' | 'API' | 'SYSTEM' | 'GENERATION';
+export type LogCategory = 'IMAGE' | 'VIDEO' | 'LLM' | 'API' | 'SYSTEM' | 'GENERATION' | 'UPSCALE';
 
 // Interface pour une entrée de log JSON complète
 interface JsonLogEntry {
@@ -742,6 +742,76 @@ export const fLog = {
   
   genError: (sessionId: string, error: string, details?: Record<string, unknown>) =>
     fileLog('ERROR', 'GENERATION', `Session ${sessionId}: ${error}`, { details }),
+
+  // ============================================================
+  // UPSCALE - Images et Vidéos
+  // ============================================================
+  upscaleStart: (nodeId: string, modelId: string, params: {
+    type: 'image' | 'video';
+    imageUrl?: string;
+    videoUrl?: string;
+    scale?: number;
+    creativity?: number;
+    enhanceFace?: boolean;
+  }) => {
+    const mediaUrl = params.type === 'image' ? params.imageUrl : params.videoUrl;
+    fileLog('INFO', 'UPSCALE', `[${params.type.toUpperCase()}] Démarrage ${params.scale || 2}x`, {
+      nodeId,
+      model: modelId,
+      details: {
+        type: params.type,
+        model: modelId,
+        scale: params.scale || 2,
+        creativity: params.creativity,
+        enhanceFace: params.enhanceFace,
+        sourceUrl: mediaUrl?.slice(0, 100),
+      }
+    });
+  },
+
+  upscaleSuccess: (nodeId: string, modelId: string, params: {
+    type: 'image' | 'video';
+    resultUrl: string;
+    scale: number;
+    duration: number;
+    cost?: number;
+    localPath?: string;
+  }) => {
+    fileLog('SUCCESS', 'UPSCALE', `[${params.type.toUpperCase()}] Upscalé ${params.scale}x en ${params.duration}ms`, {
+      nodeId,
+      model: modelId,
+      duration: params.duration,
+      details: {
+        type: params.type,
+        model: modelId,
+        scale: params.scale,
+        resultUrl: params.resultUrl.slice(0, 100),
+        localPath: params.localPath,
+        cost: params.cost,
+      }
+    });
+  },
+
+  upscaleError: (nodeId: string, modelId: string, error: string, params?: {
+    type?: 'image' | 'video';
+    scale?: number;
+    sourceUrl?: string;
+  }) => {
+    fileLog('ERROR', 'UPSCALE', `[${params?.type?.toUpperCase() || 'UPSCALE'}] Échec: ${error}`, {
+      nodeId,
+      model: modelId,
+      details: {
+        type: params?.type,
+        model: modelId,
+        scale: params?.scale,
+        sourceUrl: params?.sourceUrl?.slice(0, 100),
+        error,
+      }
+    });
+  },
+
+  upscalePolling: (nodeId: string, modelId: string, attempt: number, status: string) =>
+    fileLog('DEBUG', 'UPSCALE', `Polling #${attempt}: ${status}`, { nodeId, model: modelId }),
 
   // ============================================================
   // SYSTÈME

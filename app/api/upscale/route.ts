@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upscaleModels } from '@/lib/models/upscale';
 import { saveFromUrl } from '@/lib/storage-local';
+import { fLog } from '@/lib/file-logger';
 
 type UpscaleRequest = {
   type: 'image' | 'video';
@@ -24,19 +25,25 @@ type UpscaleRequest = {
  * Effectue un upscaling d'image ou vidéo
  */
 export async function POST(request: NextRequest) {
+  // Variables pour le logging (accessibles dans le catch)
+  let nodeId = `upscale-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  let type: 'image' | 'video' | undefined;
+  let modelId: string | undefined;
+  let scale = 2;
+  let imageUrl: string | undefined;
+  let videoUrl: string | undefined;
+  
   try {
     const body = await request.json() as UpscaleRequest;
-    const { 
-      type,
-      model: modelId,
-      imageUrl,
-      videoUrl,
-      scale = 2,
-      creativity, // Pour Lupa AI
-      enhanceFace = false,
-      denoiseStrength,
-      saveLocally = true,
-    } = body;
+    type = body.type;
+    modelId = body.model;
+    imageUrl = body.imageUrl;
+    videoUrl = body.videoUrl;
+    scale = body.scale || 2;
+    const creativity = body.creativity;
+    const enhanceFace = body.enhanceFace || false;
+    const denoiseStrength = body.denoiseStrength;
+    const saveLocally = body.saveLocally !== false;
 
     // Validation
     if (!type || !modelId) {
@@ -94,6 +101,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Mettre à jour nodeId avec un ID unique basé sur le timestamp actuel
+    nodeId = `upscale-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    
+    // Log du démarrage
+    fLog.upscaleStart(nodeId, modelId, {
+      type,
+      imageUrl,
+      videoUrl,
+      scale,
+      creativity,
+      enhanceFace,
+    });
+
     // Exécuter l'upscaling
     const startTime = Date.now();
     
@@ -124,6 +144,16 @@ export async function POST(request: NextRequest) {
     // Calculer le coût estimé
     const cost = provider.getCost({ scale });
 
+    // Log du succès
+    fLog.upscaleSuccess(nodeId, modelId, {
+      type,
+      resultUrl,
+      scale,
+      duration,
+      cost,
+      localPath,
+    });
+
     return NextResponse.json({
       success: true,
       result: {
@@ -138,9 +168,18 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erreur serveur';
     console.error('Erreur upscale:', error);
+    
+    // Log de l'erreur avec contexte
+    fLog.upscaleError(nodeId, modelId || 'unknown', errorMessage, {
+      type,
+      scale,
+      sourceUrl: type === 'image' ? imageUrl : videoUrl,
+    });
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Erreur serveur' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
