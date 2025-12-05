@@ -177,7 +177,7 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
         body: JSON.stringify({
           nodeId,
           prompt,
-          model: imageModel.replace('wavespeed', 'edit-multi-wavespeed'),
+          model: imageModel.replace('wavespeed', 'edit-ultra-wavespeed'),
           aspectRatio,
           sourceImages: [referenceImageUrl],
         }),

@@ -40,6 +40,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useMediaLibraryStore } from '@/lib/media-library-store';
+import { loadCreativePlanSettings } from '@/lib/creative-plan-settings';
 
 // ========== TYPES ==========
 interface GeneratableNode {
@@ -306,7 +307,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
   // Modèles pour le mode normal (haute qualité)
   const NORMAL_MODELS = {
     textToImage: 'nano-banana-pro-ultra-wavespeed',
-    edit: 'nano-banana-pro-edit-multi-wavespeed',
+    edit: 'nano-banana-pro-edit-ultra-wavespeed',
     video: 'kling-v2.6-pro-first-last',
   };
   
@@ -670,7 +671,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     const prompt = textFromIncomers || (data.instructions as string) || '';
     const aspectRatio = (data.aspectRatio as string) || '1:1';
     
-    console.log(`[GenerateImage] ${nodeLabel}: prompt=${prompt?.slice(0, 50)}..., aspectRatio=${aspectRatio}`);
+    console.log(`[GenerateImage] ${nodeLabel}: prompt=${prompt?.slice(0, 50)}..., aspectRatio=${aspectRatio}, testMode=${testMode}`);
     
     if (!prompt) {
       console.error(`[GenerateImage] ❌ Pas de prompt pour ${nodeLabel}`);
@@ -692,7 +693,20 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       console.log(`[GenerateImage] ${nodeLabel}: endpoint=${endpoint}, model=${selectedModel}`);
       
       // Paramètres de base
-      const baseParams = { nodeId, prompt, projectId, aspectRatio, testMode };
+      // MODE PROD: passer aspectRatio + resolution directement à WaveSpeed
+      // MODE TEST: passer juste aspectRatio (l'API convertira en dimensions)
+      const settings = loadCreativePlanSettings();
+      const resolution = !testMode ? (settings.prod?.resolution || '4k') : undefined;
+      
+      const baseParams = { 
+        nodeId, 
+        prompt, 
+        projectId, 
+        aspectRatio, 
+        testMode,
+        // En mode PROD, passer la résolution (4k/8k)
+        ...(resolution ? { resolution } : {}),
+      };
       
       // Paramètres spécifiques selon le type (edit ou generate)
       // IMPORTANT: Envoyer originalUrl (CloudFront) avec url pour éviter conversion base64

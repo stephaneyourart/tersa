@@ -1,10 +1,30 @@
 /**
  * API pour éditer une image à partir d'une image source
- * Utilisé pour générer des vues cohérentes (personnages, lieux)
+ * 
+ * MODE TEST : utilise size (dimensions en pixels)
+ * MODE PROD : utilise aspectRatio + resolution (directement pour WaveSpeed)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { editImageAction } from '@/app/actions/image/edit';
+
+// Convertir aspect ratio en size UNIQUEMENT pour le mode TEST
+function aspectRatioToTestSize(aspectRatio: string): string {
+  const testSizeMap: Record<string, string> = {
+    '1:1': '256x256',
+    '9:16': '256x384',
+    '16:9': '384x256',
+    '3:4': '256x342',
+    '4:3': '342x256',
+    '3:2': '384x256',
+    '2:3': '256x384',
+    '21:9': '512x220',
+    '9:21': '220x512',
+    '4:5': '256x320',
+    '5:4': '320x256',
+  };
+  return testSizeMap[aspectRatio] || '256x256';
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,10 +32,11 @@ export async function POST(request: NextRequest) {
     const { 
       nodeId, 
       prompt, 
-      model = 'nano-banana-pro-edit-multi-wavespeed',
+      model = 'nano-banana-pro-edit-ultra-wavespeed',
       projectId,
       sourceImages,
       aspectRatio = '1:1',
+      resolution = '4k',
       testMode = false,
       numInferenceSteps,
       guidanceScale,
@@ -33,30 +54,6 @@ export async function POST(request: NextRequest) {
     console.log(`[API Image Edit] Édition pour nœud ${nodeId} avec modèle ${model}${testMode ? ' (MODE TEST)' : ''}`);
     console.log(`[API Image Edit] Source images: ${sourceImages.length}, prompt: ${prompt.substring(0, 80)}...`);
 
-    // Mapper l'aspect ratio vers une taille
-    // Mode test : tailles réduites pour aller vite
-    const normalSizeMap: Record<string, string> = {
-      '1:1': '1024x1024',
-      '9:16': '576x1024',
-      '16:9': '1024x576',
-      '3:4': '768x1024',
-      '4:3': '1024x768',
-      '21:9': '1344x576',  // Cinémascope pour les images de plan
-    };
-    
-    const testSizeMap: Record<string, string> = {
-      '1:1': '256x256',      // Carré mini pour secondaires
-      '9:16': '256x456',     // Portrait pour secondaires (personnages, décors)
-      '16:9': '456x256',     // Paysage mini
-      '3:4': '256x342',      // Portrait 3:4
-      '4:3': '342x256',      // Paysage 4:3
-      '21:9': '598x256',     // Cinémascope mini pour first/last frames
-    };
-    
-    const sizeMap = testMode ? testSizeMap : normalSizeMap;
-    const size = sizeMap[aspectRatio] || (testMode ? '256x256' : '1024x1024');
-    console.log(`[API Image Edit] aspectRatio=${aspectRatio} -> size=${size}${testMode ? ' (test)' : ''}`);
-
     // Support ancien format (string[]) et nouveau format ({ url, originalUrl }[])
     // IMPORTANT: originalUrl est l'URL CloudFront publique pour WaveSpeed (évite base64)
     const normalizedImages = sourceImages.map((img: string | { url: string; originalUrl?: string }) => {
@@ -66,28 +63,59 @@ export async function POST(request: NextRequest) {
       return { url: img.url, type: 'image/png', originalUrl: img.originalUrl };
     });
 
-    const result = await editImageAction({
-      images: normalizedImages,
-      modelId: model,
-      instructions: prompt,
-      nodeId,
-      projectId: effectiveProjectId,
-      size,
-      numInferenceSteps: testMode ? (numInferenceSteps ?? 5) : numInferenceSteps,
-      guidanceScale: testMode ? (guidanceScale ?? 2.5) : guidanceScale,
-    });
+    if (testMode) {
+      // ========== MODE TEST ==========
+      const size = aspectRatioToTestSize(aspectRatio);
+      console.log(`[API Image Edit] 🧪 TEST - aspectRatio=${aspectRatio} -> size=${size}`);
 
-    if ('error' in result) {
-      console.error('[API Image Edit] Erreur:', result.error);
-      return NextResponse.json({ error: result.error }, { status: 500 });
+      const result = await editImageAction({
+        images: normalizedImages,
+        modelId: model,
+        instructions: prompt,
+        nodeId,
+        projectId: effectiveProjectId,
+        size,
+        numInferenceSteps: numInferenceSteps ?? 5,
+        guidanceScale: guidanceScale ?? 2.5,
+      });
+
+      if ('error' in result) {
+        console.error('[API Image Edit] Erreur:', result.error);
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        nodeId,
+        nodeData: result.nodeData,
+      });
+    } else {
+      // ========== MODE PROD ==========
+      console.log(`[API Image Edit] 🎬 PROD - aspectRatio=${aspectRatio}, resolution=${resolution}`);
+
+      const result = await editImageAction({
+        images: normalizedImages,
+        modelId: model,
+        instructions: prompt,
+        nodeId,
+        projectId: effectiveProjectId,
+        aspectRatio,
+        resolution,
+        numInferenceSteps,
+        guidanceScale,
+      });
+
+      if ('error' in result) {
+        console.error('[API Image Edit] Erreur:', result.error);
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        nodeId,
+        nodeData: result.nodeData,
+      });
     }
-
-    console.log(`[API Image Edit] Succès pour nœud ${nodeId}`);
-    return NextResponse.json({ 
-      success: true, 
-      nodeId,
-      nodeData: result.nodeData,
-    });
   } catch (error) {
     console.error('[API Image Edit] Erreur:', error);
     return NextResponse.json(
