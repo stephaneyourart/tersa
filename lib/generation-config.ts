@@ -118,13 +118,13 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
 };
 
 export const DEFAULT_T2I_CONFIG: T2IConfig = {
-  model: 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
+  model: 'nano-banana-pro-ultra-wavespeed',
   aspectRatio: '16:9',
   resolution: '4k',
 };
 
 export const DEFAULT_I2I_CONFIG: I2IConfig = {
-  model: 'wavespeed/google/nano-banana-pro/edit-ultra',
+  model: 'nano-banana-pro-edit-ultra-wavespeed',
   aspectRatio: '21:9',
   resolution: '4k',
 };

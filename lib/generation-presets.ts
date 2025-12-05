@@ -46,12 +46,12 @@ const BUILT_IN_PRESETS: GenerationPreset[] = [
         model: 'mistral-large-latest',
       },
       t2i: {
-        model: 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
+        model: 'nano-banana-pro-ultra-wavespeed',
         aspectRatio: '16:9',
         resolution: '4k',
       },
       i2i: {
-        model: 'wavespeed/google/nano-banana-pro/edit-ultra',
+        model: 'nano-banana-pro-edit-ultra-wavespeed',
         aspectRatio: '21:9',
         resolution: '4k',
       },
@@ -83,12 +83,12 @@ const BUILT_IN_PRESETS: GenerationPreset[] = [
         model: 'mistral-small-latest',
       },
       t2i: {
-        model: 'wavespeed/google/nano-banana/text-to-image',
+        model: 'nano-banana-wavespeed',
         aspectRatio: '16:9',
         resolution: '4k',
       },
       i2i: {
-        model: 'wavespeed/google/nano-banana/edit',
+        model: 'nano-banana-edit-wavespeed',
         aspectRatio: '21:9',
         resolution: '4k',
       },

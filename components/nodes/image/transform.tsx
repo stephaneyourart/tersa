@@ -134,6 +134,12 @@ export const ImageTransform = ({
     // Si le modèle n'est pas dans availableModels, afficher son ID de façon lisible
     if (actualModelUsed) {
       // Convertir 'flux-schnell-wavespeed' en 'FLUX Schnell (WaveSpeed)'
+      // Ou utiliser la logique générique si c'est un path
+      if (actualModelUsed.includes('/')) {
+         const parts = actualModelUsed.split('/');
+         const name = parts[parts.length - 1] || actualModelUsed;
+         return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
       return actualModelUsed
         .replace(/-wavespeed$/, ' (WaveSpeed)')
         .split('-')
@@ -142,6 +148,22 @@ export const ImageTransform = ({
     }
     return selectedModel?.label;
   }, [actualModelUsed, availableModels, selectedModel]);
+
+  // Si le modèle actuel n'est pas dans la liste (ex: désactivé ou legacy), on l'ajoute artificiellement
+  // pour que le ModelSelector puisse l'afficher correctement
+  const effectiveAvailableModels = useMemo(() => {
+    if (actualModelUsed && !availableModels[actualModelUsed]) {
+        return {
+            ...availableModels,
+            [actualModelUsed]: {
+                label: displayModelLabel || actualModelUsed,
+                chef: { name: 'Custom', icon: () => null }, // Mock
+                providers: []
+            }
+        } as any;
+    }
+    return availableModels;
+  }, [availableModels, actualModelUsed, displayModelLabel]);
   
   // Hook pour détecter si l'image est expirée (URL WaveSpeed plus accessible)
   const imageUrl = data.generated?.url;
@@ -655,7 +677,7 @@ export const ImageTransform = ({
         children: (
           <ModelSelector
             value={modelId}
-            options={availableModels}
+            options={effectiveAvailableModels}
             id={id}
             className="w-[200px] rounded-full"
             onChange={(value) => updateNodeData(id, { model: value })}

@@ -118,6 +118,11 @@ async function callWaveSpeedApi(
 
   const baseUrl = 'https://api.wavespeed.ai/api/v3';
 
+  // LOG DE VÉRITÉ ABSOLUE
+  console.log(`[WaveSpeed Video] 🚀 EXECUTION MODEL: ${model}`);
+  console.log(`[WaveSpeed Video] 🎯 MAPPED ENDPOINT: ${modelPath}`);
+  console.log(`[WaveSpeed Video] 📦 FULL URL: ${baseUrl}/${modelPath}`);
+
   // Soumettre la requête de génération
   console.log(`[WaveSpeed Video] POST ${baseUrl}/${modelPath}`);
   console.log(`[WaveSpeed Video] Body:`, JSON.stringify(input, null, 2));
@@ -249,7 +254,7 @@ function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
  * - end_image : last frame (REQUIRED) - PAS "last_image" !
  * - prompt, duration, guidance_scale
  */
-function createKlingStartEndModel(): VideoModel {
+function createKlingStartEndModel_LEGACY(): VideoModel {
   const modelId: WaveSpeedVideoModel = 'kling-v2.1-start-end';
   
   return {
@@ -276,7 +281,7 @@ function createKlingStartEndModel(): VideoModel {
 
       if (!imagePrompt || !lastFrameImage) {
         console.error(`[WaveSpeed KLING Start-End] ❌ ERREUR: first ET last frame sont OBLIGATOIRES !`);
-        throw new Error('Le modèle start-end-frame requiert image ET end_image');
+        throw new Error('ERREUR V2.1 LEGACY: Le modèle start-end-frame requiert image ET end_image');
       }
 
       return callWaveSpeedApi(modelId, input);
@@ -294,6 +299,7 @@ function createKlingStartEndModel(): VideoModel {
  * Endpoint: kwaivgi/kling-v2.5-turbo-pro/image-to-video
  */
 function createKling25TurboProFirstLastModel(): VideoModel {
+  // Utiliser l'ID alias pour faire le mapping correct
   const modelId: WaveSpeedVideoModel = 'kling-v2.5-turbo-pro-first-last';
   
   return {
@@ -380,10 +386,10 @@ export const wavespeed = {
   kling26ProI2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-i2v'),
   
   // Kling 2.1 Pro Start-End Frame - Ancien modèle first+last (utilise end_image)
-  klingStartEnd: (): VideoModel => createKlingStartEndModel(),
+  klingStartEnd: (): VideoModel => createKlingStartEndModel_LEGACY(),
   
   // DEPRECATED: Ancien nom, redirige vers le bon modèle
-  kling26ProFirstLast: (): VideoModel => createKlingStartEndModel(),
+  kling26ProFirstLast: (): VideoModel => createKlingStartEndModel_LEGACY(),
 
   // ⭐ NOUVEAU: Kling 2.5 Turbo Pro avec first+last frame (utilise last_image)
   // C'est le modèle RECOMMANDÉ pour first+last frame !
@@ -401,4 +407,3 @@ export const wavespeed = {
   wan21: (): VideoModel => createWaveSpeedModel('wan-2.1'),
   wan21Pro: (): VideoModel => createWaveSpeedModel('wan-2.1-pro'),
 };
-

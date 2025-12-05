@@ -523,7 +523,7 @@ export const videoModels: Record<string, TersaVideoModel> = {
   },
 
   'kling-v2.6-pro-first-last': {
-    label: 'Kling v2.1 Start-End Frame (Legacy)',
+    label: 'Kling v2.1 Start-End (Legacy - DO NOT USE)',
     chef: providers.kling,
     providers: [
       {

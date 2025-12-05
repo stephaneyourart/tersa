@@ -159,6 +159,7 @@ export default function GenerateProjectPage() {
   const [showReasoningDialog, setShowReasoningDialog] = useState(false);
   const [reasoning, setReasoning] = useState<string>('');
   const [projectName, setProjectName] = useState('');
+  const [generatedProjectId, setGeneratedProjectId] = useState<string | null>(null);
   const reasoningEndRef = useRef<HTMLDivElement>(null);
   
   // États des phases de génération
@@ -393,6 +394,7 @@ export default function GenerateProjectPage() {
     const providerLabel = config.llm.provider === 'openai' ? 'OpenAI' : 'Mistral';
     setReasoning(`🎬 GÉNÉRATION DE PROJET
    → LLM: ${providerLabel} (${config.llm.model})
+   → T2I: Ratio ${config.t2i.aspectRatio} (${config.t2i.resolution || 'défaut'})
    → Mode vidéo: ${config.video.mode === 'image-first' ? 'IMAGE FIRST' : 'IMAGES FIRST AND LAST'}
    → Plans: ${config.quantities.plansCount}
    → Jeux d'images: ${config.quantities.imageSetsPerPlan} par plan
@@ -506,6 +508,7 @@ export default function GenerateProjectPage() {
               });
               
               createdProjectId = newProject.id;
+              setGeneratedProjectId(newProject.id);
               setReasoning(prev => prev + `✅ Projet créé : ${createdProjectId}\n`);
               setReasoning(prev => prev + `📦 Modèles: T2I=${generationModels.t2iModel}, I2I=${generationModels.i2iModel}\n`);
             }
@@ -1268,7 +1271,7 @@ export default function GenerateProjectPage() {
                   </div>
                   
                   <div className="p-3 bg-background/50 rounded-lg">
-                    <div className="text-muted-foreground mb-1">Images T2I</div>
+                    <div className="text-muted-foreground mb-1">Images T2I <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded ml-1">{config.t2i.aspectRatio}</span></div>
                     <div className="text-xs text-muted-foreground mb-1">{budget.t2i.count} × {formatCurrency(budget.t2i.costPerImage, budget.currency)}</div>
                     <div className="text-emerald-400">{formatCurrency(budget.t2i.total, budget.currency)}</div>
                   </div>
@@ -1460,13 +1463,23 @@ export default function GenerateProjectPage() {
           </div>
           
           {!generating && (
-            <div className="flex-shrink-0 pt-4 border-t border-zinc-800">
+            <div className="flex-shrink-0 pt-4 border-t border-zinc-800 flex gap-3">
               <Button 
                 onClick={() => setShowReasoningDialog(false)}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 text-white"
+                variant="outline"
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700"
               >
                 Fermer
               </Button>
+              {generatedProjectId && (
+                <Button 
+                  onClick={() => window.open(`/local/canvas/${generatedProjectId}`, '_blank')}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                >
+                  <FolderIcon size={16} />
+                  Ouvrir le projet
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>

@@ -512,11 +512,27 @@ ${briefData.content}`
               const missingBraces = closeBraces < openBraces ? '}'.repeat(openBraces - closeBraces) : '';
               
               // Trouver la dernière propriété complète et couper là
-              // Pattern: chercher la dernière virgule ou le dernier ":" suivi de données complètes
-              const lastValidPoint = jsonStr.lastIndexOf('",');
-              if (lastValidPoint > 0) {
-                jsonStr = jsonStr.substring(0, lastValidPoint + 1) + missingBrackets + missingBraces;
-                console.log(`[API] Tentative de réparation du JSON tronqué...`);
+              // Pattern: chercher la dernière virgule ou le dernier "}" ou "]" suivi de données incomplètes
+              // Stratégie plus robuste : trouver la dernière fermeture valide d'objet ou tableau
+              const lastClosingBrace = jsonStr.lastIndexOf('}');
+              const lastClosingBracket = jsonStr.lastIndexOf(']');
+              const lastValidPos = Math.max(lastClosingBrace, lastClosingBracket);
+              
+              if (lastValidPos > 0) {
+                // Couper après la dernière structure valide
+                jsonStr = jsonStr.substring(0, lastValidPos + 1);
+                
+                // Recalculer les fermetures manquantes pour ce nouveau fragment
+                const currentOpenBraces = (jsonStr.match(/\{/g) || []).length;
+                const currentCloseBraces = (jsonStr.match(/\}/g) || []).length;
+                const currentOpenBrackets = (jsonStr.match(/\[/g) || []).length;
+                const currentCloseBrackets = (jsonStr.match(/\]/g) || []).length;
+                
+                const neededBrackets = currentOpenBrackets - currentCloseBrackets;
+                const neededBraces = currentOpenBraces - currentCloseBraces;
+                
+                jsonStr += ']'.repeat(Math.max(0, neededBrackets)) + '}'.repeat(Math.max(0, neededBraces));
+                console.log(`[API] Tentative de réparation du JSON tronqué (v2)...`);
               } else {
                 // Si on ne peut pas réparer, lever une erreur explicite
                 throw new Error(`JSON tronqué par l'IA (limite de tokens atteinte). Réponse reçue: ${fullResponse.length} caractères. Essayez de simplifier le brief ou réduire le nombre de personnages/plans.`);

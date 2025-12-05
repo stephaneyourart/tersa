@@ -141,8 +141,9 @@ export const LLM_MODELS: Record<LLMProvider, LLMModel[]> = {
 
 export const T2I_MODELS: ImageModel[] = [
   {
-    id: 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
-    displayName: 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
+    // ID doit correspondre à lib/models/image/index.ts
+    id: 'nano-banana-pro-ultra-wavespeed',
+    displayName: 'Nano Banana Pro Ultra (WaveSpeed)',
     type: 'text-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
     supportedResolutions: ['4k', '8k'],
@@ -150,8 +151,8 @@ export const T2I_MODELS: ImageModel[] = [
     description: 'Haute qualité, résolution 4K/8K',
   },
   {
-    id: 'wavespeed/google/nano-banana-pro/text-to-image',
-    displayName: 'wavespeed/google/nano-banana-pro/text-to-image',
+    id: 'nano-banana-pro-wavespeed',
+    displayName: 'Nano Banana Pro (WaveSpeed)',
     type: 'text-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
     supportedResolutions: ['4k'],
@@ -159,8 +160,8 @@ export const T2I_MODELS: ImageModel[] = [
     description: 'Qualité standard',
   },
   {
-    id: 'wavespeed/google/nano-banana/text-to-image',
-    displayName: 'wavespeed/google/nano-banana/text-to-image',
+    id: 'nano-banana-wavespeed',
+    displayName: 'Nano Banana (WaveSpeed)',
     type: 'text-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9'],
     supportedResolutions: ['4k'],
@@ -176,8 +177,9 @@ export const T2I_MODELS: ImageModel[] = [
 
 export const I2I_MODELS: ImageModel[] = [
   {
-    id: 'wavespeed/google/nano-banana-pro/edit-ultra',
-    displayName: 'wavespeed/google/nano-banana-pro/edit-ultra',
+    // ID doit correspondre à lib/models/image/index.ts
+    id: 'nano-banana-pro-edit-ultra-wavespeed',
+    displayName: 'Nano Banana Pro Edit Ultra (WaveSpeed)',
     type: 'image-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
     supportedResolutions: ['4k', '8k'],
@@ -185,8 +187,8 @@ export const I2I_MODELS: ImageModel[] = [
     description: 'Haute qualité, résolution 4K/8K',
   },
   {
-    id: 'wavespeed/google/nano-banana-pro/edit',
-    displayName: 'wavespeed/google/nano-banana-pro/edit',
+    id: 'nano-banana-pro-edit-wavespeed',
+    displayName: 'Nano Banana Pro Edit (WaveSpeed)',
     type: 'image-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
     supportedResolutions: ['4k'],
@@ -194,8 +196,8 @@ export const I2I_MODELS: ImageModel[] = [
     description: 'Qualité standard',
   },
   {
-    id: 'wavespeed/google/nano-banana/edit',
-    displayName: 'wavespeed/google/nano-banana/edit',
+    id: 'nano-banana-edit-wavespeed',
+    displayName: 'Nano Banana Edit (WaveSpeed)',
     type: 'image-to-image',
     supportedAspectRatios: ['1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9'],
     supportedResolutions: ['4k'],
@@ -345,7 +347,7 @@ export const DEFAULT_MODELS = {
     provider: 'mistral' as LLMProvider,
     model: 'mistral-large-latest',
   },
-  t2i: 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
-  i2i: 'wavespeed/google/nano-banana-pro/edit-ultra',
+  t2i: 'nano-banana-pro-ultra-wavespeed',
+  i2i: 'nano-banana-pro-edit-ultra-wavespeed',
   video: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
 };

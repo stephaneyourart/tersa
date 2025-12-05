@@ -14,10 +14,9 @@ import type { FrameMode } from '@/lib/creative-plan-settings';
 import { 
   getTextToImageModel, 
   getEditModel, 
-  getQualityParams,
   IMAGE_RATIOS,
-  DEFAULT_QUALITY_MODEL_CONFIG
 } from '@/lib/brief-defaults';
+import { getVideoModel, VIDEO_MODELS } from '@/lib/models-registry';
 
 // ========== TYPES ==========
 
@@ -43,6 +42,7 @@ interface VideoGenerationTask {
   duration: number;
   usesFirstLastFrame: boolean;
   frameMode: FrameMode;       // NOUVEAU: Mode de génération (first-last ou first-only)
+  modelId: string;            // NOUVEAU: ID du modèle vidéo sélectionné (OBLIGATOIRE)
 }
 
 interface GenerationProgress {
@@ -69,10 +69,13 @@ export interface ParallelGenerationOptions {
   // MODÈLES T2I / I2I - SÉLECTIONNÉS PAR L'UTILISATEUR
   // Ces valeurs DOIVENT être utilisées à la place de getTextToImageModel/getEditModel
   // ============================================================
-  /** Modèle Text-to-Image (ex: wavespeed/google/nano-banana-pro/text-to-image-ultra) */
+  /** Modèle Text-to-Image (ex: nano-banana-pro-ultra-wavespeed) */
   t2iModel?: string;
-  /** Modèle Image-to-Image / Edit (ex: wavespeed/google/nano-banana-pro/edit-ultra) */
+  /** Modèle Image-to-Image / Edit (ex: nano-banana-pro-edit-ultra-wavespeed) */
   i2iModel?: string;
+  /** Modèle Vidéo (ex: kwaivgi/kling-v2.5-turbo-pro/image-to-video) */
+  videoModel?: string;
+  
   /** Résolution T2I (ex: '4k', '8k') */
   t2iResolution?: string;
   /** Résolution I2I (ex: '4k', '8k') */
@@ -144,10 +147,9 @@ export async function generateAllMediaParallel(
     // MODÈLES T2I/I2I SÉLECTIONNÉS PAR L'UTILISATEUR
     t2iModel,
     i2iModel,
+    videoModel,
     t2iResolution,
     i2iResolution,
-    t2iAspectRatio,
-    i2iAspectRatio,
     characterImages,
     decorImages,
     planImages,
@@ -165,14 +167,21 @@ export async function generateAllMediaParallel(
   // Sinon, fallback sur l'ancien système basé sur "quality"
   const resolvedT2IModel = t2iModel || getTextToImageModel(quality);
   const resolvedI2IModel = i2iModel || getEditModel(quality);
+  // Fallback vidéo: utiliser le premier modèle first+last disponible (Kling 2.5) ou le premier tout court
+  const defaultVideoModel = VIDEO_MODELS.find(m => m.supportsImagesFirstLast)?.id || VIDEO_MODELS[0]?.id;
+  const resolvedVideoModel = videoModel || defaultVideoModel;
+  
   const resolvedT2IResolution = t2iResolution || (quality === 'elevee' ? '4K' : undefined);
   const resolvedI2IResolution = i2iResolution || (quality === 'elevee' ? '4K' : undefined);
   
   console.log('[ParallelGen] Modèles résolus:');
   console.log(`  T2I: ${resolvedT2IModel} (résolution: ${resolvedT2IResolution || 'défaut'})`);
   console.log(`  I2I: ${resolvedI2IModel} (résolution: ${resolvedI2IResolution || 'défaut'})`);
+  console.log(`  VIDEO: ${resolvedVideoModel}`);
+  
   if (t2iModel) console.log('  ✓ T2I model from user selection');
   if (i2iModel) console.log('  ✓ I2I model from user selection');
+  if (videoModel) console.log('  ✓ Video model from user selection');
 
   const imageResults: GenerationResult[] = [];
   const videoResults: GenerationResult[] = [];
@@ -186,7 +195,7 @@ export async function generateAllMediaParallel(
   console.log('[ParallelGen] Démarrage génération parallèle (TOUT EN //)');
   console.log(`[ParallelGen] ${characterImages.length} personnages, ${decorImages.length} décors`);
   console.log(`[ParallelGen] ${planImages?.length || 0} plans avec images départ/fin`);
-  console.log(`[ParallelGen] ${videos.length} vidéos avec first+last frame`);
+  console.log(`[ParallelGen] ${videos.length} vidéos`);
 
   // ========== COLLECTER TOUTES LES TÂCHES D'IMAGES (PRIMAIRES + VARIANTES) ==========
   const allImageTasks: ImageGenerationTask[] = [];
@@ -475,8 +484,6 @@ export async function generateAllMediaParallel(
     
     if (useDirectPrimary) {
       // MODE DIRECT: Utiliser les images primaires des collections
-      // Chercher la première image primaire disponible (personnage ou décor)
-      // On prend la première image primaire trouvée dans les collections
       console.log(`[ParallelGen] Plan ${video.planId}: Mode direct (skipSecondary=${video.skipSecondaryImages}, firstFrameIsPrimary=${video.firstFrameIsPrimary})`);
       
       // Récupérer les URLs des images primaires des personnages
@@ -527,6 +534,7 @@ export async function generateAllMediaParallel(
         // En mode direct, on utilise first-only car on n'a qu'une image primaire
         usesFirstLastFrame: !useDirectPrimary && frameMode === 'first-last' && (video.usesFirstLastFrame || false),
         frameMode: useDirectPrimary ? 'first-only' : frameMode,
+        modelId: resolvedVideoModel, // UTILISER LE MODÈLE RÉSOLU
       });
     }
   }
@@ -547,25 +555,42 @@ export async function generateAllMediaParallel(
       const modeDesc = task.frameMode === 'first-only' 
         ? 'first frame only' 
         : `first+last: ${task.usesFirstLastFrame}`;
-      console.log(`[ParallelGen] Génération vidéo ${task.videoNodeId} (${modeDesc})`);
+      console.log(`[ParallelGen] Génération vidéo ${task.videoNodeId} (${modeDesc}) avec modèle ${task.modelId}`);
       
       let result;
       
       // MODE FIRST+LAST: utiliser first+last frame si les deux images sont disponibles
       if (task.frameMode === 'first-last' && task.usesFirstLastFrame && task.imageDepartUrl && task.imageFinUrl) {
-        result = await generateVideoFirstLast({
-          prompt: task.prompt,
-          firstFrameUrl: task.imageDepartUrl,
-          lastFrameUrl: task.imageFinUrl,
-          duration: task.duration,
-        });
+        
+        // Vérifier si le modèle supporte first+last
+        const modelConfig = getVideoModel(task.modelId);
+        if (modelConfig && !modelConfig.supportsImagesFirstLast) {
+            console.warn(`[ParallelGen] ⚠️ Le modèle ${task.modelId} ne supporte pas first+last ! Fallback sur first-only.`);
+            // Fallback first-only avec ce modèle (ou un autre ?)
+            // Ici on garde le même modèle mais on l'appelle en first-only
+            result = await generateVideoFirstOnly({
+                prompt: task.prompt,
+                firstFrameUrl: task.imageDepartUrl,
+                duration: task.duration,
+                modelId: task.modelId,
+              });
+        } else {
+            result = await generateVideoFirstLast({
+              prompt: task.prompt,
+              firstFrameUrl: task.imageDepartUrl,
+              lastFrameUrl: task.imageFinUrl,
+              duration: task.duration,
+              modelId: task.modelId, // Passer le modèle
+            });
+        }
       } 
-      // MODE FIRST ONLY: utiliser Kling v2.6 Pro I2V avec une seule image
+      // MODE FIRST ONLY
       else if (task.frameMode === 'first-only' && task.imageDepartUrl) {
         result = await generateVideoFirstOnly({
           prompt: task.prompt,
           firstFrameUrl: task.imageDepartUrl,
           duration: task.duration,
+          modelId: task.modelId, // Passer le modèle
         });
       }
       // Fallback: génération vidéo standard avec image de référence
@@ -575,6 +600,7 @@ export async function generateAllMediaParallel(
           referenceImages: task.imageDepartUrl ? [task.imageDepartUrl] : [],
           aspectRatio: '16:9',
           duration: task.duration,
+          modelId: task.modelId, // Passer le modèle
         });
       }
 
@@ -733,6 +759,7 @@ interface VideoGenerationParams {
   referenceImages: string[];
   aspectRatio: string;
   duration: number;
+  modelId: string;
 }
 
 async function generateVideo(params: VideoGenerationParams): Promise<{ success: boolean; url?: string; error?: string }> {
@@ -745,6 +772,7 @@ async function generateVideo(params: VideoGenerationParams): Promise<{ success: 
         prompt: params.prompt,
         images: params.referenceImages.map(url => ({ url, type: 'image/png' })),
         copies: 1,
+        model: params.modelId, // Passer le modèle
       }),
     });
 
@@ -767,36 +795,42 @@ interface VideoFirstLastParams {
   firstFrameUrl: string;
   lastFrameUrl: string;
   duration: number;
+  modelId: string;
 }
 
 interface VideoFirstOnlyParams {
   prompt: string;
   firstFrameUrl: string;
   duration: number;
+  modelId: string;
 }
 
 /**
  * Génère une vidéo avec FIRST frame uniquement
- * Utilise KLING v2.6 Pro Image-to-Video (1 seule image en entrée)
- * 
- * MODÈLE RÉEL: kwaivgi/kling-v2.6-pro/image-to-video
- * - Champ guidance: cfg_scale (0-1, défaut 0.5)
- * - PAS de support last_image
  */
 async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
+    // Récupérer la config du modèle
+    const modelConfig = getVideoModel(params.modelId);
+    const guidanceField = modelConfig?.guidanceField || 'cfg_scale';
+    const guidanceDefault = modelConfig?.guidanceDefault || 0.5;
+
+    const body: any = {
+      nodeId: `gen-fo-${Date.now()}`,
+      prompt: params.prompt,
+      imagePrompt: params.firstFrameUrl,
+      model: params.modelId, // Endpoint WaveSpeed réel (dynamique)
+      copies: 1,
+      duration: params.duration,
+    };
+    
+    // Ajouter guidance avec le bon nom
+    body[guidanceField] = guidanceDefault;
+
     const response = await fetch('/api/video/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nodeId: `gen-fo-${Date.now()}`,
-        prompt: params.prompt,
-        imagePrompt: params.firstFrameUrl,
-        model: 'kwaivgi/kling-v2.6-pro/image-to-video', // Endpoint WaveSpeed réel
-        copies: 1,
-        duration: params.duration,
-        cfg_scale: 0.5, // Guidance pour Kling v2.6
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -814,27 +848,33 @@ async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ s
 
 /**
  * Génère une vidéo avec first frame + last frame
- * Utilise KLING v2.5 Turbo Pro (seul modèle supportant last_image)
- * 
- * MODÈLE RÉEL: kwaivgi/kling-v2.5-turbo-pro/image-to-video
- * - Champ guidance: guidance_scale (0-1, défaut 0.5)
- * - Champ last frame: last_image
  */
 async function generateVideoFirstLast(params: VideoFirstLastParams): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
+    // Récupérer la config du modèle
+    const modelConfig = getVideoModel(params.modelId);
+    const guidanceField = modelConfig?.guidanceField || 'guidance_scale';
+    const guidanceDefault = modelConfig?.guidanceDefault || 0.5;
+    const lastImageField = modelConfig?.lastImageField || 'last_image';
+
+    const body: any = {
+      nodeId: `gen-fl-${Date.now()}`,
+      prompt: params.prompt,
+      imagePrompt: params.firstFrameUrl,
+      model: params.modelId, // Endpoint WaveSpeed réel (dynamique)
+      copies: 1,
+      duration: params.duration,
+    };
+    
+    // Ajouter last frame avec le bon nom de champ (dépend du modèle)
+    body[lastImageField] = params.lastFrameUrl;
+    // Ajouter guidance
+    body[guidanceField] = guidanceDefault;
+
     const response = await fetch('/api/video/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nodeId: `gen-fl-${Date.now()}`,
-        prompt: params.prompt,
-        imagePrompt: params.firstFrameUrl,
-        lastFrameImage: params.lastFrameUrl, // last_image pour Kling v2.5
-        model: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', // Endpoint WaveSpeed réel
-        copies: 1,
-        duration: params.duration,
-        guidance_scale: 0.5, // Guidance pour Kling v2.5
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

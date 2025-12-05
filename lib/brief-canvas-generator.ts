@@ -696,17 +696,19 @@ function createPlanFramesStructure(
   const isFirstOnly = frameMode === 'first-only';
   
   // NOUVELLES OPTIONS
+  // NOTE: generateSecondaryImages contrôle UNIQUEMENT les variantes des personnages/décors
+  // Les FIRST FRAMES sont TOUJOURS générées (sauf si firstFrameIsPrimary = true)
   const generateSecondaryImages = structure.generateSecondaryImages !== false;
   const firstFrameIsPrimary = structure.firstFrameIsPrimary || false;
   
-  // Si on ne génère pas les images secondaires, on skip cette section
+  // skipSecondaryImages affecte uniquement les variantes des personnages/décors, PAS les first frames
   const skipSecondaryImages = !generateSecondaryImages;
   
   // DEBUG LOG
   console.log(`[createPlanFramesStructure] Plan ${plan.id}:`);
-  console.log(`  → generateSecondaryImages: ${generateSecondaryImages}`);
+  console.log(`  → generateSecondaryImages: ${generateSecondaryImages} (variantes personnages/décors)`);
   console.log(`  → firstFrameIsPrimary: ${firstFrameIsPrimary}`);
-  console.log(`  → shouldCreateFrameImages: ${generateSecondaryImages && !firstFrameIsPrimary}`);
+  console.log(`  → shouldCreateFrameImages: ${!firstFrameIsPrimary} (first frames toujours créées si firstFrameIsPrimary=false)`);
 
   // Ratio pour les images de plan (21:9 cinémascope)
   const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
@@ -822,8 +824,9 @@ function createPlanFramesStructure(
     }
   }
   
-  // Si firstFrameIsPrimary OU skipSecondaryImages, ne pas créer les nœuds images I2I
-  const shouldCreateFrameImages = generateSecondaryImages && !firstFrameIsPrimary;
+  // CORRECTION: Les FIRST FRAMES sont créées si firstFrameIsPrimary = false
+  // generateSecondaryImages n'affecte que les variantes des personnages/décors, PAS les first frames
+  const shouldCreateFrameImages = !firstFrameIsPrimary;
 
   for (let coupleIdx = 0; coupleIdx < couplesPerPlan; coupleIdx++) {
     const coupleX = col3StartX + coupleIdx * (LAYOUT.IMAGE_NODE_WIDTH + COUPLE_GAP);
@@ -1032,7 +1035,10 @@ function createPlanFramesStructure(
     couples,
     // NOUVELLES OPTIONS
     primaryCollectionIds,
-    skipSecondaryImages,
+    // CORRECTION: skipSecondaryImages doit indiquer si on doit connecter aux collections primaires
+    // Si shouldCreateFrameImages = true, les images first frame existent → on ne skip PAS
+    // Si shouldCreateFrameImages = false (firstFrameIsPrimary), on utilise les collections → on skip
+    skipSecondaryImages: !shouldCreateFrameImages,  // = firstFrameIsPrimary
     firstFrameIsPrimary,
     // Rétrocompatibilité
     imageDepartNodeId: shouldCreateFrameImages ? couples[0].imageDepartNodeId : '',
@@ -1071,8 +1077,10 @@ function createPlanVideosStructure(
   const coupleRowGap = 100; // Gap entre rangées de vidéos de couples différents
   
   // NOUVELLES OPTIONS
+  // CORRECTION: skipSecondaryImages = firstFrameIsPrimary (utiliser images primaires comme first frames)
+  // generateSecondaryImages contrôle uniquement les variantes des personnages/décors, PAS les first frames
   const firstFrameIsPrimary = frameNodeIds.firstFrameIsPrimary || structure.firstFrameIsPrimary || false;
-  const skipSecondaryImages = frameNodeIds.skipSecondaryImages || !structure.generateSecondaryImages;
+  const skipSecondaryImages = frameNodeIds.skipSecondaryImages || firstFrameIsPrimary;
   const primaryCollectionIds = frameNodeIds.primaryCollectionIds || [];
   const isFirstOnly = structure.frameMode === 'first-only';
   
@@ -1103,6 +1111,13 @@ function createPlanVideosStructure(
       // Label pour le couple si N > 1
       const coupleLabel = couplesPerPlan > 1 ? `C${coupleIdx + 1}-` : '';
       
+      // CORRECTION: Utiliser les vrais IDs de modèles vidéo (pas les alias legacy)
+      // - First-only: kwaivgi/kling-v2.6-pro/image-to-video (supporte 1 image)
+      // - First-last: kwaivgi/kling-v2.5-turbo-pro/image-to-video (supporte 2 images)
+      const videoModelId = isFirstOnly 
+        ? 'kwaivgi/kling-v2.6-pro/image-to-video' 
+        : 'kwaivgi/kling-v2.5-turbo-pro/image-to-video';
+      
       structure.videoNodes.push({
         id: videoId,
         type: 'video',
@@ -1118,7 +1133,7 @@ function createPlanVideosStructure(
           copyIndex: globalVideoIndex + 1,  // Rétrocompatibilité
           totalCopies: couplesPerPlan * videosPerCouple,
           duration,
-          model: isFirstOnly ? 'kling-v2.6-pro' : 'kling-v2.6-pro-first-last',
+          model: videoModelId,
           usesFirstLastFrame: !isFirstOnly,  // false si first-only, true si first-last
         },
         width: LAYOUT.VIDEO_NODE_WIDTH,
@@ -1463,7 +1478,8 @@ export function generateCanvasFromProject(
   // ================================================================================
   // SECTION 2 : FIRST AND LAST FRAMES (au milieu)
   // Contient : Prompts action + Prompts first/last + Images first/last
-  // CONDITIONNEL: Seulement si generateSecondaryImages = true
+  // TOUJOURS CRÉÉE (les first frames dépendent des collections primaires)
+  // NOTE: generateSecondaryImages n'affecte que les variantes personnages/décors
   // ================================================================================
   
   // Map pour stocker les IDs des frames par plan (pour les connecter aux vidéos)
@@ -1483,9 +1499,10 @@ export function generateCanvasFromProject(
   let section2Width = 0;
   let section2StartX = section1StartX + section1Width + LAYOUT.SECTION_GAP;
   
-  // SEULEMENT créer la section 2 si generateSecondaryImages = true
-  if (generateSecondaryImages) {
-    console.log('[CanvasGenerator] Création de la section FIRST FRAMES (generateSecondaryImages=true)');
+  // TOUJOURS créer la section 2 si firstFrameIsPrimary = false
+  // (les FIRST FRAMES sont générées même sans images secondaires des personnages/décors)
+  if (!firstFrameIsPrimary) {
+    console.log('[CanvasGenerator] Création de la section FIRST FRAMES (firstFrameIsPrimary=false)');
     
     let section2StartY = LAYOUT.MARGIN;
     let section2ContentY = section2StartY + 200;
@@ -1579,14 +1596,14 @@ export function generateCanvasFromProject(
       zIndex: LAYOUT.SHAPE_Z_INDEX,
     });
   } else {
-    // generateSecondaryImages = false : PAS de section FIRST FRAMES mais on crée les PROMPTS ACTION
-    console.log('[CanvasGenerator] Section FIRST FRAMES SAUTÉE (generateSecondaryImages=false)');
-    console.log('[CanvasGenerator] Création des PROMPTS ACTION uniquement');
-    console.log(`[CanvasGenerator] firstFrameIsPrimary = ${firstFrameIsPrimary}`);
+    // firstFrameIsPrimary = true : PAS de section FIRST FRAMES car on utilise les images primaires directement
+    // Les collections primaires servent de first frames pour les vidéos
+    console.log('[CanvasGenerator] Section FIRST FRAMES SAUTÉE (firstFrameIsPrimary=true)');
+    console.log('[CanvasGenerator] Les images primaires seront utilisées comme first frames');
     console.log(`[CanvasGenerator] couplesPerPlan = ${couplesPerPlan}`);
     
     // ================================================================================
-    // SECTION 2bis : PROMPTS ACTION (version légère quand pas d'images secondaires)
+    // SECTION 2bis : PROMPTS ACTION (version légère - images primaires = first frames)
     // ================================================================================
     
     let section2bisStartY = LAYOUT.MARGIN;
@@ -1732,10 +1749,9 @@ export function generateCanvasFromProject(
   // Contient : Uniquement les nœuds vidéo
   // ================================================================================
   
-  // Position de la section 3 : après section 2 si elle existe, sinon après section 1
-  const section3StartX = generateSecondaryImages 
-    ? section2StartX + section2Width + LAYOUT.SECTION_GAP
-    : section1StartX + section1Width + LAYOUT.SECTION_GAP;
+  // Position de la section 3 : toujours après section 2 (FIRST FRAMES ou PROMPTS ACTION)
+  // Note: section2Width est défini dans les deux branches (if/else) de la section 2
+  const section3StartX = section2StartX + section2Width + LAYOUT.SECTION_GAP;
   let section3StartY = LAYOUT.MARGIN;
 
   // Label géant de section
@@ -1961,14 +1977,17 @@ export function getGenerationSequence(structure: CanvasStructure, project?: Gene
         locationCollectionId: decorCollectionId, // Alias
         // Flag pour le nouveau workflow
         usesFirstLastFrame: structure.frameMode !== 'first-only',
-        // NOUVEAU: Flags pour génération directe depuis les collections primaires
-        skipSecondaryImages: structure.generateSecondaryImages === false,
+        // CORRECTION: skipSecondaryImages = true signifie "utiliser images primaires comme first frames"
+        // Ce flag est basé sur firstFrameIsPrimary, PAS sur generateSecondaryImages
+        // generateSecondaryImages contrôle uniquement les variantes des personnages/décors
+        skipSecondaryImages: structure.firstFrameIsPrimary || false,
         firstFrameIsPrimary: structure.firstFrameIsPrimary || false,
       };
     }),
     
-    // NOUVEAU: Flags globaux pour le mode de génération
-    skipSecondaryImages: structure.generateSecondaryImages === false,
+    // CORRECTION: Flags globaux pour le mode de génération
+    // skipSecondaryImages ici signifie "utiliser images primaires comme first frames"
+    skipSecondaryImages: structure.firstFrameIsPrimary || false,
     firstFrameIsPrimary: structure.firstFrameIsPrimary || false,
   };
 }

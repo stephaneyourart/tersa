@@ -85,19 +85,64 @@ export const VideoTransform = ({
   
   // Utiliser les modèles dynamiques filtrés
   const availableModels = useAvailableModels('video');
-  const modelId = data.model && availableModels[data.model] ? data.model : getFallbackModel(availableModels);
+  
+  // IMPORTANT: Pour l'affichage du modèle utilisé lors de la génération,
+  // on utilise data.generated?.model (le modèle REELLEMENT utilisé, stocké par l'API)
+  // Si pas disponible, on fallback sur data.model ou data.modelId (le modèle SELECTIONNE)
+  // Priorité: generated.model > model > modelId > fallback
+  const actualModelUsed = (data.generated as { model?: string } | undefined)?.model || data.model || (data as any).modelId;
+  
+  // Pour la SÉLECTION, on vérifie si le modèle est dispo, sinon fallback
+  const modelId = actualModelUsed && availableModels[actualModelUsed] 
+    ? actualModelUsed 
+    : (actualModelUsed || getFallbackModel(availableModels));
   
   const analytics = useAnalytics();
 
-  // Récupérer le modèle sélectionné
+  // Récupérer le modèle sélectionné (ou null si modèle inconnu/legacy)
   const selectedModel = availableModels[modelId];
+  
+  // Pour l'AFFICHAGE du modèle réellement utilisé (sous le nœud),
+  // on cherche d'abord dans availableModels, sinon on montre le nom brut
+  const displayModelLabel = useMemo(() => {
+    if (actualModelUsed && availableModels[actualModelUsed]) {
+      return availableModels[actualModelUsed].label;
+    }
+    // Si le modèle n'est pas dans availableModels, afficher son ID de façon lisible
+    if (actualModelUsed) {
+      // Nettoyer l'ID pour l'affichage (ex: kwaivgi/kling-v2.5 -> Kling v2.5)
+      const parts = actualModelUsed.split('/');
+      const name = parts[parts.length - 1] || actualModelUsed;
+      return name
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+    return selectedModel?.label;
+  }, [actualModelUsed, availableModels, selectedModel]);
+
+  // Si le modèle actuel n'est pas dans la liste (ex: désactivé ou legacy), on l'ajoute artificiellement
+  // pour que le ModelSelector puisse l'afficher correctement
+  const effectiveAvailableModels = useMemo(() => {
+    if (actualModelUsed && !availableModels[actualModelUsed]) {
+        return {
+            ...availableModels,
+            [actualModelUsed]: {
+                label: displayModelLabel || actualModelUsed,
+                chef: { name: 'Custom', icon: () => null }, // Mock
+                providers: []
+            }
+        } as any; // Cast as any pour éviter les erreurs de type strict sur TersaModel
+    }
+    return availableModels;
+  }, [availableModels, actualModelUsed, displayModelLabel]);
+
   const modelPath = useMemo(() => {
-    if (!selectedModel) return '';
+    if (!selectedModel) return actualModelUsed || '';
     const provider = selectedModel.providers[0];
     if (!provider) return '';
     const modelObj = provider.model;
     return modelObj?.modelId || '';
-  }, [selectedModel]);
+  }, [selectedModel, actualModelUsed]);
 
   // OPTIMISÉ: Sélecteur stable - ne re-render que si les images connectées changent réellement
   // Au lieu d'observer tous les nodes/edges, on calcule un hash des URLs d'images connectées
@@ -606,7 +651,7 @@ export const VideoTransform = ({
         children: (
           <ModelSelector
             value={modelId}
-            options={availableModels}
+            options={effectiveAvailableModels}
             key={id}
             className="w-[200px] rounded-full"
             onChange={(value) => updateNodeData(id, { model: value })}
@@ -657,7 +702,15 @@ export const VideoTransform = ({
   }, [data.instructions]);
 
   return (
-    <NodeLayout id={id} data={data} type={type} title={title} toolbar={toolbar} onBatchRun={handleBatchRun}>
+    <NodeLayout 
+      id={id} 
+      data={data} 
+      type={type} 
+      title={title} 
+      toolbar={toolbar} 
+      onBatchRun={handleBatchRun}
+      modelLabel={displayModelLabel}
+    >
       {/* Vignettes first/last frame des images connectées */}
       {/* Vignettes des images connectées */}
       {allConnectedImages.length > 0 && !isGenerating && !data.generated?.url && (
