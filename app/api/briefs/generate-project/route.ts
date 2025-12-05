@@ -331,24 +331,36 @@ export async function POST(request: NextRequest) {
 
     const projectName = customProjectName || `${briefData.title} v1`;
 
-    // LOG: Configuration complète du projet
+    // LOG: Configuration complète du projet (TOUS les paramètres)
     fLog.projectStart(projectName, briefId, {
+      // LLM
       llmProvider: llmProvider,
       llmModel: modelToUse,
       reasoningLevel: config?.reasoningLevel,
+      // T2I (images primaires)
       t2iModel: config?.settings?.imageModel,
-      i2iModel: config?.settings?.editModel,
-      videoModel: config?.settings?.videoModel,
+      t2iAspectRatio: config?.settings?.imageAspectRatio || config?.settings?.aspectRatio,
       t2iResolution: config?.settings?.resolution,
+      // I2I (first/last frames)
+      i2iModel: config?.settings?.editModel,
+      i2iAspectRatio: config?.settings?.videoAspectRatio, // I2I utilise le ratio vidéo (21:9)
       i2iResolution: config?.settings?.resolution,
+      // Video
+      videoModel: config?.settings?.videoModel,
       videoMode: config?.settings?.frameMode,
       videoDuration: config?.settings?.videoDuration,
+      videoAspectRatio: config?.settings?.videoAspectRatio,
+      videoGuidance: config?.settings?.videoGuidance || config?.settings?.cfgScale,
+      // Quantities
       plansCount: config?.settings?.plansCount,
       imageSetsPerPlan: config?.settings?.couplesPerPlan,
       videosPerImageSet: config?.settings?.videosPerCouple,
       generateSecondaryImages: config?.settings?.generateSecondaryImages,
       firstFrameIsPrimary: config?.settings?.firstFrameIsPrimary,
+      // Mode & Prompts
       testMode: isTestMode,
+      systemPrompt: config?.systemPrompt,
+      customInstructions: config?.customInstructions,
     });
 
     // Créer le stream SSE

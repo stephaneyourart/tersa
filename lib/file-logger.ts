@@ -617,22 +617,34 @@ export const fLog = {
   // PROJET - Configuration complète
   // ============================================================
   projectStart: (projectName: string, briefId: string, config: {
+    // LLM
     llmProvider?: string;
     llmModel?: string;
     reasoningLevel?: string;
+    // T2I
     t2iModel?: string;
-    i2iModel?: string;
-    videoModel?: string;
+    t2iAspectRatio?: string;
     t2iResolution?: string;
+    // I2I
+    i2iModel?: string;
+    i2iAspectRatio?: string;
     i2iResolution?: string;
+    // Video
+    videoModel?: string;
     videoMode?: string;
     videoDuration?: number;
+    videoAspectRatio?: string;
+    videoGuidance?: number;
+    // Quantities
     plansCount?: number;
     imageSetsPerPlan?: number;
     videosPerImageSet?: number;
     generateSecondaryImages?: boolean;
     firstFrameIsPrimary?: boolean;
+    // Mode & Prompts
     testMode?: boolean;
+    systemPrompt?: string;
+    customInstructions?: string;
   }) => {
     fileLog('INFO', 'GENERATION', `🎬 === NOUVEAU PROJET: ${projectName} ===`, { 
       details: {
@@ -645,13 +657,16 @@ export const fLog = {
             model: config.llmModel,
             reasoningLevel: config.reasoningLevel,
           },
-          // Images
+          // Text-to-Image (images primaires)
           t2i: {
             model: config.t2iModel,
+            aspectRatio: config.t2iAspectRatio,
             resolution: config.t2iResolution,
           },
+          // Image-to-Image (first/last frames)
           i2i: {
             model: config.i2iModel,
+            aspectRatio: config.i2iAspectRatio,
             resolution: config.i2iResolution,
           },
           // Vidéo
@@ -659,6 +674,8 @@ export const fLog = {
             model: config.videoModel,
             mode: config.videoMode,
             duration: config.videoDuration,
+            aspectRatio: config.videoAspectRatio,
+            guidance: config.videoGuidance,
           },
           // Quantités
           quantities: {
@@ -668,8 +685,10 @@ export const fLog = {
             generateSecondaryImages: config.generateSecondaryImages,
             firstFrameIsPrimary: config.firstFrameIsPrimary,
           },
-          // Mode
+          // Mode & Prompts
           testMode: config.testMode,
+          hasCustomSystemPrompt: !!config.systemPrompt,
+          hasCustomInstructions: !!config.customInstructions,
         },
       }
     });
