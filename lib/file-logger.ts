@@ -85,10 +85,10 @@ function ensureLogsDir(): void {
   }
 }
 
-// Obtenir le nom du fichier log du jour (format JSONL)
+// Obtenir le nom du fichier log du jour (format JSON indenté)
 function getTodayLogFile(): string {
   const today = getTodayDateFR();
-  return path.join(LOGS_DIR, `${today}.jsonl`);
+  return path.join(LOGS_DIR, `${today}.json`);
 }
 
 // Nettoyer les anciens logs (> 3 jours)
@@ -100,7 +100,7 @@ function cleanOldLogs(): void {
     const maxAge = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 
     for (const file of files) {
-      if (!file.endsWith('.jsonl') && !file.endsWith('.log')) continue;
+      if (!file.endsWith('.json') && !file.endsWith('.jsonl') && !file.endsWith('.log')) continue;
       
       const filePath = path.join(LOGS_DIR, file);
       const stats = fs.statSync(filePath);
@@ -121,10 +121,12 @@ function writeJsonLog(entry: JsonLogEntry): void {
     ensureLogsDir();
     const logFile = getTodayLogFile();
     
-    // JSON indenté pour lisibilité (2 espaces) puis compacté sur une ligne
-    const jsonLine = JSON.stringify(entry) + '\n';
+    // JSON INDENTÉ pour lisibilité dans Cursor/VS Code
+    // Séparateur "---" entre chaque entrée pour faciliter la lecture
+    const jsonPretty = JSON.stringify(entry, null, 2);
+    const separator = '\n' + '─'.repeat(80) + '\n';
     
-    fs.appendFileSync(logFile, jsonLine, 'utf-8');
+    fs.appendFileSync(logFile, jsonPretty + separator, 'utf-8');
     
     // Console: format court pour le terminal
     const time = entry.timestamp.slice(11, 23);
@@ -629,14 +631,15 @@ export function getTodayLogs(): JsonLogEntry[] {
   try {
     const logFile = getTodayLogFile();
     if (!fs.existsSync(logFile)) return [];
-    return fs.readFileSync(logFile, 'utf-8')
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        try { return JSON.parse(line); } 
-        catch { return null; }
-      })
-      .filter(Boolean) as JsonLogEntry[];
+    
+    // Séparer par le séparateur "─" puis parser chaque bloc JSON
+    const content = fs.readFileSync(logFile, 'utf-8');
+    const blocks = content.split(/─{80,}/).filter(Boolean);
+    
+    return blocks.map(block => {
+      try { return JSON.parse(block.trim()); } 
+      catch { return null; }
+    }).filter(Boolean) as JsonLogEntry[];
   } catch {
     return [];
   }
@@ -659,7 +662,7 @@ export function listLogFiles(): string[] {
   try {
     ensureLogsDir();
     return fs.readdirSync(LOGS_DIR)
-      .filter(f => f.endsWith('.jsonl') || f.endsWith('.log'))
+      .filter(f => f.endsWith('.json') || f.endsWith('.jsonl') || f.endsWith('.log'))
       .sort()
       .reverse();
   } catch {
@@ -672,14 +675,15 @@ export function readLogFile(filename: string): JsonLogEntry[] {
   try {
     const filePath = path.join(LOGS_DIR, filename);
     if (!fs.existsSync(filePath)) return [];
-    return fs.readFileSync(filePath, 'utf-8')
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        try { return JSON.parse(line); }
-        catch { return null; }
-      })
-      .filter(Boolean) as JsonLogEntry[];
+    
+    // Séparer par le séparateur "─" puis parser chaque bloc JSON
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const blocks = content.split(/─{80,}/).filter(Boolean);
+    
+    return blocks.map(block => {
+      try { return JSON.parse(block.trim()); }
+      catch { return null; }
+    }).filter(Boolean) as JsonLogEntry[];
   } catch {
     return [];
   }
