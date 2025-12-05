@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
-import { handleError } from '@/lib/error/handle';
+import { handleError, handleGenerationError } from '@/lib/error/handle';
 import { useAvailableModels } from '@/hooks/use-available-models';
 import { useModelParamsSidebar } from '@/components/model-params-sidebar';
 import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
@@ -300,7 +300,13 @@ export const ImageTransform = ({
       setTimeout(() => mutate('credits'), 5000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
-      handleError('Error generating image', error);
+      
+      // Afficher l'erreur complète en toast (expire après 1 min)
+      handleGenerationError(
+        (data as { customName?: string }).customName || 'Image',
+        error,
+        { nodeId: id, model: selectedModel?.label || modelId, prompt: data.instructions?.substring(0, 100) }
+      );
       
       // IMPORTANT: Sauvegarder l'erreur dans le nœud pour l'afficher dans le canvas
       updateNodeData(id, { error: errorMessage });

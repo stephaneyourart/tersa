@@ -114,7 +114,11 @@ type EditImageActionProps = {
   instructions?: string;
   nodeId: string;
   projectId: string;
+  // MODE TEST: utilise size (dimensions en pixels)
   size?: string;
+  // MODE PROD: utilise aspectRatio + resolution directement pour WaveSpeed
+  aspectRatio?: string;
+  resolution?: string; // '4k' ou '8k'
   // Paramètres optionnels pour certains modèles
   numInferenceSteps?: number;
   guidanceScale?: number;
@@ -174,13 +178,20 @@ const generateGptImage1Image = async ({
 };
 
 // Édite une image via WaveSpeed API
+// MODE PROD: aspectRatio + resolution sont passés directement à WaveSpeed
+// MODE TEST: size est passé (dimensions en pixels)
 async function editWaveSpeedImage(
   modelId: string,
   images: { url: string; type: string; originalUrl?: string }[],
   prompt: string,
-  size?: string,
-  options?: { numInferenceSteps?: number; guidanceScale?: number }
-): Promise<{ url: string; mediaType: string }> {
+  options?: {
+    size?: string;           // MODE TEST: dimensions en pixels
+    aspectRatio?: string;    // MODE PROD: ratio direct
+    resolution?: string;     // MODE PROD: '4k' ou '8k'
+    numInferenceSteps?: number;
+    guidanceScale?: number;
+  }
+): Promise<{ url: string; mediaType: string; aspectRatio?: string }> {
   // Mapper les IDs de modèle vers les instances WaveSpeed Edit
   const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaProEdit>> = {
     // Nano Banana Edit
@@ -212,7 +223,7 @@ async function editWaveSpeedImage(
   // Déterminer les limites d'images selon le modèle
   const isNanoBananaBasicEdit = modelId === 'nano-banana-edit-wavespeed';
   const isFluxKontextMulti = modelId.includes('flux-kontext-dev-multi');
-  const supportsResolution = modelId.includes('nano-banana-pro-edit');
+  const isNanoBananaProEdit = modelId.includes('nano-banana-pro-edit');
   
   // nano-banana/edit supporte max 10 images, nano-banana-pro/edit supporte 14
   const maxImages = isNanoBananaBasicEdit ? 10 : 14;
@@ -233,18 +244,26 @@ async function editWaveSpeedImage(
     output_format: 'png',
   };
   
-  // Ajouter le paramètre de taille selon le modèle
-  if (isFluxKontextMulti && size) {
-    // Format "widthxheight" pour flux-kontext-dev/multi
-    (params as Record<string, unknown>).size = size;
-    console.log(`[WaveSpeed] Flux Kontext Multi - size: ${size}`);
-  } else if (supportsResolution && size) {
-    // Format resolution pour nano-banana-pro-edit
-    params.resolution = size?.includes('2048') ? '4k' : size?.includes('1536') ? '2k' : '1k';
+  // Déterminer le mode (PROD ou TEST)
+  const isProdMode = options?.aspectRatio && options?.resolution;
+  
+  if (isProdMode && isNanoBananaProEdit) {
+    // MODE PROD pour Nano Banana Pro Edit: aspect_ratio + resolution directement
+    (params as Record<string, unknown>).aspect_ratio = options.aspectRatio;
+    params.resolution = options.resolution as '1k' | '2k' | '4k';
+    console.log(`[WaveSpeed] MODE PROD - aspect_ratio: ${options.aspectRatio}, resolution: ${options.resolution}`);
+  } else if (isFluxKontextMulti && options?.size) {
+    // Format "widthxheight" pour flux-kontext-dev/multi (MODE TEST)
+    (params as Record<string, unknown>).size = options.size;
+    console.log(`[WaveSpeed] Flux Kontext Multi - size: ${options.size}`);
+  } else if (isNanoBananaProEdit && options?.size) {
+    // MODE TEST pour Nano Banana Pro Edit: dériver resolution depuis size
+    const resolution = options.size?.includes('2048') ? '4k' : options.size?.includes('1536') ? '2k' : '1k';
+    params.resolution = resolution;
+    console.log(`[WaveSpeed] MODE TEST - size: ${options.size} -> resolution: ${resolution}`);
   } else if (isNanoBananaBasicEdit) {
-    // nano-banana-edit (pas pro) n'a pas de paramètre de taille - utilise la taille de l'image source
-    // ET ne supporte PAS num_inference_steps ni guidance_scale
-    console.log(`[WaveSpeed] nano-banana-edit: pas de paramètre de taille ni steps/guidance`);
+    // nano-banana-edit (pas pro) n'a pas de paramètre de taille
+    console.log(`[WaveSpeed] nano-banana-edit: pas de paramètre de taille`);
   }
   
   // Ajouter les paramètres optionnels si fournis ET si le modèle les supporte
@@ -258,12 +277,19 @@ async function editWaveSpeedImage(
     }
   }
 
-  console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`, options ? `(steps=${options.numInferenceSteps}, guidance=${options.guidanceScale})` : '', isFluxKontextMulti ? `size=${size}` : '');
+  console.log(`[WaveSpeed] Édition avec modèle: ${modelId}`, {
+    aspectRatio: options?.aspectRatio,
+    resolution: options?.resolution,
+    size: options?.size,
+    steps: options?.numInferenceSteps,
+    guidance: options?.guidanceScale,
+  });
   const imageUrl = await model.generate(params);
 
   return {
     url: imageUrl,
     mediaType: 'image/png',
+    aspectRatio: options?.aspectRatio,
   };
 }
 
@@ -274,6 +300,8 @@ export const editImageAction = async ({
   nodeId,
   projectId,
   size,
+  aspectRatio,
+  resolution,
   numInferenceSteps,
   guidanceScale,
 }: EditImageActionProps): Promise<
@@ -314,7 +342,10 @@ export const editImageAction = async ({
     // Vérifier si c'est un modèle WaveSpeed Edit
     if (modelId.endsWith('-wavespeed') && model.supportsEdit) {
       console.log(`[WaveSpeed] Détecté modèle Edit WaveSpeed: ${modelId}`);
-      const result = await editWaveSpeedImage(modelId, images, prompt, size, {
+      const result = await editWaveSpeedImage(modelId, images, prompt, {
+        size,
+        aspectRatio,
+        resolution,
         numInferenceSteps,
         guidanceScale,
       });

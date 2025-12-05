@@ -448,7 +448,7 @@ export const TextTransform = ({
       <Textarea
         value={data.instructions ?? ''}
         onChange={handleInstructionsChange}
-        placeholder="Promptez..."
+        placeholder={data.generated?.text ? "Demandez une modification du texte ci-dessus..." : "Promptez..."}
         className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
       />
       <ReasoningTunnel.In>

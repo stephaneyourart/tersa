@@ -30,6 +30,7 @@ export const localEnv = createEnv({
     FAL_API_KEY: z.string().optional(),
     WAVESPEED_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
+    MISTRAL_API_KEY: z.string().optional(),
 
     // APIs IA - Vidéo
     KLING_API_KEY: z.string().optional(),
@@ -98,6 +99,7 @@ export const localEnv = createEnv({
     FAL_API_KEY: process.env.FAL_API_KEY,
     WAVESPEED_API_KEY: process.env.WAVESPEED_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
     KLING_API_KEY: process.env.KLING_API_KEY,
     PIXVERSE_API_KEY: process.env.PIXVERSE_API_KEY,
     BF_API_KEY: process.env.BF_API_KEY,

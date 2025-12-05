@@ -103,7 +103,12 @@ export function calculateCost(tokens: number, model: string = 'gemini-3'): numbe
     'gemini-2-flash': 0.0375,
     'gpt-4o': 2.5,
     'gpt-4o-mini': 0.15,
+    'gpt-5.1-2025-11-13': 3.0, // GPT-5.1
     'claude-3.5-sonnet': 3.0,
+    // Mistral - prix input (output est plus cher: Large=$6, Small=$0.6)
+    'mistral-large-latest': 2.0,
+    'mistral-small-latest': 0.2,
+    'mistral-medium-latest': 2.7,
   };
   
   const price = pricePerMillionTokens[model] || 0.075;

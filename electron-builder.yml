@@ -1,0 +1,99 @@
+# Electron Builder Configuration
+# https://www.electron.build/configuration
+
+appId: com.mediaconductor.app
+productName: Media Conductor
+copyright: Copyright © 2025
+
+# Directories
+directories:
+  output: dist-electron
+  buildResources: resources
+
+# Files to include in the package
+files:
+  - .next/**/*
+  - electron/**/*.js
+  - package.json
+  - "!**/*.ts"
+  - "!**/*.map"
+
+# Extra resources (copied to Resources folder)
+extraResources:
+  - from: scripts/davinci_bridge.py
+    to: scripts/davinci_bridge.py
+
+# macOS Configuration
+mac:
+  category: public.app-category.video
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  darkModeSupport: true
+
+# DMG Configuration (macOS)
+dmg:
+  background: resources/dmg-background.png
+  iconSize: 100
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Windows Configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: resources/icon.ico
+  publisherName: Media Conductor
+
+# NSIS Installer Configuration (Windows)
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Media Conductor
+
+# Linux Configuration
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Video
+  icon: resources/icons
+  maintainer: contact@mediaconductor.app
+  desktop:
+    Name: Media Conductor
+    Comment: AI-powered media orchestration platform
+    Categories: Video;AudioVideo;
+
+# AppImage Configuration (Linux)
+appImage:
+  artifactName: Media-Conductor-${version}-${arch}.AppImage
+
+# Auto-update disabled (manual releases only)
+publish: null

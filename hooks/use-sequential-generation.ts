@@ -146,15 +146,26 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
       });
 
       if (!response.ok) {
-        console.error('Erreur génération image:', await response.text());
+        const errorText = await response.text();
+        console.error('Erreur génération image:', errorText);
+        toast.error(`❌ Image ${nodeId.substring(0, 8)}`, {
+          description: errorText.substring(0, 200),
+          duration: 60_000,
+          closeButton: true,
+        });
         return false;
       }
 
       // Attendre que l'image soit rendue dans le nœud
       const url = await waitForNodeRender(nodeId);
       return url !== null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur génération image:', error);
+      toast.error(`❌ Image ${nodeId.substring(0, 8)}`, {
+        description: error?.message || String(error),
+        duration: 60_000,
+        closeButton: true,
+      });
       return false;
     } finally {
       decrementActiveGenerations();
@@ -184,15 +195,26 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
       });
 
       if (!response.ok) {
-        console.error('Erreur génération image edit:', await response.text());
+        const errorText = await response.text();
+        console.error('Erreur génération image edit:', errorText);
+        toast.error(`❌ Edit ${nodeId.substring(0, 8)}`, {
+          description: errorText.substring(0, 200),
+          duration: 60_000,
+          closeButton: true,
+        });
         return false;
       }
 
       // Attendre que l'image soit rendue dans le nœud
       const url = await waitForNodeRender(nodeId);
       return url !== null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur génération image edit:', error);
+      toast.error(`❌ Edit ${nodeId.substring(0, 8)}`, {
+        description: error?.message || String(error),
+        duration: 60_000,
+        closeButton: true,
+      });
       return false;
     } finally {
       decrementActiveGenerations();
@@ -215,15 +237,26 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
       });
 
       if (!response.ok) {
-        console.error('Erreur génération vidéo:', await response.text());
+        const errorText = await response.text();
+        console.error('Erreur génération vidéo:', errorText);
+        toast.error(`❌ Vidéo ${nodeId.substring(0, 8)}`, {
+          description: `[${videoModel}] ${errorText.substring(0, 200)}`,
+          duration: 60_000,
+          closeButton: true,
+        });
         return false;
       }
 
       // Attendre que la vidéo soit rendue
       const url = await waitForNodeRender(nodeId, 180000); // 3 minutes pour les vidéos
       return url !== null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur génération vidéo:', error);
+      toast.error(`❌ Vidéo ${nodeId.substring(0, 8)}`, {
+        description: `[${videoModel}] ${error?.message || String(error)}`,
+        duration: 60_000,
+        closeButton: true,
+      });
       return false;
     } finally {
       decrementActiveGenerations();
@@ -713,7 +746,14 @@ export function useSequentialGeneration(options: UseSequentialGenerationOptions 
     } catch (error: any) {
       console.error('Erreur génération parallèle:', error);
       setProgress(prev => ({ ...prev, isGenerating: false, activeGenerations: 0 }));
-      toast.error(`Erreur: ${error.message}`);
+      
+      // Afficher l'erreur complète avec durée de 1 minute
+      toast.error('❌ Erreur génération', {
+        description: error.message,
+        duration: 60_000,
+        closeButton: true,
+      });
+      
       onError?.(error.message);
     }
   }, [progress.isGenerating, getNodes, updateNodeData, videoCopies, imageModel, videoModel, onComplete, onError]);

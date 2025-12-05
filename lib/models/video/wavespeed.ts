@@ -5,42 +5,59 @@
 
 import type { VideoModel } from '.';
 
-// Mapping des modelId courts vers les chemins API complets
+// ============================================================
+// MODÈLES VIDÉO WAVESPEED
+// Les IDs sont maintenant les vrais endpoints WaveSpeed
+// ============================================================
+
+// Mapping des modelId vers les chemins API
+// Si l'ID est déjà un chemin complet (contient "/"), on l'utilise directement
 const MODEL_PATH_MAP: Record<string, string> = {
-  // Kling O1 (nouveau modèle de raisonnement)
+  // === VRAIS ENDPOINTS (ID = endpoint) ===
+  'kwaivgi/kling-v2.6-pro/image-to-video': 'kwaivgi/kling-v2.6-pro/image-to-video',
+  'kwaivgi/kling-v2.5-turbo-pro/image-to-video': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
+  
+  // === ANCIENS ALIAS (pour compatibilité) ===
   'kling-o1': 'kwaivgi/kling-video-o1/text-to-video',
   'kling-o1-i2v': 'kwaivgi/kling-video-o1/image-to-video',
-  'kling-o1-ref': 'kwaivgi/kling-video-o1/reference-to-video', // NOUVEAU: reference-to-video avec images multiples
-  // Kling 2.6 Pro
+  'kling-o1-ref': 'kwaivgi/kling-video-o1/reference-to-video',
   'kling-v2.6-pro-t2v': 'kwaivgi/kling-v2.6-pro/text-to-video',
   'kling-v2.6-pro-i2v': 'kwaivgi/kling-v2.6-pro/image-to-video',
-  // Kling 2.1 Pro Start-End Frame (LE SEUL QUI SUPPORTE first+last frame !)
   'kling-v2.1-start-end': 'kwaivgi/kling-v2.1-i2v-pro/start-end-frame',
-  // Kling 2.5
+  'kling-v2.5-turbo-pro-first-last': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-turbo': 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
   'kling-v2.5-standard': 'kwaivgi/kling-v2.5-std/image-to-video',
   'kling-v2.5-pro': 'kwaivgi/kling-v2.5-pro/image-to-video',
-  // Seedream
   'seedream-v1': 'wavespeed-ai/seedream-3.0/image-to-video',
-  // WAN
   'wan-2.1': 'wavespeed-ai/wan-2.1/image-to-video',
   'wan-2.1-pro': 'wavespeed-ai/wan-2.1-pro/image-to-video',
-  // Veo
   'veo3.1-i2v': 'google/veo3.1-image-to-video',
   'veo3.1-t2v': 'google/veo3.1-text-to-video',
-  // Sora
   'sora-2-i2v': 'openai/sora-2-image-to-video-pro',
   'sora-2-t2v': 'openai/sora-2-text-to-video-pro',
 };
 
+// Configuration des champs API par modèle
+// IMPORTANT: cfg_scale pour v2.6, guidance_scale pour v2.5
+const MODEL_API_CONFIG: Record<string, { guidanceField: string; supportsLastImage: boolean }> = {
+  'kwaivgi/kling-v2.6-pro/image-to-video': { guidanceField: 'cfg_scale', supportsLastImage: false },
+  'kwaivgi/kling-v2.5-turbo-pro/image-to-video': { guidanceField: 'guidance_scale', supportsLastImage: true },
+};
+
 // Types pour l'API WaveSpeed
+// Accepte les vrais endpoints ET les anciens alias
 type WaveSpeedVideoModel =
+  // === VRAIS ENDPOINTS (recommandés) ===
+  | 'kwaivgi/kling-v2.6-pro/image-to-video'
+  | 'kwaivgi/kling-v2.5-turbo-pro/image-to-video'
+  // === ANCIENS ALIAS (compatibilité) ===
   | 'kling-o1'
   | 'kling-o1-i2v'
-  | 'kling-o1-ref'      // reference-to-video
+  | 'kling-o1-ref'
   | 'kling-v2.6-pro-t2v'
   | 'kling-v2.6-pro-i2v'
-  | 'kling-v2.1-start-end' // SEUL modèle qui supporte first+last frame !
+  | 'kling-v2.1-start-end'
+  | 'kling-v2.5-turbo-pro-first-last'
   | 'kling-v2.5-turbo'
   | 'kling-v2.5-standard'
   | 'kling-v2.5-pro'
@@ -175,15 +192,19 @@ async function callWaveSpeedApi(
 }
 
 /**
- * Crée un modèle vidéo WaveSpeed standard (image-to-video, text-to-video)
+ * Crée un modèle vidéo WaveSpeed
+ * Utilise la config MODEL_API_CONFIG pour les bons champs API
  */
 function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
   return {
     modelId,
     generate: async ({ prompt, imagePrompt, lastFrameImage, duration, aspectRatio }) => {
+      // Récupérer la config API pour ce modèle
+      const modelPath = MODEL_PATH_MAP[modelId] || modelId;
+      const apiConfig = MODEL_API_CONFIG[modelPath];
+      
       const input: WaveSpeedRequest = {
         prompt,
-        aspect_ratio: aspectRatio || '16:9',
         duration: duration || 5,
       };
 
@@ -192,10 +213,24 @@ function createWaveSpeedModel(modelId: WaveSpeedVideoModel): VideoModel {
         input.image = imagePrompt;
       }
 
-      // Ajouter last frame (last_image) si fournie - supporté par Kling
-      if (lastFrameImage) {
+      // Ajouter le bon champ guidance selon le modèle
+      if (apiConfig?.guidanceField === 'cfg_scale') {
+        // kling-v2.6-pro utilise cfg_scale
+        (input as Record<string, unknown>).cfg_scale = 0.5;
+        (input as Record<string, unknown>).sound = true;
+        console.log(`[WaveSpeed Video] Using cfg_scale for ${modelId}`);
+      } else {
+        // kling-v2.5-turbo-pro utilise guidance_scale
+        input.guidance_scale = 0.5;
+        console.log(`[WaveSpeed Video] Using guidance_scale for ${modelId}`);
+      }
+
+      // Ajouter last frame SEULEMENT si le modèle le supporte
+      if (lastFrameImage && apiConfig?.supportsLastImage) {
         input.last_image = lastFrameImage;
         console.log(`[WaveSpeed Video] Adding last_image for first-last frame animation`);
+      } else if (lastFrameImage && !apiConfig?.supportsLastImage) {
+        console.warn(`[WaveSpeed Video] ⚠️ Model ${modelId} does NOT support last_image - ignoring`);
       }
 
       return callWaveSpeedApi(modelId, input);
@@ -244,6 +279,51 @@ function createKlingStartEndModel(): VideoModel {
         throw new Error('Le modèle start-end-frame requiert image ET end_image');
       }
 
+      return callWaveSpeedApi(modelId, input);
+    },
+  };
+}
+
+/**
+ * Crée un modèle vidéo KLING 2.5 Turbo Pro optimisé pour first+last frame
+ * 
+ * NOUVEAU : Kling 2.5 Turbo Pro supporte first+last frame via:
+ * - image : first frame (REQUIRED)
+ * - last_image : last frame (OPTIONAL mais recommandé pour first+last)
+ * 
+ * Endpoint: kwaivgi/kling-v2.5-turbo-pro/image-to-video
+ */
+function createKling25TurboProFirstLastModel(): VideoModel {
+  const modelId: WaveSpeedVideoModel = 'kling-v2.5-turbo-pro-first-last';
+  
+  return {
+    modelId,
+    generate: async ({ prompt, imagePrompt, lastFrameImage, duration, aspectRatio }) => {
+      const input: WaveSpeedRequest = {
+        prompt,
+        duration: duration || 5,
+        guidance_scale: 0.5, // Valeur par défaut recommandée
+      };
+
+      // First frame (image de départ) - REQUIRED
+      if (imagePrompt) {
+        input.image = imagePrompt;
+        console.log(`[WaveSpeed KLING 2.5 Turbo Pro First-Last] First frame set`);
+      }
+
+      // Last frame (image de fin) - OPTIONAL mais recommandé
+      // Kling 2.5 Turbo Pro utilise "last_image" (PAS end_image !)
+      if (lastFrameImage) {
+        input.last_image = lastFrameImage;
+        console.log(`[WaveSpeed KLING 2.5 Turbo Pro First-Last] Last frame set`);
+      }
+
+      if (!imagePrompt) {
+        console.error(`[WaveSpeed KLING 2.5 Turbo Pro First-Last] ❌ ERREUR: first frame (image) est OBLIGATOIRE !`);
+        throw new Error('Kling 2.5 Turbo Pro requiert au minimum une image (first frame)');
+      }
+
+      console.log(`[WaveSpeed KLING 2.5 Turbo Pro First-Last] Generating with first+last=${!!lastFrameImage}`);
       return callWaveSpeedApi(modelId, input);
     },
   };
@@ -299,13 +379,17 @@ export const wavespeed = {
   kling26ProT2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-t2v'),
   kling26ProI2V: (): VideoModel => createWaveSpeedModel('kling-v2.6-pro-i2v'),
   
-  // Kling 2.1 Pro Start-End Frame - LE SEUL qui supporte first+last frame !
+  // Kling 2.1 Pro Start-End Frame - Ancien modèle first+last (utilise end_image)
   klingStartEnd: (): VideoModel => createKlingStartEndModel(),
   
   // DEPRECATED: Ancien nom, redirige vers le bon modèle
   kling26ProFirstLast: (): VideoModel => createKlingStartEndModel(),
 
-  // Kling 2.5 via WaveSpeed
+  // ⭐ NOUVEAU: Kling 2.5 Turbo Pro avec first+last frame (utilise last_image)
+  // C'est le modèle RECOMMANDÉ pour first+last frame !
+  kling25TurboProFirstLast: (): VideoModel => createKling25TurboProFirstLastModel(),
+
+  // Kling 2.5 via WaveSpeed (sans first+last)
   kling25Turbo: (): VideoModel => createWaveSpeedModel('kling-v2.5-turbo'),
   kling25Standard: (): VideoModel => createWaveSpeedModel('kling-v2.5-standard'),
   kling25Pro: (): VideoModel => createWaveSpeedModel('kling-v2.5-pro'),

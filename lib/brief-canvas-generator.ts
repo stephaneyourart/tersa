@@ -24,6 +24,7 @@ import type {
 } from '@/types/generated-project';
 import { getSceneColor } from '@/types/generated-project';
 import { IMAGE_RATIOS } from '@/lib/brief-defaults';
+import type { FrameMode } from '@/lib/creative-plan-settings';
 
 // ========== CONSTANTES DE LAYOUT - CANVAS INFINI, TRÈS ESPACÉ ==========
 const LAYOUT = {
@@ -164,10 +165,14 @@ export interface CanvasStructure {
   videosPerCouple: number;                      // M = Nombre de vidéos par couple
   videoCopies?: number;                         // DEPRECATED: utiliser couplesPerPlan × videosPerCouple
   videoSettings: { duration: number; aspectRatio: string }; // Paramètres vidéo
+  
+  // Mode frame: 'first-last' (2 images) ou 'first-only' (1 image)
+  frameMode: FrameMode;
 }
 
 // ========== CRÉATION PERSONNAGE ==========
 // Nouveau système : 1 image primaire (text-to-image) + 3 variantes (edit depuis primaire)
+// Layout: [Narratif] --- [Prompt Primary] → [Image Primary] → [Variantes] → [Collection]
 function createCharacterStructure(
   character: GeneratedCharacter,
   startX: number,
@@ -175,7 +180,8 @@ function createCharacterStructure(
   structure: CanvasStructure,
   testMode: boolean = false
 ): void {
-  const textNodeId = nodeId('text-perso');
+  const textNarrativeNodeId = nodeId('text-narratif');
+  const textPromptNodeId = nodeId('text-prompt');  // NOUVEAU: nœud prompt éditable
   const collectionNodeId = nodeId('collection-perso');
   
   // 4 images : primary (référence) + 3 variantes
@@ -189,29 +195,47 @@ function createCharacterStructure(
   // Ordre de génération : primary d'abord (text-to-image), puis les 3 variantes EN PARALLÈLE (edit)
   const generationOrder = ['primary', 'face', 'profile', 'back'];
 
-  // Texte descriptif
-  const textContent = `# ${character.name}\n\n${character.description}\n\n**Code référence:** ${character.referenceCode}`;
+  // Texte narratif (description du personnage - informatif uniquement)
+  const narrativeContent = `# ${character.name}\n\n${character.description}\n\n**Code référence:** ${character.referenceCode}`;
   
-  // 1. Nœud TEXT (description)
+  // 1. Nœud TEXT NARRATIF (à gauche, NON connecté - purement informatif)
   structure.textNodes.push({
-    id: textNodeId,
+    id: textNarrativeNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
       generated: {
-        text: textContent,
+        text: narrativeContent,
       },
       updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (1 primaire + 3 variantes)
-  const imageY = startY;
-  const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  
   // Utiliser les prompts du nouveau format (ou legacy si nécessaire)
   const primaryPrompt = character.prompts.primary || character.prompts.fullBody || '';
+  
+  // 2. Nœud TEXT PROMPT (le VRAI prompt de génération - connecté à l'image primaire)
+  const promptNodeX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
+  structure.textNodes.push({
+    id: textPromptNodeId,
+    type: 'text',
+    position: { x: promptNodeX, y: startY },
+    data: {
+      generated: {
+        text: `**Prompt génération ${character.name}:**\n\n${primaryPrompt}`,
+      },
+      // instructions vide - l'utilisateur peut demander des modifications
+      updatedAt: new Date().toISOString(),
+      isPromptNode: true,  // Flag pour identifier ce type de nœud
+      characterId: character.id,
+    },
+    width: LAYOUT.TEXT_NODE_WIDTH,
+  });
+
+  // 3. Nœuds IMAGE (1 primaire + 3 variantes) - décalés pour laisser place au prompt
+  const imageY = startY;
+  const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
   const imageConfigs = [
     { 
@@ -294,7 +318,7 @@ function createCharacterStructure(
     });
   }
 
-  // 3. Nœud COLLECTION - positionné à droite des images
+  // 4. Nœud COLLECTION - positionné à droite des images
   const collectionX = imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
   const collectionY = startY + LAYOUT.IMAGE_NODE_HEIGHT_9_16 / 2;
   
@@ -311,7 +335,15 @@ function createCharacterStructure(
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
 
-  // 4. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
+  // 5. Edge : Prompt → Image Primaire (permet de regénérer avec le prompt édité)
+  structure.edges.push({
+    id: `edge-${textPromptNodeId}-${imageNodeIds.primary}`,
+    source: textPromptNodeId,
+    target: imageNodeIds.primary,
+    type: 'default',
+  });
+
+  // 6. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
   const variantKeys = ['face', 'profile', 'back'];
   for (const key of variantKeys) {
     structure.edges.push({
@@ -322,7 +354,7 @@ function createCharacterStructure(
     });
   }
 
-  // 5. Edges : images → collection
+  // 7. Edges : images → collection
   for (const imgId of Object.values(imageNodeIds)) {
     structure.edges.push({
       id: `edge-${imgId}-${collectionNodeId}`,
@@ -346,6 +378,7 @@ function createCharacterStructure(
 
 // ========== CRÉATION DÉCOR (anciennement LIEU) ==========
 // Nouveau système : 1 image primaire (text-to-image) + 3 variantes (edit depuis primaire)
+// Layout: [Narratif] --- [Prompt Primary] → [Image Primary] → [Variantes] → [Collection]
 function createDecorStructure(
   decor: GeneratedDecor | GeneratedLocation,
   startX: number,
@@ -353,7 +386,8 @@ function createDecorStructure(
   structure: CanvasStructure,
   testMode: boolean = false
 ): void {
-  const textNodeId = nodeId('text-decor');
+  const textNarrativeNodeId = nodeId('text-narratif-decor');
+  const textPromptNodeId = nodeId('text-prompt-decor');  // NOUVEAU: nœud prompt éditable
   const collectionNodeId = nodeId('collection-decor');
   
   // 4 images : primary (référence) + 3 variantes
@@ -367,32 +401,50 @@ function createDecorStructure(
   // Ordre de génération : primary d'abord (text-to-image), puis les 3 variantes EN PARALLÈLE (edit)
   const generationOrder = ['primary', 'angle2', 'plongee', 'contrePlongee'];
 
-  // Texte descriptif - adapter selon le format (nouveau décor ou ancien lieu)
-  const textContent = `# ${decor.name}\n\n${decor.description}\n\n**Code référence:** ${decor.referenceCode}`;
+  // Texte narratif - adapter selon le format (nouveau décor ou ancien lieu)
+  const narrativeContent = `# ${decor.name}\n\n${decor.description}\n\n**Code référence:** ${decor.referenceCode}`;
 
-  // 1. Nœud TEXT
+  // 1. Nœud TEXT NARRATIF (à gauche, NON connecté - purement informatif)
   structure.textNodes.push({
-    id: textNodeId,
+    id: textNarrativeNodeId,
     type: 'text',
     position: { x: startX, y: startY },
     data: {
       generated: {
-        text: textContent,
+        text: narrativeContent,
       },
       updatedAt: new Date().toISOString(),
     },
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // 2. Nœuds IMAGE (1 primaire + 3 variantes)
-  const imageStartX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
-  
   // Gérer les deux formats (nouveau avec prompts.primary ou ancien avec prompts.angle1)
   const decorPrompts = decor.prompts as any;
   const primaryPrompt = decorPrompts.primary || decorPrompts.angle1 || '';
   const angle2Prompt = decorPrompts.angle2 || "Propose un angle très différent et révélateur de ce décor, sans varier la hauteur et l'inclinaison de la caméra.";
   const plongeePrompt = decorPrompts.plongee || decorPrompts.angle3 || "Vue en plongée top down de ce décor, avec une assez courte focale pour avoir une vue d'ensemble de ce décor.";
   const contrePlongeePrompt = decorPrompts.contrePlongee || "Vue en forte contre plongée, caméra basse et inclinée vers le haut, avec une assez courte focale.";
+
+  // 2. Nœud TEXT PROMPT (le VRAI prompt de génération - connecté à l'image primaire)
+  const promptNodeX = startX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
+  structure.textNodes.push({
+    id: textPromptNodeId,
+    type: 'text',
+    position: { x: promptNodeX, y: startY },
+    data: {
+      generated: {
+        text: `**Prompt génération ${decor.name}:**\n\n${primaryPrompt}`,
+      },
+      // instructions vide - l'utilisateur peut demander des modifications
+      updatedAt: new Date().toISOString(),
+      isPromptNode: true,  // Flag pour identifier ce type de nœud
+      decorId: decor.id,
+    },
+    width: LAYOUT.TEXT_NODE_WIDTH,
+  });
+
+  // 3. Nœuds IMAGE (1 primaire + 3 variantes) - décalés pour laisser place au prompt
+  const imageStartX = promptNodeX + LAYOUT.TEXT_NODE_WIDTH + LAYOUT.NODE_GAP_X;
   
   // Disposition 2x2 comme les personnages
   const imageConfigs = [
@@ -471,7 +523,7 @@ function createDecorStructure(
     });
   }
 
-  // 3. Nœud COLLECTION - positionné à droite de la grille 2x2 (comme personnages)
+  // 4. Nœud COLLECTION - positionné à droite de la grille 2x2 (comme personnages)
   const collectionX = imageStartX + 2 * (LAYOUT.IMAGE_NODE_WIDTH + LAYOUT.NODE_GAP_X) + LAYOUT.NODE_GAP_X;
   const collectionY = startY + LAYOUT.IMAGE_NODE_HEIGHT_16_9 / 2;
   
@@ -488,7 +540,15 @@ function createDecorStructure(
     width: LAYOUT.COLLECTION_NODE_WIDTH,
   });
 
-  // 4. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
+  // 5. Edge : Prompt → Image Primaire (permet de regénérer avec le prompt édité)
+  structure.edges.push({
+    id: `edge-${textPromptNodeId}-${imageNodeIds.primary}`,
+    source: textPromptNodeId,
+    target: imageNodeIds.primary,
+    type: 'default',
+  });
+
+  // 6. Edges : Primaire → Variantes (les variantes DÉPENDENT de l'image primaire)
   const variantKeys = ['angle2', 'plongee', 'contrePlongee'];
   for (const key of variantKeys) {
     structure.edges.push({
@@ -499,7 +559,7 @@ function createDecorStructure(
     });
   }
 
-  // 5. Edges : images → collection
+  // 7. Edges : images → collection
   for (const imgId of Object.values(imageNodeIds)) {
     structure.edges.push({
       id: `edge-${imgId}-${collectionNodeId}`,
@@ -509,7 +569,7 @@ function createDecorStructure(
     });
   }
 
-  // 6. Tracking avec info de génération
+  // 8. Tracking avec info de génération
   // Garder la compatibilité avec locationCollectionIds et locationImageMap
   structure.locationCollectionIds[decor.id] = collectionNodeId;
   structure.locationImageMap[decor.id] = {
@@ -558,6 +618,10 @@ function createPlanFramesStructure(
 
   // N = Nombre de couples par plan
   const couplesPerPlan = structure.couplesPerPlan || 1;
+  
+  // Mode frame: first-last ou first-only
+  const frameMode = structure.frameMode || 'first-last';
+  const isFirstOnly = frameMode === 'first-only';
 
   // Ratio pour les images de plan (21:9 cinémascope)
   const planImageRatio = IMAGE_RATIOS.plan?.depart || '21:9';
@@ -570,7 +634,7 @@ function createPlanFramesStructure(
 
   // Prompts déduits
   const promptDepart = plan.promptImageDepart || `Début du plan : ${plan.prompt}`;
-  const promptFin = plan.promptImageFin || `Fin du plan : ${plan.prompt}`;
+  const promptFin = isFirstOnly ? '' : (plan.promptImageFin || `Fin du plan : ${plan.prompt}`);
 
   // ========== COLONNE 1 : PROMPT ACTION ==========
   const col1X = startX;
@@ -624,30 +688,32 @@ function createPlanFramesStructure(
     width: LAYOUT.TEXT_NODE_WIDTH,
   });
 
-  // PROMPT LAST FRAME (en dessous)
+  // PROMPT LAST FRAME (en dessous) - UNIQUEMENT en mode first-last
   const row2Y = startY + LAYOUT.TEXT_NODE_HEIGHT + ROW_GAP;
 
-  structure.labelNodes.push({
-    id: nodeId('label-prompt-last'),
-    type: 'label',
-    position: { x: col2X, y: row2Y + LABEL_OFFSET_Y },
-    data: {
-      text: 'PROMPT LAST',
-      fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
-      color: '#60a5fa',
-    },
-  });
+  if (!isFirstOnly) {
+    structure.labelNodes.push({
+      id: nodeId('label-prompt-last'),
+      type: 'label',
+      position: { x: col2X, y: row2Y + LABEL_OFFSET_Y },
+      data: {
+        text: 'PROMPT LAST',
+        fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
+        color: '#60a5fa',
+      },
+    });
 
-  structure.textNodes.push({
-    id: textLastFrameNodeId,
-    type: 'text',
-    position: { x: col2X, y: row2Y },
-    data: {
-      generated: { text: `**Last Frame:**\n${promptFin}` },
-      updatedAt: new Date().toISOString(),
-    },
-    width: LAYOUT.TEXT_NODE_WIDTH,
-  });
+    structure.textNodes.push({
+      id: textLastFrameNodeId,
+      type: 'text',
+      position: { x: col2X, y: row2Y },
+      data: {
+        generated: { text: `**Last Frame:**\n${promptFin}` },
+        updatedAt: new Date().toISOString(),
+      },
+      width: LAYOUT.TEXT_NODE_WIDTH,
+    });
+  }
 
   // ========== COLONNES 3+ : N COUPLES DE FRAMES (FIRST + LAST) ==========
   const col3StartX = col2X + LAYOUT.TEXT_NODE_WIDTH + COL_GAP;
@@ -715,37 +781,39 @@ function createPlanFramesStructure(
       height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
     });
 
-    // LAST FRAME IMAGE (en dessous)
-    structure.labelNodes.push({
-      id: nodeId(`label-last-frame-${coupleIdx}`),
-      type: 'label',
-      position: { x: coupleX, y: row2Y + LABEL_OFFSET_Y },
-      data: {
-        text: couplesPerPlan > 1 ? 'LAST' : 'LAST FRAME',
-        fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
-        color: '#60a5fa',
-      },
-    });
-    
-    structure.imageNodes.push({
-      id: imageFinNodeId,
-      type: 'image',
-      position: { x: coupleX, y: row2Y },
-      data: {
-        label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Fin${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
-        instructions: couplePromptFin,
-        aspectRatio: planImageRatio,
-        isPlanImage: true,
-        planId: plan.id,
-        frameType: 'fin',
-        coupleIndex: coupleIdx,
-        generationType: 'edit',
-        characterRefs: plan.characterRefs,
-        decorRef: plan.decorRef || plan.locationRef,
-      },
-      width: LAYOUT.IMAGE_NODE_WIDTH,
-      height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
-    });
+    // LAST FRAME IMAGE (en dessous) - UNIQUEMENT en mode first-last
+    if (!isFirstOnly) {
+      structure.labelNodes.push({
+        id: nodeId(`label-last-frame-${coupleIdx}`),
+        type: 'label',
+        position: { x: coupleX, y: row2Y + LABEL_OFFSET_Y },
+        data: {
+          text: couplesPerPlan > 1 ? 'LAST' : 'LAST FRAME',
+          fontSize: couplesPerPlan > 1 ? 72 : LAYOUT.GIANT_LABEL_FONT_SIZE,
+          color: '#60a5fa',
+        },
+      });
+      
+      structure.imageNodes.push({
+        id: imageFinNodeId,
+        type: 'image',
+        position: { x: coupleX, y: row2Y },
+        data: {
+          label: `Plan ${scene.sceneNumber}.${plan.planNumber} - Fin${couplesPerPlan > 1 ? ` (C${coupleIdx + 1})` : ''}`,
+          instructions: couplePromptFin,
+          aspectRatio: planImageRatio,
+          isPlanImage: true,
+          planId: plan.id,
+          frameType: 'fin',
+          coupleIndex: coupleIdx,
+          generationType: 'edit',
+          characterRefs: plan.characterRefs,
+          decorRef: plan.decorRef || plan.locationRef,
+        },
+        width: LAYOUT.IMAGE_NODE_WIDTH,
+        height: LAYOUT.IMAGE_NODE_HEIGHT_21_9,
+      });
+    }
 
     // ========== EDGES : Prompts → Images de ce couple ==========
     structure.edges.push({
@@ -755,12 +823,15 @@ function createPlanFramesStructure(
       type: 'default',
     });
 
-    structure.edges.push({
-      id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
-      source: textLastFrameNodeId,
-      target: imageFinNodeId,
-      type: 'default',
-    });
+    // Edge vers LAST uniquement en mode first-last
+    if (!isFirstOnly) {
+      structure.edges.push({
+        id: `edge-${textLastFrameNodeId}-${imageFinNodeId}-${nanoid(4)}`,
+        source: textLastFrameNodeId,
+        target: imageFinNodeId,
+        type: 'default',
+      });
+    }
 
     // ========== EDGES : Collections → Images de ce couple ==========
     for (const charRef of plan.characterRefs) {
@@ -772,12 +843,15 @@ function createPlanFramesStructure(
           target: imageDepartNodeId,
           type: 'default',
         });
-        structure.edges.push({
-          id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
-          source: collectionId,
-          target: imageFinNodeId,
-          type: 'default',
-        });
+        // Edge vers LAST uniquement en mode first-last
+        if (!isFirstOnly) {
+          structure.edges.push({
+            id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+            source: collectionId,
+            target: imageFinNodeId,
+            type: 'default',
+          });
+        }
       }
     }
 
@@ -791,12 +865,15 @@ function createPlanFramesStructure(
           target: imageDepartNodeId,
           type: 'default',
         });
-        structure.edges.push({
-          id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
-          source: collectionId,
-          target: imageFinNodeId,
-          type: 'default',
-        });
+        // Edge vers LAST uniquement en mode first-last
+        if (!isFirstOnly) {
+          structure.edges.push({
+            id: `edge-${collectionId}-${imageFinNodeId}-${nanoid(4)}`,
+            source: collectionId,
+            target: imageFinNodeId,
+            type: 'default',
+          });
+        }
       }
     }
 
@@ -804,9 +881,9 @@ function createPlanFramesStructure(
     planCouples.push({
       coupleIndex: coupleIdx,
       imageDepartNodeId,
-      imageFinNodeId,
+      imageFinNodeId: isFirstOnly ? '' : imageFinNodeId, // Vide en mode first-only
       promptDepart: couplePromptDepart,
-      promptFin: couplePromptFin,
+      promptFin: isFirstOnly ? '' : couplePromptFin,
       aspectRatio: planImageRatio,
       videoNodeIds: [], // Sera rempli par createPlanVideosStructure
     });
@@ -1065,6 +1142,7 @@ export interface GenerationConfig {
   videoDuration?: number;
   videoAspectRatio?: string;
   testMode?: boolean;
+  frameMode?: FrameMode;      // 'first-last' (2 images) ou 'first-only' (1 image)
 }
 
 export function generateCanvasFromProject(
@@ -1080,6 +1158,10 @@ export function generateCanvasFromProject(
   // Rétrocompatibilité: si couplesPerPlan/videosPerCouple ne sont pas définis, utiliser videoCopies
   const couplesPerPlan = config?.couplesPerPlan || 1;  // N = nombre de couples par plan
   const videosPerCouple = config?.videosPerCouple || videoCopies || 4;  // M = vidéos par couple
+  
+  // Mode frame: first-last (2 images) ou first-only (1 image)
+  const frameMode: FrameMode = config?.frameMode || 'first-last';
+  console.log(`[CanvasGenerator] Mode frame: ${frameMode}`);
   
   // Structure pour tracking
   const structure: CanvasStructure = {
@@ -1103,6 +1185,7 @@ export function generateCanvasFromProject(
       duration: videoDuration,
       aspectRatio: videoAspectRatio,
     },
+    frameMode,
   };
 
   // Couleurs des sections
@@ -1224,13 +1307,16 @@ export function generateCanvasFromProject(
     imageFinNodeId: string; 
   }>();
 
-  // Label géant de section
+  // Label géant de section - adapté au mode frame
+  const frameSectionLabel = frameMode === 'first-only' 
+    ? '🎬 FIRST FRAMES' 
+    : '🎬 FIRST AND LAST FRAMES';
   structure.labelNodes.push({
     id: nodeId('label-section-frames'),
     type: 'label',
     position: { x: section2StartX, y: section2StartY },
     data: {
-      text: '🎬 FIRST AND LAST FRAMES',
+      text: frameSectionLabel,
       fontSize: LAYOUT.GIANT_LABEL_FONT_SIZE,
       color: SECTION_COLORS.frames,
     },

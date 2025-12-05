@@ -41,6 +41,15 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useMediaLibraryStore } from '@/lib/media-library-store';
 import { loadCreativePlanSettings } from '@/lib/creative-plan-settings';
+import { 
+  startGenerationSession, 
+  endGenerationSession, 
+  logImage, 
+  logVideo, 
+  logSystem,
+  showRecentErrors,
+  exportSessionLogs,
+} from '@/lib/generation-logger';
 
 // ========== TYPES ==========
 interface GeneratableNode {
@@ -650,36 +659,34 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
   // ========== GÉNÉRATION IMAGE ==========
   const generateImage = async (nodeId: string): Promise<string | null> => {
     const nodeLabel = getNodeLabel(getNodes().find(n => n.id === nodeId) || { data: {}, id: nodeId, type: 'image', position: { x: 0, y: 0 } });
-    console.log(`[GenerateImage] 🎨 DÉBUT ${nodeLabel} (${nodeId.slice(0, 8)})`);
     
     const nodes = getNodes();
     const edges = getEdges();
     const node = nodes.find(n => n.id === nodeId);
     if (!node) {
-      console.error(`[GenerateImage] ❌ Node non trouvé: ${nodeId}`);
+      logImage.error(nodeLabel, nodeId, 'Node non trouvé');
       return null;
     }
     
     const data = node.data as Record<string, unknown>;
     const incomers = getIncomers(node, nodes, edges);
-    console.log(`[GenerateImage] ${nodeLabel}: ${incomers.length} incomers:`, incomers.map(i => `${i.type}:${getNodeLabel(i)}`));
-    
     const images = getImagesFromIncomers(incomers);
-    console.log(`[GenerateImage] ${nodeLabel}: ${images.length} images sources:`, images.map(i => i.url?.slice(0, 50)));
-    
     const textFromIncomers = getTextFromIncomers(incomers);
     const prompt = textFromIncomers || (data.instructions as string) || '';
     const aspectRatio = (data.aspectRatio as string) || '1:1';
     
-    console.log(`[GenerateImage] ${nodeLabel}: prompt=${prompt?.slice(0, 50)}..., aspectRatio=${aspectRatio}, testMode=${testMode}`);
+    // Log de démarrage avec tous les détails
+    logImage.start(nodeLabel, nodeId, {
+      incomers: incomers.map(i => `${i.type}:${getNodeLabel(i)}`),
+      sourceImages: images.length,
+      promptLength: prompt?.length || 0,
+      aspectRatio,
+      testMode,
+    });
     
     if (!prompt) {
-      console.error(`[GenerateImage] ❌ Pas de prompt pour ${nodeLabel}`);
+      logImage.error(nodeLabel, nodeId, 'Pas de prompt disponible');
       return null;
-    }
-    
-    if (images.length === 0) {
-      console.warn(`[GenerateImage] ⚠️ ${nodeLabel}: Aucune image source, utilisation text-to-image`);
     }
     
     try {
@@ -687,10 +694,13 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       const endpoint = images.length > 0 ? '/api/image/edit' : '/api/image/generate';
       const selectedModel = images.length > 0 ? models.edit : models.textToImage;
       
-      // LOG DÉTAILLÉ pour vérifier le mode test
-      console.log(`[GenerateImage] ${nodeLabel}: testMode=${testMode}`);
-      console.log(`[GenerateImage] ${nodeLabel}: modèles utilisés = ${testMode ? 'TEST_MODELS' : 'NORMAL_MODELS'}`);
-      console.log(`[GenerateImage] ${nodeLabel}: endpoint=${endpoint}, model=${selectedModel}`);
+      // Log de l'appel API
+      logImage.api(nodeLabel, endpoint, selectedModel, {
+        sourceImages: images.length,
+        aspectRatio,
+        testMode,
+        mode: testMode ? 'TEST' : 'PROD',
+      });
       
       // Paramètres de base
       // MODE PROD: passer aspectRatio + resolution directement à WaveSpeed
@@ -718,7 +728,6 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
           }
         : { ...baseParams, model: models.textToImage };
       
-      console.log(`[GenerateImage] ${nodeLabel}: Appel API...`);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -727,18 +736,20 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[GenerateImage] ❌ ${nodeLabel}: Erreur API ${response.status}:`, errorText);
+        logImage.error(nodeLabel, nodeId, `API ${response.status}`, { 
+          endpoint, 
+          model: selectedModel,
+          error: errorText.slice(0, 200),
+        });
         return null;
       }
 
       const result = await response.json();
-      console.log(`[GenerateImage] ${nodeLabel}: Réponse API reçue`);
-      
       const imageUrl = result.nodeData?.generated?.url || result.nodeData?.url;
       
       if (imageUrl) {
         const usedModel = images.length > 0 ? models.edit : models.textToImage;
-        console.log(`[GenerateImage] ✅ ${nodeLabel}: Image générée avec ${usedModel}${testMode ? ' (MODE TEST)' : ''}!`, imageUrl.slice(0, 60));
+        logImage.success(nodeLabel, nodeId, imageUrl, usedModel);
         
         // Stocker TOUTES les données retournées par l'API, incluant width/height
         const apiNodeData = result.nodeData || {};
@@ -754,10 +765,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         return imageUrl;
       }
 
-      console.error(`[GenerateImage] ❌ ${nodeLabel}: Pas d'URL dans la réponse:`, result);
+      logImage.error(nodeLabel, nodeId, 'Pas d\'URL dans la réponse', { result });
       return null;
     } catch (error) {
-      console.error(`[GenerateImage] ❌ ${nodeLabel}: Exception:`, error);
+      logImage.error(nodeLabel, nodeId, 'Exception', { error: String(error) });
       return null;
     }
   };
@@ -767,7 +778,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     const nodes = getNodes();
     const edges = getEdges();
     const node = nodes.find(n => n.id === nodeId);
-    if (!node) return null;
+    if (!node) {
+      logVideo.error('Unknown', nodeId, 'Node non trouvé');
+      return null;
+    }
     
     const nodeLabel = getNodeLabel(node);
     const nodeData = node.data as Record<string, unknown>;
@@ -779,17 +793,26 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     const duration = nodeData.duration as number || 10;
     const aspectRatio = nodeData.aspectRatio as string || '16:9';
     
-    console.log(`[GenerateVideo] 🎬 DÉBUT ${nodeLabel} (${nodeId.slice(0, 8)})`);
-    console.log(`[GenerateVideo] ${nodeLabel}: usesFirstLastFrame=${usesFirstLastFrame}, ${images.length} images`);
+    // Log de démarrage
+    logVideo.start(nodeLabel, nodeId, {
+      usesFirstLastFrame,
+      imagesCount: images.length,
+      incomers: incomers.map(i => `${i.type}:${getNodeLabel(i)}`),
+      promptLength: prompt?.length || 0,
+      duration,
+      aspectRatio,
+      testMode,
+    });
     
     if (images.length === 0) {
-      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Pas d'images disponibles`);
+      logVideo.error(nodeLabel, nodeId, 'Pas d\'images disponibles', { incomers: incomers.length });
       return null;
     }
     
     // IMPORTANT: Pour les vidéos first+last frame, trier les images par frameType
     let firstFrameUrl: string | undefined;
     let lastFrameUrl: string | undefined;
+    const frameMode = usesFirstLastFrame ? 'first-last' : 'first-only';
     
     if (usesFirstLastFrame) {
       // Chercher les images avec frameType 'depart' (first) et 'fin' (last)
@@ -799,24 +822,37 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       firstFrameUrl = firstFrame?.originalUrl || firstFrame?.url;
       lastFrameUrl = lastFrame?.originalUrl || lastFrame?.url;
       
-      console.log(`[GenerateVideo] ${nodeLabel}: firstFrame=${firstFrameUrl?.slice(0, 40) || 'MISSING'}`);
-      console.log(`[GenerateVideo] ${nodeLabel}: lastFrame=${lastFrameUrl?.slice(0, 40) || 'MISSING'}`);
+      // Log des frames détectés
+      logVideo.frames(nodeLabel, firstFrameUrl, lastFrameUrl, frameMode);
       
       if (!firstFrameUrl || !lastFrameUrl) {
-        console.error(`[GenerateVideo] ❌ ${nodeLabel}: First ou Last frame manquant!`);
-        console.error(`[GenerateVideo]   Images disponibles:`, images.map(i => `${i.frameType || 'unknown'}: ${i.url?.slice(0, 30)}`));
+        logVideo.error(nodeLabel, nodeId, 'First ou Last frame manquant en mode first-last!', {
+          firstFrameFound: !!firstFrameUrl,
+          lastFrameFound: !!lastFrameUrl,
+          imagesWithFrameType: images.map(i => ({ frameType: i.frameType || 'none', url: i.url?.slice(0, 40) })),
+        });
         return null;
       }
     } else {
       // Mode classique : première image = first frame
       firstFrameUrl = images[0]?.originalUrl || images[0]?.url;
       lastFrameUrl = images.length > 1 ? (images[images.length - 1]?.originalUrl || images[images.length - 1]?.url) : undefined;
+      
+      // Log des frames en mode first-only
+      logVideo.frames(nodeLabel, firstFrameUrl, lastFrameUrl, frameMode);
     }
     
     const models = testMode ? TEST_MODELS : NORMAL_MODELS;
     const selectedModel = models.video;
     
-    console.log(`[GenerateVideo] ${nodeLabel}: testMode=${testMode}, model=${selectedModel}`);
+    // Log de l'appel API
+    logVideo.api(nodeLabel, selectedModel, {
+      firstFrame: firstFrameUrl?.slice(0, 50),
+      lastFrame: lastFrameUrl?.slice(0, 50),
+      duration,
+      aspectRatio,
+      mode: testMode ? 'TEST' : 'PROD',
+    });
     
     try {
       const response = await fetch('/api/video/generate', {
@@ -839,7 +875,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[GenerateVideo] ❌ ${nodeLabel}: Erreur API ${response.status}:`, errorText);
+        logVideo.error(nodeLabel, nodeId, `API ${response.status}`, {
+          model: selectedModel,
+          error: errorText.slice(0, 200),
+        });
         return null;
       }
 
@@ -850,7 +889,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       const videoUrl = nodeDataResult?.generated?.url || nodeDataResult?.url;
       
       if (videoUrl) {
-        console.log(`[GenerateVideo] ✅ ${nodeLabel}: Vidéo générée avec ${selectedModel}!`, videoUrl.slice(0, 60));
+        logVideo.success(nodeLabel, nodeId, videoUrl, selectedModel);
         updateNodeData(nodeId, {
           generated: nodeDataResult?.generated || { url: videoUrl, type: 'video/mp4' },
           url: videoUrl,
@@ -861,10 +900,10 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         return videoUrl;
       }
 
-      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Pas d'URL dans la réponse`, result);
+      logVideo.error(nodeLabel, nodeId, 'Pas d\'URL dans la réponse', { result });
       return null;
     } catch (error) {
-      console.error(`[GenerateVideo] ❌ ${nodeLabel}: Exception:`, error);
+      logVideo.error(nodeLabel, nodeId, 'Exception', { error: String(error) });
       return null;
     }
   };
@@ -937,6 +976,9 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
   const startGeneration = useCallback(async () => {
     if (isGenerating) return;
     
+    // 🔴 DÉMARRER UNE SESSION DE LOGS
+    const sessionId = startGenerationSession();
+    
     setAborted(false);
     setIsGenerating(true);
     
@@ -948,9 +990,18 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
     
     if (totalToGenerate === 0) {
       toast.info('Aucun nœud à générer');
+      logSystem.info('Aucun nœud à générer - session annulée');
+      endGenerationSession();
       setIsGenerating(false);
       return;
     }
+    
+    logSystem.info(`Démarrage génération: ${totalToGenerate} nœuds`, {
+      images: generatable.filter(n => n.type === 'image').length,
+      videos: generatable.filter(n => n.type === 'video').length,
+      testMode,
+      sessionId,
+    });
     
     toast.info(`🚀 Génération continue de ${totalToGenerate} nœuds...`);
     
@@ -978,11 +1029,11 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         } else {
           const url = await generateVideo(nodeId);
           success = url !== null;
-          if (success) {
-            // Collecter l'ID pour l'envoi DVR groupé à la fin
-            generatedVideoIds.push(nodeId);
-            console.log(`[Generation] 📹 Vidéo ${nodeLabel} ajoutée à la liste DVR (${generatedVideoIds.length} vidéos)`);
-          }
+        if (success) {
+          // Collecter l'ID pour l'envoi DVR groupé à la fin
+          generatedVideoIds.push(nodeId);
+          logSystem.info(`📹 Vidéo ${nodeLabel} ajoutée à la liste DVR (${generatedVideoIds.length} vidéos)`);
+        }
         }
         
         updateNodeData(nodeId, { generating: false, generatingStartTime: undefined });
@@ -991,14 +1042,14 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         
         if (success) {
           successCount++;
-          console.log(`[Generation] ✅ ${nodeLabel} terminé (${successCount} succès)`);
+          logSystem.progress(completed.size, totalToGenerate, successCount, errorCount);
           
           // Rafraîchir la Media Library IMMÉDIATEMENT après chaque génération réussie
           // Cela permet à l'utilisateur de voir les nouvelles images apparaître en temps réel
           fetchMedias();
         } else {
           errorCount++;
-          console.log(`[Generation] ❌ ${nodeLabel} échoué`);
+          logSystem.progress(completed.size, totalToGenerate, successCount, errorCount);
         }
         
         // Peupler les collections qui sont maintenant prêtes
@@ -1012,7 +1063,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         await launchReadyNodes();
         
       } catch (error) {
-        console.error(`[Generation] ❌ EXCEPTION ${nodeLabel}:`, error);
+        logSystem.error(`Exception dans generateNode: ${nodeLabel}`, { error: String(error) });
         updateNodeData(nodeId, { generating: false, generatingStartTime: undefined, error: String(error) });
         inProgress.delete(nodeId);
         completed.add(nodeId); // Marquer comme "terminé" pour éviter les boucles infinies
@@ -1038,15 +1089,14 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         (n.type === 'image' || n.type === 'video') &&
         !completed.has(n.id)
       );
-      if (waitingNodes.length > 0) {
-        console.log(`[Generation] 📋 ${waitingNodes.length} nœuds EN ATTENTE:`);
-        for (const w of waitingNodes.slice(0, 5)) {
-          console.log(`[Generation]   ⏳ ${w.label} attend: ${w.waitingFor.join(', ') || 'RIEN?'}`);
-        }
+      if (waitingNodes.length > 0 && waitingNodes.length <= 10) {
+        logSystem.info(`${waitingNodes.length} nœuds en attente`, {
+          waiting: waitingNodes.slice(0, 5).map(w => ({ label: w.label, waitingFor: w.waitingFor })),
+        });
       }
       
       if (readyNodes.length > 0) {
-        console.log(`[Generation] 🚀 Lancement de ${readyNodes.length} nouveaux nœuds ready:`, readyNodes.map(n => n.label));
+        logSystem.info(`🚀 Lancement de ${readyNodes.length} nouveaux nœuds ready`, { nodes: readyNodes.map(n => n.label) });
         
         // Lancer en parallèle SANS attendre (fire and forget)
         for (const node of readyNodes) {
@@ -1068,7 +1118,7 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         
         // Si des collections ont été peuplées, attendre un peu pour la synchro React Flow
         if (populatedCount > 0) {
-          console.log(`[Generation] ${populatedCount} collections peuplées, attente synchro...`);
+          logSystem.info(`${populatedCount} collections peuplées, attente synchro...`);
           await new Promise(resolve => setTimeout(resolve, 200));
         }
         
@@ -1093,18 +1143,20 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
         // Vérifier si on a terminé
         if (inProgress.size === 0 && readyNodes.length === 0) {
           if (waitingNodes.length === 0) {
-            console.log(`[Generation] ✅ TERMINÉ - tout est généré! (${successCount} succès, ${errorCount} erreurs)`);
+            logSystem.info(`✅ TERMINÉ - tout est généré! (${successCount} succès, ${errorCount} erreurs)`);
             break; // Tout est terminé
           } else {
             // Il reste des nœuds en attente mais rien n'est prêt - blocage
-            console.log(`[Generation] ⚠️ BLOCAGE DÉTECTÉ`);
-            console.log(`[Generation]   - ${waitingNodes.length} nœuds en attente`);
-            console.log(`[Generation]   - 0 nœuds prêts`);
-            console.log(`[Generation]   - ${inProgress.size} en cours`);
-            console.log(`[Generation]   - ${completed.size} complétés`);
-            for (const w of waitingNodes.slice(0, 10)) {
-              console.log(`[Generation]   BLOQUÉ: ${w.label} attend: ${w.waitingFor.join(', ')}`);
-            }
+            logSystem.warn(`BLOCAGE DÉTECTÉ`, {
+              waitingNodes: waitingNodes.length,
+              readyNodes: 0,
+              inProgress: inProgress.size,
+              completed: completed.size,
+              blockedNodes: waitingNodes.slice(0, 10).map(w => ({
+                label: w.label,
+                waitingFor: w.waitingFor,
+              })),
+            });
             break;
           }
         }
@@ -1130,9 +1182,12 @@ export function GenerationPanel({ projectId, testMode = false }: GenerationPanel
       toast.success(`🎉 Génération terminée ! ✅ ${successCount} succès${errorCount > 0 ? ` • ❌ ${errorCount} erreurs` : ''}${sendToDVR && generatedVideoIds.length > 0 ? ` • 📤 ${generatedVideoIds.length} vidéos DVR` : ''}`);
       
     } catch (error) {
-      console.error('[GenerationPanel] Erreur:', error);
+      logSystem.error('Exception dans startGeneration', { error: String(error) });
       toast.error(`Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     } finally {
+      // 🔴 TERMINER LA SESSION DE LOGS (affiche le résumé)
+      endGenerationSession();
+      
       setIsGenerating(false);
       setCurrentPhase('');
       fetchMedias();

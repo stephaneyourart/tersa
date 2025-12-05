@@ -1,33 +1,29 @@
 /**
  * API pour déclencher la génération d'image sur un nœud
- * Utilisé par le GenerationPanel pour la génération séquentielle
+ * 
+ * MODE TEST : utilise size (dimensions en pixels)
+ * MODE PROD : utilise aspectRatio + resolution (directement pour WaveSpeed)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateImageAction } from '@/app/actions/image/create';
 
-// Convertir aspect ratio en taille (mode normal)
-function aspectRatioToSize(aspectRatio: string, testMode = false): string {
-  const normalSizeMap: Record<string, string> = {
-    '1:1': '1024x1024',
-    '9:16': '576x1024',
-    '16:9': '1024x576',
-    '3:4': '768x1024',
-    '4:3': '1024x768',
-    '21:9': '1344x576',  // Cinémascope pour les images de plan
-  };
-  
+// Convertir aspect ratio en size UNIQUEMENT pour le mode TEST
+function aspectRatioToTestSize(aspectRatio: string): string {
   const testSizeMap: Record<string, string> = {
-    '1:1': '256x256',      // Carré mini
-    '9:16': '256x456',     // Portrait pour primaires (personnages, décors)
-    '16:9': '456x256',     // Paysage mini
-    '3:4': '256x342',      // Portrait 3:4
-    '4:3': '342x256',      // Paysage 4:3
-    '21:9': '598x256',     // Cinémascope mini pour first/last frames
+    '1:1': '256x256',
+    '9:16': '256x384',
+    '16:9': '384x256',
+    '3:4': '256x342',
+    '4:3': '342x256',
+    '3:2': '384x256',
+    '2:3': '256x384',
+    '21:9': '512x220',
+    '9:21': '220x512',
+    '4:5': '256x320',
+    '5:4': '320x256',
   };
-  
-  const sizeMap = testMode ? testSizeMap : normalSizeMap;
-  return sizeMap[aspectRatio] || (testMode ? '256x256' : '1024x1024');
+  return testSizeMap[aspectRatio] || '256x256';
 }
 
 export async function POST(request: NextRequest) {
@@ -38,9 +34,14 @@ export async function POST(request: NextRequest) {
       prompt, 
       model = 'nano-banana-pro-ultra-wavespeed',
       projectId, 
-      size,
-      aspectRatio = '1:1',
+      // Mode TEST ou PROD
       testMode = false,
+      // AspectRatio (string comme '9:16', '1:1', etc.)
+      aspectRatio = '1:1',
+      // Résolution pour PROD (4k ou 8k)
+      resolution = '4k',
+      // Legacy: size en pixels (utilisé si fourni, sinon calculé pour TEST)
+      size,
     } = body;
 
     if (!nodeId || !prompt) {
@@ -50,34 +51,60 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Utiliser le projectId fourni ou un ID par défaut pour les projets locaux
     const effectiveProjectId = projectId || 'local-generation';
     
-    // Convertir l'aspect ratio en size si pas de size explicite
-    const effectiveSize = size || aspectRatioToSize(aspectRatio, testMode);
+    if (testMode) {
+      // ========== MODE TEST ==========
+      // Utiliser des dimensions en pixels (petites tailles)
+      const effectiveSize = size || aspectRatioToTestSize(aspectRatio);
+      console.log(`[API Image Generate] 🧪 TEST - ${nodeId}, size: ${effectiveSize}`);
 
-    console.log(`[API Image Generate] Génération pour nœud ${nodeId} avec modèle ${model}, taille: ${effectiveSize}${testMode ? ' (MODE TEST)' : ''}`);
+      const result = await generateImageAction({
+        prompt,
+        modelId: model,
+        nodeId,
+        projectId: effectiveProjectId,
+        size: effectiveSize,
+        instructions: '',
+      });
 
-    const result = await generateImageAction({
-      prompt,
-      modelId: model,
-      nodeId,
-      projectId: effectiveProjectId,
-      size: effectiveSize,
-      instructions: '',
-    });
+      if ('error' in result) {
+        console.error('[API Image Generate] Erreur:', result.error);
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
 
-    if ('error' in result) {
-      console.error('[API Image Generate] Erreur:', result.error);
-      return NextResponse.json({ error: result.error }, { status: 500 });
+      return NextResponse.json({ 
+        success: true, 
+        nodeId,
+        nodeData: result.nodeData,
+      });
+    } else {
+      // ========== MODE PROD ==========
+      // Passer aspect_ratio et resolution directement à WaveSpeed
+      console.log(`[API Image Generate] 🎬 PROD - ${nodeId}, aspect_ratio: ${aspectRatio}, resolution: ${resolution}`);
+
+      const result = await generateImageAction({
+        prompt,
+        modelId: model,
+        nodeId,
+        projectId: effectiveProjectId,
+        // En mode PROD, on passe aspectRatio et resolution au lieu de size
+        aspectRatio,
+        resolution,
+        instructions: '',
+      });
+
+      if ('error' in result) {
+        console.error('[API Image Generate] Erreur:', result.error);
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        nodeId,
+        nodeData: result.nodeData,
+      });
     }
-
-    console.log(`[API Image Generate] Succès pour nœud ${nodeId}`);
-    return NextResponse.json({ 
-      success: true, 
-      nodeId,
-      nodeData: result.nodeData,
-    });
   } catch (error) {
     console.error('[API Image Generate] Erreur:', error);
     return NextResponse.json(

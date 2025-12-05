@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
 import { useGenerationTracker } from '@/hooks/use-generation-tracker';
 import { download } from '@/lib/download';
-import { handleError } from '@/lib/error/handle';
+import { handleError, handleGenerationError } from '@/lib/error/handle';
 import { useAvailableModels } from '@/hooks/use-available-models';
 import { useModelParamsSidebar } from '@/components/model-params-sidebar';
 import { getImagesFromImageNodes, getTextFromTextNodes, getAllImagesFromNodes } from '@/lib/xyflow';
@@ -258,13 +258,13 @@ export const VideoTransform = ({
       
       // Max tentatives atteint - échec définitif
       console.error(`[Video Transform] Échec après ${currentAttempt} tentatives`);
-      handleError('Error generating video', error);
       
-      toast.error(`❌ Échec après ${currentAttempt} tentatives`, {
-        description: errorMessage.substring(0, 150),
-        duration: Infinity,
-        closeButton: true,
-      });
+      // Afficher l'erreur complète en toast (expire après 1 min)
+      handleGenerationError(
+        (data as { customName?: string }).customName || 'Vidéo',
+        `Échec après ${currentAttempt} tentatives: ${errorMessage}`,
+        { nodeId: id, model: selectedModel?.label || modelId, prompt: data.instructions?.substring(0, 100) }
+      );
       
       // Reset le compteur et marquer l'erreur
       updateNodeData(id, { 

@@ -2,70 +2,106 @@
  * Creative Plan Settings - Configuration EXHAUSTIVE et PRÉCISE
  * 
  * Structure :
- * - TEST : génération rapide, petites dimensions, modèles économiques
- * - PROD : génération haute qualité, grandes dimensions, modèles premium
+ * - TEST : génération rapide, petites dimensions fixes, modèles économiques
+ *          → NE PAS TOUCHER - reste avec les dimensions en pixels
+ * - PROD : génération haute qualité avec WaveSpeed
+ *          → Utilise aspect_ratio + resolution (4k/8k) directement
  * 
- * Chaque mode contient :
- * - 1 seul modèle Text-to-Image
- * - 1 seul modèle Edit (variantes)
- * - 1 seul modèle Vidéo
- * - Dimensions EXACTES en pixels pour chaque type d'image
+ * IMPORTANT: WaveSpeed Nano Banana Pro accepte:
+ * - aspect_ratio: '1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'
+ * - resolution: '4k' ou '8k'
  */
 
 // ========== TYPES ==========
 
-/** Dimensions en pixels */
+/** Dimensions en pixels (pour TEST uniquement) */
 export interface Dimensions {
   width: number;
   height: number;
 }
 
-/** Specs pour un mode (TEST ou PROD) */
-export interface ModeSpecs {
-  // === MODÈLES ===
-  /** Modèle Text-to-Image pour les images primaires */
-  textToImageModel: string;
-  /** Modèle Edit pour les variantes et compositions */
-  editModel: string;
-  /** Modèle Vidéo */
-  videoModel: string;
-  /** Durée vidéo en secondes */
-  videoDuration: number;
+/** Aspect ratios supportés par WaveSpeed */
+export type WaveSpeedAspectRatio = '1:1' | '3:2' | '2:3' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9';
 
-  // === DIMENSIONS PERSONNAGES ===
-  /** Image primaire personnage (full body) */
+/** Résolutions supportées par WaveSpeed */
+export type WaveSpeedResolution = '4k' | '8k';
+
+/** Mode de génération de frames pour les vidéos */
+export type FrameMode = 'first-last' | 'first-only';
+
+/** Specs pour le mode TEST (dimensions en pixels) - NE PAS MODIFIER */
+export interface TestModeSpecs {
+  // === MODÈLES ===
+  textToImageModel: string;
+  editModel: string;
+  videoModel: string;
+  videoDuration: number;
+  
+  // === MODE FRAME (first-last ou first-only) ===
+  frameMode: FrameMode;
+
+  // === DIMENSIONS PERSONNAGES (en pixels) ===
   characterPrimary: Dimensions;
-  /** Visage de face */
   characterFace: Dimensions;
-  /** Visage de profil */
   characterProfile: Dimensions;
-  /** Vue de dos */
   characterBack: Dimensions;
 
-  // === DIMENSIONS DÉCORS ===
-  /** Vue principale du décor */
+  // === DIMENSIONS DÉCORS (en pixels) ===
   decorPrimary: Dimensions;
-  /** Angle alternatif */
   decorAngle2: Dimensions;
-  /** Vue plongée (top-down) */
   decorPlongee: Dimensions;
-  /** Vue contre-plongée */
   decorContrePlongee: Dimensions;
 
-  // === DIMENSIONS PLANS ===
-  /** First frame (image de départ) */
+  // === DIMENSIONS PLANS (en pixels) ===
   planFirst: Dimensions;
-  /** Last frame (image de fin) */
   planLast: Dimensions;
 
-  // === DIMENSIONS VIDÉO ===
-  /** Résolution vidéo */
+  // === DIMENSIONS VIDÉO (en pixels) ===
   videoDimensions: Dimensions;
 }
 
+/** Specs pour le mode PROD (aspect_ratio + resolution pour WaveSpeed) */
+export interface ProdModeSpecs {
+  // === MODÈLES (fixes pour PROD) ===
+  // Text-to-Image: Google Nano Banana Pro Text To Image Ultra
+  // Edit: Google Nano Banana Pro Edit Ultra
+  textToImageModel: string;
+  editModel: string;
+  videoModel: string;
+  videoDuration: number;
+  
+  // === MODE FRAME (first-last ou first-only) ===
+  frameMode: FrameMode;
+
+  // === RÉSOLUTION GLOBALE ===
+  resolution: WaveSpeedResolution;
+
+  // === ASPECT RATIOS PERSONNAGES ===
+  characterPrimaryRatio: WaveSpeedAspectRatio;
+  characterFaceRatio: WaveSpeedAspectRatio;
+  characterProfileRatio: WaveSpeedAspectRatio;
+  characterBackRatio: WaveSpeedAspectRatio;
+
+  // === ASPECT RATIOS DÉCORS ===
+  decorPrimaryRatio: WaveSpeedAspectRatio;
+  decorAngle2Ratio: WaveSpeedAspectRatio;
+  decorPlongeeRatio: WaveSpeedAspectRatio;
+  decorContrePlongeeRatio: WaveSpeedAspectRatio;
+
+  // === ASPECT RATIOS PLANS ===
+  planFirstRatio: WaveSpeedAspectRatio;
+  planLastRatio: WaveSpeedAspectRatio;
+
+  // === ASPECT RATIO VIDÉO ===
+  videoRatio: WaveSpeedAspectRatio;
+}
+
+// Alias pour compatibilité (utiliser TestModeSpecs pour test, ProdModeSpecs pour prod)
+export type ModeSpecs = TestModeSpecs;
+
 export interface CreativePlanSettings {
-  test: ModeSpecs;
-  prod: ModeSpecs;
+  test: TestModeSpecs;
+  prod: ProdModeSpecs;
 }
 
 // ========== VALEURS PAR DÉFAUT ==========
@@ -73,15 +109,19 @@ export interface CreativePlanSettings {
 export const DEFAULT_CREATIVE_PLAN_SETTINGS: CreativePlanSettings = {
   // ============================================
   // MODE TEST - Rapide, économique, petites images
+  // NE PAS MODIFIER - gardé tel quel avec dimensions en pixels
   // ============================================
   test: {
     // Modèles économiques
     textToImageModel: 'google/nano-banana/text-to-image',
     editModel: 'google/nano-banana/edit',
-    videoModel: 'kling-v2.5-turbo',
+    videoModel: 'kwaivgi/kling-v2.6-pro/image-to-video',
     videoDuration: 5,
+    
+    // Mode frame: first-only (kling-v2.6-pro ne supporte pas last_image)
+    frameMode: 'first-only',
 
-    // Personnages - petites dimensions carrées
+    // Personnages - petites dimensions
     characterPrimary: { width: 256, height: 384 },   // Portrait
     characterFace: { width: 256, height: 256 },      // Carré
     characterProfile: { width: 256, height: 256 },   // Carré
@@ -102,33 +142,42 @@ export const DEFAULT_CREATIVE_PLAN_SETTINGS: CreativePlanSettings = {
   },
 
   // ============================================
-  // MODE PROD - Haute qualité, grandes dimensions
+  // MODE PROD - Haute qualité avec WaveSpeed
+  // Utilise aspect_ratio + resolution (pas de dimensions)
   // ============================================
   prod: {
-    // Modèles premium
+    // Modèles FIXES pour PROD (affichés mais non modifiables)
+    // → Google Nano Banana Pro Text To Image Ultra
+    // → Google Nano Banana Pro Edit Ultra
     textToImageModel: 'google/nano-banana-pro/text-to-image-ultra',
     editModel: 'google/nano-banana-pro/edit-ultra',
-    videoModel: 'kling-v2.1-start-end',
+    videoModel: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video',
     videoDuration: 10,
+    
+    // Mode frame par défaut: first+last (utilise last_image)
+    frameMode: 'first-last',
 
-    // Personnages - haute résolution
-    characterPrimary: { width: 768, height: 1344 },  // 9:16 (portrait)
-    characterFace: { width: 1024, height: 1024 },    // 1:1 (carré)
-    characterProfile: { width: 1024, height: 1024 }, // 1:1 (carré)
-    characterBack: { width: 768, height: 1344 },     // 9:16 (portrait)
+    // Résolution globale (4k par défaut, 8k disponible)
+    resolution: '4k',
 
-    // Décors - haute résolution paysage
-    decorPrimary: { width: 1344, height: 768 },      // 16:9
-    decorAngle2: { width: 1344, height: 768 },
-    decorPlongee: { width: 1344, height: 768 },
-    decorContrePlongee: { width: 1344, height: 768 },
+    // Aspect ratios personnages
+    characterPrimaryRatio: '9:16',    // Portrait (plein corps)
+    characterFaceRatio: '1:1',        // Carré (visage)
+    characterProfileRatio: '1:1',     // Carré (profil)
+    characterBackRatio: '9:16',       // Portrait (dos)
 
-    // Plans - cinémascope haute résolution
-    planFirst: { width: 1536, height: 640 },         // ~21:9 (cinémascope)
-    planLast: { width: 1536, height: 640 },
+    // Aspect ratios décors
+    decorPrimaryRatio: '16:9',        // Paysage
+    decorAngle2Ratio: '16:9',
+    decorPlongeeRatio: '16:9',
+    decorContrePlongeeRatio: '16:9',
 
-    // Vidéo - haute résolution
-    videoDimensions: { width: 1920, height: 1080 },  // Full HD
+    // Aspect ratios plans (first/last frame pour vidéo)
+    planFirstRatio: '21:9',           // Cinémascope
+    planLastRatio: '21:9',            // Cinémascope
+
+    // Aspect ratio vidéo
+    videoRatio: '16:9',
   },
 };
 
@@ -197,62 +246,90 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
   return output;
 }
 
-/** Retourne les specs pour le mode choisi */
-export function getModeSpecs(quality: 'elevee' | 'normal'): ModeSpecs {
+/** Retourne les specs TEST */
+export function getTestModeSpecs(): TestModeSpecs {
   const settings = loadCreativePlanSettings();
-  return quality === 'elevee' ? settings.prod : settings.test;
+  return settings.test;
+}
+
+/** Retourne les specs PROD */
+export function getProdModeSpecs(): ProdModeSpecs {
+  const settings = loadCreativePlanSettings();
+  return settings.prod;
+}
+
+/** Retourne les specs pour le mode choisi (compatibilité) */
+export function getModeSpecs(quality: 'elevee' | 'normal'): TestModeSpecs {
+  // Note: retourne toujours TestModeSpecs pour compatibilité
+  // Pour PROD, utiliser getProdModeSpecs() directement
+  const settings = loadCreativePlanSettings();
+  return settings.test;
 }
 
 // ========== FONCTIONS DE COMPATIBILITÉ (pour brief-defaults.ts) ==========
 
 /**
  * Retourne les settings image pour le mode choisi
- * Compatible avec l'ancienne API
  */
 export function getImageSettings(quality: 'elevee' | 'normal') {
-  const specs = getModeSpecs(quality);
-  return {
-    textToImage: {
-      model: specs.textToImageModel,
-      resolution: quality === 'elevee' ? '4K' : '',
-    },
-    edit: {
-      model: specs.editModel,
-      resolution: quality === 'elevee' ? '4K' : '',
-    },
-  };
+  const settings = loadCreativePlanSettings();
+  
+  if (quality === 'elevee') {
+    const prod = settings.prod;
+    return {
+      textToImage: {
+        model: prod.textToImageModel,
+        resolution: prod.resolution,
+      },
+      edit: {
+        model: prod.editModel,
+        resolution: prod.resolution,
+      },
+    };
+  } else {
+    const test = settings.test;
+    return {
+      textToImage: {
+        model: test.textToImageModel,
+        resolution: '', // Pas de résolution pour TEST
+      },
+      edit: {
+        model: test.editModel,
+        resolution: '',
+      },
+    };
+  }
 }
 
 /**
- * Retourne les aspect ratios configurés
- * Compatible avec l'ancienne API - calcule depuis les dimensions
+ * Retourne les aspect ratios configurés pour PROD
+ * Utilisé par brief-defaults.ts et brief-canvas-generator.ts
  */
 export function getAspectRatios() {
   const settings = loadCreativePlanSettings();
-  // Utiliser les dimensions PROD pour calculer les ratios
   const prod = settings.prod;
   
   return {
     character: {
-      primary: getAspectRatioFromDimensions(prod.characterPrimary),
-      face: getAspectRatioFromDimensions(prod.characterFace),
-      profile: getAspectRatioFromDimensions(prod.characterProfile),
-      back: getAspectRatioFromDimensions(prod.characterBack),
+      primary: prod.characterPrimaryRatio,
+      face: prod.characterFaceRatio,
+      profile: prod.characterProfileRatio,
+      back: prod.characterBackRatio,
     },
     decor: {
-      primary: getAspectRatioFromDimensions(prod.decorPrimary),
-      angle2: getAspectRatioFromDimensions(prod.decorAngle2),
-      plongee: getAspectRatioFromDimensions(prod.decorPlongee),
-      contrePlongee: getAspectRatioFromDimensions(prod.decorContrePlongee),
+      primary: prod.decorPrimaryRatio,
+      angle2: prod.decorAngle2Ratio,
+      plongee: prod.decorPlongeeRatio,
+      contrePlongee: prod.decorContrePlongeeRatio,
     },
     plan: {
-      depart: getAspectRatioFromDimensions(prod.planFirst),
-      fin: getAspectRatioFromDimensions(prod.planLast),
+      depart: prod.planFirstRatio,
+      fin: prod.planLastRatio,
     },
   };
 }
 
-/** Calcule l'aspect ratio depuis les dimensions */
+/** Calcule l'aspect ratio depuis les dimensions (pour TEST uniquement) */
 export function getAspectRatioFromDimensions(dims: Dimensions): string {
   const ratio = dims.width / dims.height;
   if (Math.abs(ratio - 1) < 0.1) return '1:1';
@@ -264,19 +341,38 @@ export function getAspectRatioFromDimensions(dims: Dimensions): string {
   return `${dims.width}:${dims.height}`;
 }
 
+// ========== ASPECT RATIOS DISPONIBLES (WaveSpeed) ==========
+
+export const AVAILABLE_ASPECT_RATIOS: { id: WaveSpeedAspectRatio; label: string; usage: string }[] = [
+  { id: '1:1', label: '1:1 (Carré)', usage: 'Visages, profils' },
+  { id: '9:16', label: '9:16 (Portrait)', usage: 'Personnages plein corps' },
+  { id: '16:9', label: '16:9 (Paysage)', usage: 'Décors' },
+  { id: '21:9', label: '21:9 (Cinémascope)', usage: 'First/Last frames' },
+  { id: '3:2', label: '3:2', usage: 'Photo classique' },
+  { id: '2:3', label: '2:3', usage: 'Portrait photo' },
+  { id: '4:3', label: '4:3', usage: 'TV classique' },
+  { id: '3:4', label: '3:4', usage: 'Portrait TV' },
+  { id: '4:5', label: '4:5', usage: 'Instagram' },
+  { id: '5:4', label: '5:4', usage: 'Paysage Instagram' },
+];
+
+// ========== RÉSOLUTIONS DISPONIBLES (WaveSpeed) ==========
+
+export const AVAILABLE_RESOLUTIONS: { id: WaveSpeedResolution; label: string; description: string }[] = [
+  { id: '4k', label: '4K', description: 'Haute qualité (recommandé) - $0.15/image' },
+  { id: '8k', label: '8K', description: 'Ultra haute qualité - $0.18/image' },
+];
+
 // ========== MODÈLES DISPONIBLES ==========
 
+// Pour mode TEST uniquement
 export const AVAILABLE_TEXT_TO_IMAGE_MODELS = [
   { id: 'google/nano-banana/text-to-image', name: 'Nano Banana', tier: 'test', costPer1k: 0.01 },
   { id: 'google/nano-banana-pro/text-to-image', name: 'Nano Banana Pro', tier: 'standard', costPer1k: 0.015 },
   { id: 'google/nano-banana-pro/text-to-image-ultra', name: 'Nano Banana Pro Ultra', tier: 'premium', costPer1k: 0.02 },
-  { id: 'google/imagen3-fast', name: 'Imagen 3 Fast', tier: 'standard', costPer1k: 0.02 },
-  { id: 'google/imagen3', name: 'Imagen 3', tier: 'premium', costPer1k: 0.04 },
-  { id: 'google/imagen4-fast', name: 'Imagen 4 Fast', tier: 'standard', costPer1k: 0.03 },
-  { id: 'google/imagen4', name: 'Imagen 4', tier: 'premium', costPer1k: 0.05 },
-  { id: 'google/imagen4-ultra', name: 'Imagen 4 Ultra', tier: 'ultra', costPer1k: 0.08 },
 ];
 
+// Pour mode TEST uniquement
 export const AVAILABLE_EDIT_MODELS = [
   { id: 'google/nano-banana/edit', name: 'Nano Banana Edit', tier: 'test', costPer1k: 0.012 },
   { id: 'google/nano-banana-pro/edit', name: 'Nano Banana Pro Edit', tier: 'standard', costPer1k: 0.018 },
@@ -284,12 +380,26 @@ export const AVAILABLE_EDIT_MODELS = [
 ];
 
 export const AVAILABLE_VIDEO_MODELS = [
-  { id: 'kling-v2.5-turbo', name: 'Kling v2.5 Turbo', tier: 'test', costPerSec: 0.02, supportsStartEnd: false },
-  { id: 'kling-v2.5-pro', name: 'Kling v2.5 Pro', tier: 'standard', costPerSec: 0.05, supportsStartEnd: false },
-  { id: 'kling-v2.1-start-end', name: 'Kling v2.1 Start-End', tier: 'premium', costPerSec: 0.08, supportsStartEnd: true },
-  { id: 'kling-v2.6-pro-i2v', name: 'Kling v2.6 Pro I2V', tier: 'ultra', costPerSec: 0.10, supportsStartEnd: false },
-  { id: 'wan-2.1', name: 'WAN 2.1', tier: 'test', costPerSec: 0.03, supportsStartEnd: false },
-  { id: 'wan-2.1-pro', name: 'WAN 2.1 Pro', tier: 'standard', costPerSec: 0.06, supportsStartEnd: false },
+  // ========== MODE FIRST FRAME ONLY (1 image input) ==========
+  // IDs = vrais endpoints WaveSpeed
+  { 
+    id: 'kwaivgi/kling-v2.6-pro/image-to-video', 
+    name: 'Kling v2.6 Pro (First Only)', 
+    tier: 'pro', 
+    costPerSec: 0.08, 
+    supportsFirstLast: false,  // PAS de last_image
+    supportsFirstOnly: true,
+  },
+  
+  // ========== MODE FIRST + LAST FRAMES (2 images input) ==========
+  { 
+    id: 'kwaivgi/kling-v2.5-turbo-pro/image-to-video', 
+    name: 'Kling v2.5 Turbo Pro (First+Last)', 
+    tier: 'pro', 
+    costPerSec: 0.03, 
+    supportsFirstLast: true,   // SUPPORTE last_image
+    supportsFirstOnly: true,   // Peut aussi fonctionner avec 1 image
+  },
 ];
 
 // ========== PRESETS DE DIMENSIONS ==========

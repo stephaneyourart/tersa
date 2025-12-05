@@ -475,8 +475,43 @@ export const videoModels: Record<string, TersaVideoModel> = {
     default: true, // Modèle par défaut pour les briefs avec référence
   },
 
+  // ============================================================
+  // VRAIS ENDPOINTS WAVESPEED (RECOMMANDÉS)
+  // ============================================================
+
+  // First Frame ONLY - utilise cfg_scale, PAS de last_image
+  'kwaivgi/kling-v2.6-pro/image-to-video': {
+    label: 'Kling v2.6 Pro (First Frame Only)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.kling26ProI2V(),
+        getCost: ({ duration }) => 0.08 * duration,
+      },
+    ],
+  },
+
+  // First + Last Frames - utilise guidance_scale + last_image
+  'kwaivgi/kling-v2.5-turbo-pro/image-to-video': {
+    label: 'Kling v2.5 Turbo Pro (First+Last Frames)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.kling25TurboProFirstLast(),
+        getCost: ({ duration }) => 0.03 * duration,
+      },
+    ],
+    default: true,
+  },
+
+  // ============================================================
+  // ANCIENS ALIAS (COMPATIBILITÉ)
+  // ============================================================
+
   'kling-v2.6-pro-i2v': {
-    label: 'Kling v2.6 Pro Image-to-Video (WaveSpeed)',
+    label: 'Kling v2.6 Pro Image-to-Video (alias)',
     chef: providers.kling,
     providers: [
       {
@@ -488,18 +523,27 @@ export const videoModels: Record<string, TersaVideoModel> = {
   },
 
   'kling-v2.6-pro-first-last': {
-    // NOTE: Utilise en réalité kling-v2.1-i2v-pro/start-end-frame car c'est
-    // le SEUL modèle WaveSpeed qui supporte first+last frame !
-    label: 'Kling Start-End Frame (First+Last)',
+    label: 'Kling v2.1 Start-End Frame (Legacy)',
     chef: providers.kling,
     providers: [
       {
         ...providers.fal,
-        model: wavespeed.klingStartEnd(), // kling-v2.1-i2v-pro/start-end-frame
-        getCost: ({ duration }) => 0.09 * duration, // 0.45$ / 5s
+        model: wavespeed.klingStartEnd(),
+        getCost: ({ duration }) => 0.09 * duration,
       },
     ],
-    default: true, // Modèle par défaut pour les briefs avec first+last frame
+  },
+
+  'kling-v2.5-turbo-pro-first-last': {
+    label: 'Kling v2.5 Turbo Pro First+Last (alias)',
+    chef: providers.kling,
+    providers: [
+      {
+        ...providers.fal,
+        model: wavespeed.kling25TurboProFirstLast(),
+        getCost: ({ duration }) => 0.03 * duration,
+      },
+    ],
   },
 
   'seedream-v1': {

@@ -10,6 +10,7 @@
  */
 
 import type { QualityLevel } from '@/types/brief';
+import type { FrameMode } from '@/lib/creative-plan-settings';
 import { 
   getTextToImageModel, 
   getEditModel, 
@@ -38,9 +39,10 @@ interface VideoGenerationTask {
   videoNodeId: string;
   prompt: string;
   imageDepartUrl?: string;    // NOUVEAU: URL de l'image de départ (first frame)
-  imageFinUrl?: string;       // NOUVEAU: URL de l'image de fin (last frame)
+  imageFinUrl?: string;       // NOUVEAU: URL de l'image de fin (last frame) - uniquement en mode first-last
   duration: number;
   usesFirstLastFrame: boolean;
+  frameMode: FrameMode;       // NOUVEAU: Mode de génération (first-last ou first-only)
 }
 
 interface GenerationProgress {
@@ -84,9 +86,9 @@ export interface ParallelGenerationOptions {
   planImages?: Array<{
     planId: string;
     imageDepartNodeId: string;
-    imageFinNodeId: string;
+    imageFinNodeId?: string;      // OPTIONNEL: uniquement en mode first-last
     promptDepart: string;
-    promptFin: string;
+    promptFin?: string;           // OPTIONNEL: uniquement en mode first-last
     aspectRatio: string;  // 21:9
     characterCollectionIds: string[];
     decorCollectionId?: string;
@@ -96,12 +98,12 @@ export interface ParallelGenerationOptions {
     videoNodeIds: string[];
     prompt: string;
     imageDepartNodeId?: string;   // NOUVEAU: ID de l'image de départ
-    imageFinNodeId?: string;      // NOUVEAU: ID de l'image de fin
+    imageFinNodeId?: string;      // NOUVEAU: ID de l'image de fin (uniquement first-last)
     characterCollectionIds: string[];
     decorCollectionId?: string;
     usesFirstLastFrame?: boolean;
   }>;
-  videoSettings: { duration: number; aspectRatio: string };
+  videoSettings: { duration: number; aspectRatio: string; frameMode?: FrameMode };
   onProgress?: (progress: GenerationProgress) => void;
   onImageGenerated?: (result: GenerationResult) => void;
   onVideoGenerated?: (result: GenerationResult) => void;
@@ -295,6 +297,9 @@ export async function generateAllMediaParallel(
 
   // ========== PHASE 3 : IMAGES DE PLAN (DÉPART/FIN) EN PARALLÈLE ==========
   // Ces images sont générées par EDIT à partir des images des collections
+  // En mode first-only, seule l'image de départ est générée
+  const frameMode = videoSettings.frameMode || 'first-last';
+  
   if (planImages && planImages.length > 0) {
     const planImageTasks: ImageGenerationTask[] = [];
 
@@ -323,7 +328,7 @@ export async function generateAllMediaParallel(
         }
       }
 
-      // Image de DÉPART
+      // Image de DÉPART (toujours générée)
       planImageTasks.push({
         nodeId: plan.imageDepartNodeId,
         type: 'plan_depart',
@@ -335,17 +340,19 @@ export async function generateAllMediaParallel(
         referenceImageUrls: referenceUrls,
       });
 
-      // Image de FIN
-      planImageTasks.push({
-        nodeId: plan.imageFinNodeId,
-        type: 'plan_fin',
-        entityType: 'plan',
-        entityId: plan.planId,
-        viewType: 'fin',
-        prompt: plan.promptFin,
-        aspectRatio: plan.aspectRatio || IMAGE_RATIOS.plan?.fin || '21:9',
-        referenceImageUrls: referenceUrls,
-      });
+      // Image de FIN - UNIQUEMENT en mode first-last
+      if (frameMode === 'first-last' && plan.imageFinNodeId && plan.promptFin) {
+        planImageTasks.push({
+          nodeId: plan.imageFinNodeId,
+          type: 'plan_fin',
+          entityType: 'plan',
+          entityId: plan.planId,
+          viewType: 'fin',
+          prompt: plan.promptFin,
+          aspectRatio: plan.aspectRatio || IMAGE_RATIOS.plan?.fin || '21:9',
+          referenceImageUrls: referenceUrls,
+        });
+      }
     }
 
     console.log(`[ParallelGen] Phase 3 : ${planImageTasks.length} images de plan à générer SIMULTANÉMENT`);
@@ -402,13 +409,16 @@ export async function generateAllMediaParallel(
     await Promise.allSettled(planImagePromises);
   }
 
-  // ========== PHASE 4 : VIDÉOS EN PARALLÈLE (avec first+last frame) ==========
+  // ========== PHASE 4 : VIDÉOS EN PARALLÈLE (avec first+last frame ou first only) ==========
   const videoTasks: VideoGenerationTask[] = [];
   
   for (const video of videos) {
     // Récupérer les URLs des images de plan
     const imageDepartUrl = video.imageDepartNodeId ? imageUrlsMap.get(video.imageDepartNodeId) : undefined;
-    const imageFinUrl = video.imageFinNodeId ? imageUrlsMap.get(video.imageFinNodeId) : undefined;
+    // En mode first-only, pas d'image de fin
+    const imageFinUrl = frameMode === 'first-last' && video.imageFinNodeId 
+      ? imageUrlsMap.get(video.imageFinNodeId) 
+      : undefined;
     
     for (const videoNodeId of video.videoNodeIds) {
       videoTasks.push({
@@ -418,12 +428,14 @@ export async function generateAllMediaParallel(
         imageDepartUrl,
         imageFinUrl,
         duration: videoSettings.duration,
-        usesFirstLastFrame: video.usesFirstLastFrame || false,
+        usesFirstLastFrame: frameMode === 'first-last' && (video.usesFirstLastFrame || false),
+        frameMode,
       });
     }
   }
 
-  console.log(`[ParallelGen] Phase 4 : ${videoTasks.length} vidéos à générer SIMULTANÉMENT (first+last frame)`);
+  const modeLabel = frameMode === 'first-only' ? 'first frame only' : 'first+last frame';
+  console.log(`[ParallelGen] Phase 4 : ${videoTasks.length} vidéos à générer SIMULTANÉMENT (${modeLabel})`);
   onProgress?.({
     phase: 'videos',
     total: videoTasks.length,
@@ -435,19 +447,32 @@ export async function generateAllMediaParallel(
   // Lancer TOUTES les vidéos EN PARALLÈLE
   const videoPromises = videoTasks.map(async (task) => {
     try {
-      console.log(`[ParallelGen] Génération vidéo ${task.videoNodeId} (first+last: ${task.usesFirstLastFrame})`);
+      const modeDesc = task.frameMode === 'first-only' 
+        ? 'first frame only' 
+        : `first+last: ${task.usesFirstLastFrame}`;
+      console.log(`[ParallelGen] Génération vidéo ${task.videoNodeId} (${modeDesc})`);
       
       let result;
-      if (task.usesFirstLastFrame && task.imageDepartUrl && task.imageFinUrl) {
-        // NOUVEAU WORKFLOW : first frame + last frame + prompt action
+      
+      // MODE FIRST+LAST: utiliser first+last frame si les deux images sont disponibles
+      if (task.frameMode === 'first-last' && task.usesFirstLastFrame && task.imageDepartUrl && task.imageFinUrl) {
         result = await generateVideoFirstLast({
           prompt: task.prompt,
           firstFrameUrl: task.imageDepartUrl,
           lastFrameUrl: task.imageFinUrl,
           duration: task.duration,
         });
-      } else {
-        // Ancien workflow : juste une image de référence
+      } 
+      // MODE FIRST ONLY: utiliser Kling v2.6 Pro I2V avec une seule image
+      else if (task.frameMode === 'first-only' && task.imageDepartUrl) {
+        result = await generateVideoFirstOnly({
+          prompt: task.prompt,
+          firstFrameUrl: task.imageDepartUrl,
+          duration: task.duration,
+        });
+      }
+      // Fallback: génération vidéo standard avec image de référence
+      else {
         result = await generateVideo({
           prompt: task.prompt,
           referenceImages: task.imageDepartUrl ? [task.imageDepartUrl] : [],
@@ -645,6 +670,46 @@ interface VideoFirstLastParams {
   firstFrameUrl: string;
   lastFrameUrl: string;
   duration: number;
+}
+
+interface VideoFirstOnlyParams {
+  prompt: string;
+  firstFrameUrl: string;
+  duration: number;
+}
+
+/**
+ * NOUVEAU: Génère une vidéo avec FIRST frame uniquement
+ * Utilise KLING v2.6 Pro Image-to-Video (1 seule image en entrée)
+ */
+async function generateVideoFirstOnly(params: VideoFirstOnlyParams): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    const response = await fetch('/api/video/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nodeId: `gen-fo-${Date.now()}`,
+        prompt: params.prompt,
+        imagePrompt: params.firstFrameUrl,     // First frame (seule image)
+        model: 'kling-v2.6-pro-i2v',           // Modèle Image-to-Video (1 image)
+        copies: 1,
+        duration: params.duration,
+        // PAS de lastFrameImage - mode first only
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return { success: false, error: `API error: ${error}` };
+    }
+
+    const data = await response.json();
+    // L'API retourne results[0].nodeData.generated.url
+    const videoUrl = data.results?.[0]?.nodeData?.generated?.url;
+    return { success: !!videoUrl, url: videoUrl };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 }
 
 /**

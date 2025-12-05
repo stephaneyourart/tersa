@@ -84,7 +84,11 @@ type GenerateImageActionProps = {
   projectId: string;
   modelId: string;
   instructions?: string;
+  // MODE TEST: utilise size (dimensions en pixels)
   size?: string;
+  // MODE PROD: utilise aspectRatio + resolution directement pour WaveSpeed
+  aspectRatio?: string;
+  resolution?: string; // '4k' ou '8k'
 };
 
 const generateGptImage1Image = async ({
@@ -161,12 +165,18 @@ function sizeToAspectRatio(size: string): WaveSpeedAspectRatio {
 }
 
 // Génère une image via WaveSpeed API
+// MODE PROD: aspectRatio + resolution sont passés directement
+// MODE TEST: size est passé, et on le convertit en aspectRatio
 async function generateWaveSpeedImage(
   modelId: string,
   prompt: string,
   instructions?: string,
-  size?: string
-): Promise<{ url: string; mediaType: string }> {
+  options?: {
+    size?: string;           // MODE TEST: dimensions en pixels
+    aspectRatio?: string;    // MODE PROD: ratio direct
+    resolution?: string;     // MODE PROD: '4k' ou '8k'
+  }
+): Promise<{ url: string; mediaType: string; aspectRatio: string }> {
   // Mapper les IDs de modèle vers les instances WaveSpeed
   const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaPro>> = {
     // Nano Banana
@@ -214,18 +224,37 @@ async function generateWaveSpeedImage(
     ? `${instructions}\n\n${prompt}`
     : prompt;
 
+  // Déterminer l'aspect ratio à utiliser
+  let effectiveAspectRatio: WaveSpeedAspectRatio;
+  
+  if (options?.aspectRatio) {
+    // MODE PROD: aspectRatio fourni directement
+    effectiveAspectRatio = options.aspectRatio as WaveSpeedAspectRatio;
+    console.log(`[WaveSpeed] MODE PROD - aspect_ratio: ${effectiveAspectRatio}, resolution: ${options.resolution || '4k'}`);
+  } else if (options?.size) {
+    // MODE TEST: convertir size en aspectRatio
+    effectiveAspectRatio = sizeToAspectRatio(options.size);
+    console.log(`[WaveSpeed] MODE TEST - size: ${options.size} → aspect_ratio: ${effectiveAspectRatio}`);
+  } else {
+    effectiveAspectRatio = '1:1';
+    console.log(`[WaveSpeed] FALLBACK - aspect_ratio: ${effectiveAspectRatio}`);
+  }
+
   const params: WaveSpeedTextToImageParams = {
     prompt: fullPrompt,
-    aspect_ratio: size ? sizeToAspectRatio(size) : '1:1',
+    aspect_ratio: effectiveAspectRatio,
     output_format: 'png',
+    // Ajouter resolution si fournie (MODE PROD)
+    ...(options?.resolution ? { resolution: options.resolution as '1k' | '2k' | '4k' } : {}),
   };
 
-  console.log(`[WaveSpeed] Génération avec modèle: ${modelId}`);
+  console.log(`[WaveSpeed] Génération avec modèle: ${modelId}, params:`, { aspect_ratio: params.aspect_ratio, resolution: params.resolution });
   const imageUrl = await model.generate(params);
 
   return {
     url: imageUrl,
     mediaType: 'image/png',
+    aspectRatio: effectiveAspectRatio,
   };
 }
 
@@ -236,6 +265,8 @@ export const generateImageAction = async ({
   nodeId,
   projectId,
   size,
+  aspectRatio,
+  resolution,
 }: GenerateImageActionProps): Promise<
   | {
       nodeData: object;
@@ -264,13 +295,17 @@ export const generateImageAction = async ({
       
       // 1. Générer le titre via IA EN PARALLÈLE de la génération d'image
       const titlePromise = generateSmartTitle(prompt, instructions);
-      const imagePromise = generateWaveSpeedImage(modelId, prompt, instructions, size);
+      const imagePromise = generateWaveSpeedImage(modelId, prompt, instructions, {
+        size,
+        aspectRatio,
+        resolution,
+      });
       
       // Attendre les deux en parallèle
       const [smartTitle, result] = await Promise.all([titlePromise, imagePromise]);
       
       console.log(`[WaveSpeed] Titre généré: ${smartTitle}`);
-      console.log(`[WaveSpeed] Image générée: ${result.url}`);
+      console.log(`[WaveSpeed] Image générée: ${result.url}, aspectRatio: ${result.aspectRatio}`);
       
       // 2. Télécharger l'image depuis WaveSpeed
       const response = await fetch(result.url);
@@ -298,7 +333,7 @@ export const generateImageAction = async ({
           isGenerated: true,
           modelId: modelId,
           prompt: prompt,
-          aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
+          aspectRatio: result.aspectRatio,
           format: mediaType,
           smartTitle: smartTitle,
           generatedAt: new Date().toISOString(),
@@ -346,7 +381,8 @@ export const generateImageAction = async ({
         modelId: modelId,
         model: modelId, // Pour compatibilité avec l'affichage du modèle sous le nœud
         instructions: instructions,
-        aspectRatio: size ? sizeToAspectRatio(size) : '1:1',
+        aspectRatio: result.aspectRatio, // Utiliser l'aspectRatio retourné par WaveSpeed
+        resolution: resolution, // Stocker la résolution utilisée (4k/8k)
         description: `Generated from prompt: ${prompt}`,
         cost: generationCost, // Coût de la génération pour les stats
       };

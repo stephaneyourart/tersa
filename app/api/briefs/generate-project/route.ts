@@ -213,6 +213,78 @@ async function getBriefContent(briefId: string): Promise<{ title: string; conten
   }
 }
 
+// ========== HELPERS LLM ==========
+type LLMProvider = 'mistral' | 'openai';
+
+async function* streamMistralCompletion(
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): AsyncGenerator<{ content?: string; done: boolean }> {
+  const apiKey = process.env.MISTRAL_API_KEY;
+  if (!apiKey) throw new Error('MISTRAL_API_KEY non configurée');
+  
+  const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.8, // Plus créatif que OpenAI
+      max_tokens: 32000,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Mistral API error: ${error}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      yield { done: true };
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data === '[DONE]') {
+          yield { done: true };
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            yield { content, done: false };
+          }
+        } catch (e) {
+          // Ignorer les erreurs de parsing
+        }
+      }
+    }
+  }
+}
+
 // ========== ROUTE HANDLER ==========
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -226,13 +298,25 @@ export async function POST(request: NextRequest) {
       isTestMode = false,
     } = body;
 
-    // Vérifier l'API key OpenAI
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'OPENAI_API_KEY non configurée' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Déterminer le provider LLM (Mistral par défaut)
+    const llmProvider: LLMProvider = config?.llmProvider || 'mistral';
+    const modelToUse = config?.aiModel || (llmProvider === 'mistral' ? 'mistral-large-latest' : 'gpt-5.1-2025-11-13');
+
+    // Vérifier l'API key appropriée
+    if (llmProvider === 'mistral') {
+      if (!process.env.MISTRAL_API_KEY) {
+        return new Response(JSON.stringify({ error: 'MISTRAL_API_KEY non configurée' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      if (!process.env.OPENAI_API_KEY) {
+        return new Response(JSON.stringify({ error: 'OPENAI_API_KEY non configurée' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Récupérer le contenu du brief
@@ -250,17 +334,13 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Déterminer le modèle à utiliser
-          // En mode test, forcer GPT-4o pour aller vite
-          const modelToUse = isTestMode ? 'gpt-4o' : (config?.aiModel || 'gpt-5.1-2025-11-13');
+          const providerLabel = llmProvider === 'mistral' ? 'Mistral' : 'OpenAI';
           
           // ========== PHASE 1 : ANALYSE ==========
           controller.enqueue(encoder.encode(sseEvent('phase_start', { 
             phase: 'analysis',
-            message: `🧠 Phase 1 : Analyse du brief avec ${modelToUse}...`,
+            message: `🧠 Phase 1 : Analyse du brief avec ${providerLabel} (${modelToUse})...`,
           })));
-
-          const openai = new OpenAI({ apiKey });
           
           // Construire le system prompt
           let systemPrompt = config?.systemPrompt || SYSTEM_PROMPT_ANALYSIS;
@@ -268,72 +348,89 @@ export async function POST(request: NextRequest) {
             systemPrompt += SYSTEM_PROMPT_TEST_MODE;
           }
 
-          // Appel LLM avec streaming et reasoning HIGH
-          console.log(`[API] Mode test: ${isTestMode}, Modèle: ${modelToUse}`);
-          const useReasoningAPI = modelToUse.startsWith('gpt-5') || modelToUse.includes('o1') || modelToUse.includes('o3');
-          
-          let completion;
-          if (useReasoningAPI) {
-            // GPT-5.1 utilise reasoning_effort
-            const reasoningEffort = config?.reasoningLevel || 'high';
-            console.log(`[API] Utilisation de ${modelToUse} avec reasoning_effort=${reasoningEffort}`);
-            
-            completion = await openai.chat.completions.create({
-              model: modelToUse,
-              reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high',
-              max_completion_tokens: 65536, // Augmenté significativement pour éviter la troncature des projets complexes
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
-              ],
-              stream: true,
-            } as any); // Type étendu pour supporter reasoning_effort
-          } else {
-            // Modèles classiques (GPT-4o, etc.)
-            completion = await openai.chat.completions.create({
-              model: modelToUse,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
-              ],
-              temperature: 0.7,
-              max_tokens: 32000, // Augmenté pour les projets avec beaucoup de plans
-              stream: true,
-            });
-          }
+          // Appel LLM avec streaming
+          console.log(`[API] Provider: ${llmProvider}, Mode test: ${isTestMode}, Modèle: ${modelToUse}`);
 
           let fullResponse = '';
           let reasoningContent = '';
           let chunkCount = 0;
 
-          // Stream la réponse de GPT-5.1
-          for await (const chunk of completion) {
-            chunkCount++;
-            const delta = chunk.choices[0]?.delta as any;
-            const choice = chunk.choices[0] as any;
+          // ========== MISTRAL ==========
+          if (llmProvider === 'mistral') {
+            const userPrompt = `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés et CRÉATIFS pour chaque personnage et décor. Sois audacieux et original dans tes descriptions.\n\n${briefData.content}`;
             
-            // DEBUG: Log les premiers chunks pour voir la structure
-            if (chunkCount <= 3) {
-              console.log(`[GPT-5.1 DEBUG] Chunk ${chunkCount}:`, JSON.stringify(chunk, null, 2));
+            for await (const chunk of streamMistralCompletion(modelToUse, systemPrompt, userPrompt)) {
+              if (chunk.done) break;
+              if (chunk.content) {
+                fullResponse += chunk.content;
+                chunkCount++;
+              }
             }
             
-            // Capturer le reasoning - plusieurs champs possibles selon le modèle
-            const reasoningText = delta?.reasoning_content || delta?.reasoning || choice?.reasoning_content || choice?.reasoning;
-            if (reasoningText) {
-              reasoningContent += reasoningText;
-              // STREAMING: Envoyer immédiatement le reasoning au client
-              controller.enqueue(encoder.encode(sseEvent('reasoning', { 
-                content: reasoningText,
-              })));
-            }
-            
-            // Capturer la réponse finale (le JSON)
-            if (delta?.content) {
-              fullResponse += delta.content;
-            }
+            console.log(`[Mistral] Total chunks: ${chunkCount}, Response length: ${fullResponse.length}`);
           }
-          
-          console.log(`[GPT-5.1] Total chunks: ${chunkCount}, Reasoning length: ${reasoningContent.length}, Response length: ${fullResponse.length}`);
+          // ========== OPENAI ==========
+          else {
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const useReasoningAPI = modelToUse.startsWith('gpt-5') || modelToUse.includes('o1') || modelToUse.includes('o3');
+            
+            let completion;
+            if (useReasoningAPI) {
+              // GPT-5.1 utilise reasoning_effort
+              const reasoningEffort = config?.reasoningLevel || 'high';
+              console.log(`[API] Utilisation de ${modelToUse} avec reasoning_effort=${reasoningEffort}`);
+              
+              completion = await openai.chat.completions.create({
+                model: modelToUse,
+                reasoning_effort: reasoningEffort as 'low' | 'medium' | 'high',
+                max_completion_tokens: 65536,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
+                ],
+                stream: true,
+              } as any);
+            } else {
+              // Modèles classiques (GPT-4o, etc.)
+              const maxTokens = modelToUse.includes('gpt-4o') ? 16384 : 32000;
+              console.log(`[API] Modèle classique ${modelToUse}, max_tokens: ${maxTokens}`);
+              
+              completion = await openai.chat.completions.create({
+                model: modelToUse,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
+                ],
+                temperature: 0.7,
+                max_tokens: maxTokens,
+                stream: true,
+              });
+            }
+
+            // Stream OpenAI
+            for await (const chunk of completion) {
+              chunkCount++;
+              const delta = chunk.choices[0]?.delta as any;
+              const choice = chunk.choices[0] as any;
+              
+              if (chunkCount <= 3) {
+                console.log(`[OpenAI DEBUG] Chunk ${chunkCount}:`, JSON.stringify(chunk, null, 2));
+              }
+              
+              // Capturer le reasoning
+              const reasoningText = delta?.reasoning_content || delta?.reasoning || choice?.reasoning_content || choice?.reasoning;
+              if (reasoningText) {
+                reasoningContent += reasoningText;
+                controller.enqueue(encoder.encode(sseEvent('reasoning', { content: reasoningText })));
+              }
+              
+              if (delta?.content) {
+                fullResponse += delta.content;
+              }
+            }
+            
+            console.log(`[OpenAI] Total chunks: ${chunkCount}, Reasoning: ${reasoningContent.length}, Response: ${fullResponse.length}`);
+          }
           
           // Log du reasoning pour debug
           if (reasoningContent) {
@@ -420,6 +517,11 @@ export async function POST(request: NextRequest) {
           const videoCopies = config?.settings?.videoCopies || couplesPerPlan * videosPerCouple;  // Rétrocompat
           const videoDuration = config?.settings?.videoDuration || 10;
           const videoAspectRatio = config?.settings?.videoAspectRatio || '16:9';
+          
+          // Mode frame: first-last (2 images) ou first-only (1 image)
+          const frameMode = config?.settings?.frameMode || 'first-last';
+          console.log(`[API] Frame mode: ${frameMode}`);
+          console.log(`[API] Full config.settings:`, JSON.stringify(config?.settings, null, 2));
 
           // Générer les nœuds du canvas (avec N couples × M vidéos par plan)
           const canvasData = generateCanvasFromProject(projectStructure, isTestMode, videoCopies, {
@@ -427,6 +529,7 @@ export async function POST(request: NextRequest) {
             videosPerCouple,
             videoDuration,
             videoAspectRatio,
+            frameMode,
           });
           
           // Extraire la séquence de génération pour plus tard (avec le projet pour les prompts)
