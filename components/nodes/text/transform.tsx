@@ -449,7 +449,7 @@ export const TextTransform = ({
         value={data.instructions ?? ''}
         onChange={handleInstructionsChange}
         placeholder={data.generated?.text ? "Demandez une modification du texte ci-dessus..." : "Promptez..."}
-        className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
+        className="nodrag nowheel shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
       />
       <ReasoningTunnel.In>
         {messages.flatMap((message) =>

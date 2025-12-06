@@ -977,7 +977,7 @@ export const ImageTransform = ({
               value={data.instructions ?? ''}
               onChange={handleInstructionsChange}
               placeholder="Promptez..."
-              className="shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
+              className="nodrag nowheel shrink-0 resize-none rounded-none border-none bg-transparent! shadow-none focus-visible:ring-0"
               rows={isPromptExpanded ? 6 : 2}
             />
           )}
