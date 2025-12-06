@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
       projectName: customProjectName,
       config,
       isTestMode = false,
+      storyboard, // NOUVEAU: Storyboard pré-généré par Mistral (étape Synopsis)
     } = body;
 
     // Déterminer le provider LLM (Mistral par défaut)
@@ -196,6 +197,16 @@ export async function POST(request: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // NOUVEAU: Utiliser le storyboard si fourni, sinon le contenu du brief + documents
+    // Le storyboard est généré à l'étape Synopsis par mistral-large-latest
+    const mainContent = storyboard?.trim() || briefData.content;
+    const hasStoryboard = Boolean(storyboard?.trim());
+    
+    // Si un storyboard est fourni ET qu'il y a des documents dans le brief, les combiner
+    const finalContent = hasStoryboard && briefData.content.includes('---') 
+      ? `${mainContent}\n\n--- Documents additionnels ---\n${briefData.content}`
+      : mainContent;
 
     const projectName = customProjectName || `${briefData.title} v1`;
 
@@ -288,9 +299,9 @@ RÈGLES CRITIQUES:
 - Limite-toi à 2-3 plans maximum pour un brief court
 - Sois CONCIS dans les descriptions (1-2 phrases max par prompt)
 
-Brief à analyser:
-${briefData.content}`
-              : `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés et CRÉATIFS pour chaque personnage et décor. Sois audacieux et original dans tes descriptions.\n\n${briefData.content}`;
+Brief/Storyboard à analyser:
+${finalContent}`
+              : `Analyse ce brief/storyboard et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés et CRÉATIFS pour chaque personnage et décor. Sois audacieux et original dans tes descriptions.\n\n${finalContent}`;
             
             for await (const chunk of streamMistralCompletion(modelToUse, systemPrompt, userPrompt)) {
               if (chunk.done) break;
@@ -321,7 +332,7 @@ ${briefData.content}`
                 max_completion_tokens: 65536,
                 messages: [
                   { role: 'system', content: systemPrompt },
-                  { role: 'user', content: `Analyse ce brief et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${briefData.content}` },
+                  { role: 'user', content: `Analyse ce brief/storyboard et génère la structure du projet. IMPORTANT: Crée des prompts PRIMAIRES extrêmement détaillés pour chaque personnage et décor.\n\n${finalContent}` },
                 ],
                 stream: true,
               } as any);
@@ -334,7 +345,7 @@ ${briefData.content}`
                 model: modelToUse,
                 messages: [
                   { role: 'system', content: systemPrompt },
-                  { role: 'user', content: `Analyse ce brief et génère la structure du projet :\n\n${briefData.content}` },
+                  { role: 'user', content: `Analyse ce brief/storyboard et génère la structure du projet :\n\n${finalContent}` },
                 ],
                 temperature: 0.7,
                 max_tokens: maxTokens,
