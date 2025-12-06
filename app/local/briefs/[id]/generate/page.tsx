@@ -128,7 +128,6 @@ export default function GenerateProjectPage() {
   const [projectName, setProjectName] = useState('');
   const [generatedProjectId, setGeneratedProjectId] = useState<string | null>(null);
   const reasoningEndRef = useRef<HTMLDivElement>(null);
-  const storyboardEndRef = useRef<HTMLDivElement>(null);
   
   // États des phases de génération
   const [phaseStatus, setPhaseStatus] = useState<Record<string, 'pending' | 'running' | 'done'>>({
@@ -137,14 +136,8 @@ export default function GenerateProjectPage() {
     redirect: 'pending',
   });
 
-  // ============================================================
-  // ÉTAPE SYNOPSIS
-  // ============================================================
-  // 'synopsis' = étape 1, 'config' = étape 2 (configuration + génération)
-  const [currentStep, setCurrentStep] = useState<'synopsis' | 'config'>('synopsis');
-  const [synopsis, setSynopsis] = useState('');
+  // Storyboard chargé depuis le brief (généré dans la page d'édition)
   const [storyboard, setStoryboard] = useState('');
-  const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
 
   // Configuration de génération
   const [config, setConfig] = useState<GenerationConfig>(DEFAULT_GENERATION_CONFIG);
@@ -170,13 +163,6 @@ export default function GenerateProjectPage() {
       reasoningEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [reasoning, showReasoningDialog]);
-
-  // Auto-scroll storyboard
-  useEffect(() => {
-    if (storyboardEndRef.current && generatingStoryboard) {
-      storyboardEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [storyboard, generatingStoryboard]);
 
   // Charger la config et les presets au montage
   useEffect(() => {
@@ -240,6 +226,21 @@ export default function GenerateProjectPage() {
         const data = await response.json();
         setBrief(data);
         setProjectName(`${data.name} v1`);
+        
+        // Charger le storyboard depuis le brief (généré dans la page d'édition)
+        const textDoc = data.documents?.find((d: { type: string; name: string }) => 
+          d.type === 'text' && d.name === '__brief_content__'
+        );
+        if (textDoc?.content) {
+          try {
+            const parsed = JSON.parse(textDoc.content);
+            if (parsed.storyboard) {
+              setStoryboard(parsed.storyboard);
+            }
+          } catch {
+            // Ancien format - pas de storyboard
+          }
+        }
       }
     } catch (error) {
       console.error('Erreur:', error);
@@ -361,82 +362,7 @@ export default function GenerateProjectPage() {
   };
 
   // ============================================================
-  // GÉNÉRATION STORYBOARD (Étape 1)
-  // ============================================================
-
-  const handleGenerateStoryboard = async () => {
-    if (!synopsis.trim()) {
-      alert('Veuillez entrer un synopsis');
-      return;
-    }
-
-    setGeneratingStoryboard(true);
-    setStoryboard('');
-
-    try {
-      const response = await fetch('/api/briefs/generate-storyboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ synopsis: synopsis.trim() }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la génération du storyboard');
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('Pas de reader disponible');
-      }
-
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (value) {
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-          
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              switch (data.type) {
-                case 'content':
-                  setStoryboard(prev => prev + data.content);
-                  break;
-                case 'error':
-                  throw new Error(data.error);
-                case 'complete':
-                  // Storyboard terminé
-                  break;
-              }
-            } catch (e: any) {
-              if (e.message && !e.message.includes('JSON')) {
-                throw e;
-              }
-            }
-          }
-        }
-        
-        if (done) break;
-      }
-    } catch (error: any) {
-      console.error('Erreur storyboard:', error);
-      setStoryboard(prev => prev + `\n\n❌ Erreur : ${error.message}`);
-    } finally {
-      setGeneratingStoryboard(false);
-    }
-  };
-
-  // ============================================================
-  // GÉNÉRATION PROJET (Étape 2)
+  // GÉNÉRATION PROJET
   // ============================================================
 
   const handleGenerate = async () => {
@@ -717,145 +643,6 @@ export default function GenerateProjectPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {/* ============================================================ */}
-        {/* STEPPER - Indicateur d'étapes */}
-        {/* ============================================================ */}
-        <div className="flex items-center justify-center gap-4 mb-8">
-          <button
-            onClick={() => setCurrentStep('synopsis')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${
-              currentStep === 'synopsis'
-                ? 'bg-violet-500/20 text-violet-400 ring-2 ring-violet-500/50'
-                : storyboard
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-zinc-800 text-zinc-500'
-            }`}
-          >
-            {storyboard ? (
-              <CheckCircle2Icon size={18} />
-            ) : currentStep === 'synopsis' ? (
-              <SparklesIcon size={18} />
-            ) : (
-              <CircleDotIcon size={18} />
-            )}
-            <span className="font-medium">1. Synopsis</span>
-          </button>
-          
-          <div className={`w-12 h-0.5 ${storyboard ? 'bg-emerald-500/50' : 'bg-zinc-700'}`} />
-          
-          <button
-            onClick={() => storyboard && setCurrentStep('config')}
-            disabled={!storyboard}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${
-              currentStep === 'config'
-                ? 'bg-blue-500/20 text-blue-400 ring-2 ring-blue-500/50'
-                : storyboard
-                  ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                  : 'bg-zinc-800/50 text-zinc-600 cursor-not-allowed'
-            }`}
-          >
-            <SettingsIcon size={18} />
-            <span className="font-medium">2. Configuration</span>
-          </button>
-        </div>
-
-        {/* ============================================================ */}
-        {/* ÉTAPE 1: SYNOPSIS */}
-        {/* ============================================================ */}
-        {currentStep === 'synopsis' && (
-          <div className="space-y-6">
-            {/* Section Synopsis Input */}
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <SparklesIcon size={20} className="text-violet-400" />
-                <h2 className="text-lg font-semibold">Synopsis</h2>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Décrivez votre idée de projet. Mistral Large transformera automatiquement votre synopsis en un storyboard détaillé.
-              </p>
-              <Textarea
-                value={synopsis}
-                onChange={(e) => setSynopsis(e.target.value)}
-                placeholder={`Exemple: "donne moi une idée originale de petit film publicitaire d'au moins 7 plans, avec mari, femme, enfant, autour d'une énergie propre. Pas cucu, un peu émouvant, documentaire, pas uniquement joli."`}
-                className="min-h-[150px] text-base"
-                disabled={generatingStoryboard}
-              />
-              <div className="flex justify-end mt-4">
-                <Button
-                  onClick={handleGenerateStoryboard}
-                  disabled={!synopsis.trim() || generatingStoryboard}
-                  className="gap-2 bg-violet-600 hover:bg-violet-700"
-                >
-                  {generatingStoryboard ? (
-                    <>
-                      <Loader2Icon size={16} className="animate-spin" />
-                      Génération...
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon size={16} />
-                      Générer le storyboard
-                    </>
-                  )}
-                </Button>
-              </div>
-            </Card>
-
-            {/* Section Storyboard Output */}
-            {(storyboard || generatingStoryboard) && (
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <FilmIcon size={20} className="text-amber-400" />
-                    <h2 className="text-lg font-semibold">Storyboard généré</h2>
-                    {generatingStoryboard && (
-                      <Badge variant="outline" className="text-blue-400 border-blue-400/50 animate-pulse">
-                        En cours...
-                      </Badge>
-                    )}
-                  </div>
-                  {storyboard && !generatingStoryboard && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateStoryboard}
-                      className="gap-1"
-                    >
-                      <RefreshCwIcon size={14} />
-                      Régénérer
-                    </Button>
-                  )}
-                </div>
-                <ScrollArea className="h-[500px] border rounded-lg p-4 bg-zinc-950">
-                  <div className="prose prose-sm prose-invert max-w-none">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-300">
-                      {storyboard || '⏳ Génération en cours...'}
-                    </pre>
-                  </div>
-                  <div ref={storyboardEndRef} />
-                </ScrollArea>
-              </Card>
-            )}
-
-            {/* Bouton Continuer */}
-            {storyboard && !generatingStoryboard && (
-              <div className="flex justify-end gap-4 pt-4">
-                <Button
-                  onClick={() => setCurrentStep('config')}
-                  className="gap-2 min-w-[200px] bg-emerald-600 hover:bg-emerald-700"
-                >
-                  Continuer
-                  <ArrowRightIcon size={16} />
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ============================================================ */}
-        {/* ÉTAPE 2: CONFIGURATION */}
-        {/* ============================================================ */}
-        {currentStep === 'config' && (
         <div className="space-y-6">
           
           {/* ============================================================ */}
@@ -1709,14 +1496,14 @@ export default function GenerateProjectPage() {
           <div className="flex justify-end gap-4 pt-4">
             <Button
               variant="outline"
-              onClick={() => setCurrentStep('synopsis')}
+              onClick={() => router.push(`/local/briefs/${params.id}`)}
               disabled={generating}
             >
-              ← Retour au synopsis
+              ← Retour
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={generating || !projectName.trim() || !storyboard}
+              disabled={generating || !projectName.trim()}
               className="gap-2 min-w-[200px] bg-emerald-600 hover:bg-emerald-700"
             >
               {generating ? (
@@ -1733,7 +1520,6 @@ export default function GenerateProjectPage() {
             </Button>
           </div>
         </div>
-        )}
       </main>
 
       {/* ============================================================ */}

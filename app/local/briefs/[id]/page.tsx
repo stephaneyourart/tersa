@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ArrowLeftIcon,
+  ArrowDownIcon,
+  ArrowRightIcon,
   UploadIcon,
   FileTextIcon,
   ImageIcon,
@@ -14,12 +18,17 @@ import {
   TrashIcon,
   PlayIcon,
   Loader2Icon,
-  CoinsIcon,
-  AlertCircleIcon,
+  SparklesIcon,
+  FilmIcon,
+  RefreshCwIcon,
+  CheckCircle2Icon,
+  PencilIcon,
+  FolderIcon,
+  ChevronDownIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Brief, BriefDocument } from '@/types/brief';
 import { 
   formatTokens, 
@@ -33,13 +42,38 @@ import {
 } from '@/lib/token-counter';
 import { useDropzone } from 'react-dropzone';
 
-const GEMINI_MAX_TOKENS = 2000000; // 2M tokens max pour Gemini 3
+// ============================================================
+// CONSTANTES
+// ============================================================
+const GEMINI_MAX_TOKENS = 2000000;
 
+// Étapes du flow TypeForm
+type Step = 'title' | 'synopsis' | 'storyboard' | 'moodboard' | 'ready';
+
+const STEPS: { id: Step; label: string; icon: React.ElementType }[] = [
+  { id: 'title', label: 'Titre', icon: FileTextIcon },
+  { id: 'synopsis', label: 'Synopsis', icon: SparklesIcon },
+  { id: 'storyboard', label: 'Storyboard', icon: FilmIcon },
+  { id: 'moodboard', label: 'Moodboard', icon: FolderIcon },
+  { id: 'ready', label: 'Prêt', icon: CheckCircle2Icon },
+];
+
+// ============================================================
+// COMPOSANT PRINCIPAL
+// ============================================================
 export default function BriefEditPage() {
   const router = useRouter();
   const params = useParams();
   const isNew = params.id === 'new';
   
+  // Refs pour auto-scroll
+  const synopsisRef = useRef<HTMLDivElement>(null);
+  const storyboardRef = useRef<HTMLDivElement>(null);
+  const moodboardRef = useRef<HTMLDivElement>(null);
+  const readyRef = useRef<HTMLDivElement>(null);
+  const storyboardEndRef = useRef<HTMLDivElement>(null);
+  
+  // États de base
   const [brief, setBrief] = useState<Brief>({
     id: '',
     name: '',
@@ -53,9 +87,22 @@ export default function BriefEditPage() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
-  const [briefContent, setBriefContent] = useState('');
-  const [briefContentTokens, setBriefContentTokens] = useState(0);
 
+  // États TypeForm
+  const [currentStep, setCurrentStep] = useState<Step>('title');
+  const [synopsis, setSynopsis] = useState('');
+  const [storyboard, setStoryboard] = useState('');
+  const [isEditingStoryboard, setIsEditingStoryboard] = useState(false);
+  const [generatingStoryboard, setGeneratingStoryboard] = useState(false);
+
+  // Auto-scroll quand le storyboard se génère
+  useEffect(() => {
+    if (storyboardEndRef.current && generatingStoryboard) {
+      storyboardEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [storyboard, generatingStoryboard]);
+
+  // Charger le brief existant
   useEffect(() => {
     if (!isNew) {
       loadBrief();
@@ -69,11 +116,26 @@ export default function BriefEditPage() {
         const data = await response.json();
         setBrief(data);
         
-        // Charger le contenu textuel s'il existe
+        // Charger le synopsis s'il existe
         const textDoc = data.documents?.find((d: BriefDocument) => d.type === 'text' && d.name === '__brief_content__');
         if (textDoc && textDoc.content) {
-          setBriefContent(textDoc.content);
-          setBriefContentTokens(textDoc.tokens);
+          // Essayer de parser le contenu comme JSON pour récupérer synopsis + storyboard
+          try {
+            const parsed = JSON.parse(textDoc.content);
+            if (parsed.synopsis) setSynopsis(parsed.synopsis);
+            if (parsed.storyboard) {
+              setStoryboard(parsed.storyboard);
+              setCurrentStep('ready'); // Si on a déjà un storyboard, aller à la fin
+            }
+          } catch {
+            // Ancien format - considérer comme synopsis
+            setSynopsis(textDoc.content);
+          }
+        }
+        
+        // Si on a un nom, passer au moins à l'étape synopsis
+        if (data.name) {
+          setCurrentStep(prev => prev === 'title' ? 'synopsis' : prev);
         }
       }
     } catch (error) {
@@ -83,47 +145,85 @@ export default function BriefEditPage() {
     }
   };
 
-  const handleBriefContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const content = e.target.value;
-    setBriefContent(content);
-    
-    // Calculer les tokens
-    const tokens = countTextTokens(content).tokens;
-    setBriefContentTokens(tokens);
-    
-    // Mettre à jour le brief avec le nouveau contenu
-    setBrief(prev => {
-      // Retirer l'ancien document texte s'il existe
-      const otherDocs = (prev.documents || []).filter(d => !(d.type === 'text' && d.name === '__brief_content__'));
-      const oldTextDoc = (prev.documents || []).find(d => d.type === 'text' && d.name === '__brief_content__');
-      const oldTokens = oldTextDoc?.tokens || 0;
-      
-      // Créer le nouveau document texte
-      const newDocs = content.trim() ? [
-        ...otherDocs,
-        {
-          id: oldTextDoc?.id || `text-${Date.now()}`,
-          briefId: prev.id,
-          name: '__brief_content__',
-          type: 'text' as const,
-          size: new Blob([content]).size,
-          storagePath: '',
-          url: '',
-          content,
-          tokens,
-          createdAt: new Date(),
-        }
-      ] : otherDocs;
-      
-      return {
-        ...prev,
-        documents: newDocs,
-        totalTokens: prev.totalTokens - oldTokens + tokens,
-        estimatedCost: formatCost(calculateCost(prev.totalTokens - oldTokens + tokens)),
-      };
-    });
-  }, []);
+  // ============================================================
+  // GÉNÉRATION STORYBOARD
+  // ============================================================
+  const handleGenerateStoryboard = async () => {
+    if (!synopsis.trim()) return;
 
+    setGeneratingStoryboard(true);
+    setStoryboard('');
+    setCurrentStep('storyboard');
+    
+    // Scroll vers la section storyboard
+    setTimeout(() => {
+      storyboardRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+
+    try {
+      const response = await fetch('/api/briefs/generate-storyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ synopsis: synopsis.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la génération du storyboard');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('Pas de reader disponible');
+      }
+
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              switch (data.type) {
+                case 'content':
+                  setStoryboard(prev => prev + data.content);
+                  break;
+                case 'error':
+                  throw new Error(data.error);
+                case 'complete':
+                  break;
+              }
+            } catch (e: any) {
+              if (e.message && !e.message.includes('JSON')) {
+                throw e;
+              }
+            }
+          }
+        }
+        
+        if (done) break;
+      }
+    } catch (error: any) {
+      console.error('Erreur storyboard:', error);
+      setStoryboard(prev => prev + `\n\n❌ Erreur : ${error.message}`);
+    } finally {
+      setGeneratingStoryboard(false);
+    }
+  };
+
+  // ============================================================
+  // SAUVEGARDE
+  // ============================================================
   const saveBrief = async (): Promise<string | null> => {
     if (!brief.name.trim()) {
       alert('Veuillez donner un nom à votre creative plan');
@@ -132,83 +232,82 @@ export default function BriefEditPage() {
 
     setSaving(true);
     try {
+      // Préparer le contenu à sauvegarder (synopsis + storyboard)
+      const contentToSave = JSON.stringify({
+        synopsis: synopsis.trim(),
+        storyboard: storyboard.trim(),
+      });
+      
+      const contentTokens = countTextTokens(contentToSave).tokens;
+      
+      // Mettre à jour les documents avec le contenu
+      const otherDocs = (brief.documents || []).filter(d => !(d.type === 'text' && d.name === '__brief_content__'));
+      const newDocs = contentToSave.length > 10 ? [
+        ...otherDocs,
+        {
+          id: `text-${Date.now()}`,
+          briefId: brief.id,
+          name: '__brief_content__',
+          type: 'text' as const,
+          size: new Blob([contentToSave]).size,
+          storagePath: '',
+          url: '',
+          content: contentToSave,
+          tokens: contentTokens,
+          createdAt: new Date(),
+        }
+      ] : otherDocs;
+      
+      const briefToSave = {
+        ...brief,
+        documents: newDocs,
+        totalTokens: newDocs.reduce((acc, d) => acc + (d.tokens || 0), 0),
+      };
+
       const url = isNew ? '/api/briefs' : `/api/briefs/${params.id}`;
       const method = isNew ? 'POST' : 'PATCH';
-      
-      console.log('[Brief] Sauvegarde...', { url, method, brief });
       
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(brief),
+        body: JSON.stringify(briefToSave),
       });
 
       if (response.ok) {
         const saved = await response.json();
-        console.log('[Brief] Sauvegardé:', saved);
+        setBrief(saved);
         
         if (isNew) {
-          // Ne pas rediriger, juste mettre à jour l'état
-          setBrief(saved);
-          // Mettre à jour l'URL sans recharger
           window.history.replaceState({}, '', `/local/briefs/${saved.id}`);
           return saved.id;
-        } else {
-          setBrief(saved);
-          return params.id as string;
         }
+        return params.id as string;
       } else {
         const error = await response.text();
         console.error('[Brief] Erreur sauvegarde:', error);
-        alert(`Erreur lors de la sauvegarde: ${error}`);
         return null;
       }
     } catch (error) {
-      console.error('[Brief] Erreur lors de la sauvegarde:', error);
-      alert('Erreur lors de la sauvegarde');
+      console.error('[Brief] Erreur:', error);
       return null;
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSaveClick = async () => {
-    const briefId = await saveBrief();
-    if (briefId) {
-      alert('Creative plan sauvegardé avec succès !');
-    }
-  };
-
   const handleGenerateProject = async () => {
-    if (!brief.name.trim()) {
-      alert('Veuillez donner un nom à votre creative plan');
-      return;
-    }
-
-    if (isOverLimit) {
-      alert('Le nombre de tokens dépasse la limite. Veuillez réduire le contenu.');
-      return;
-    }
-
-    console.log('[Brief] Lancement génération...');
-    
-    // Sauvegarder d'abord
     const briefId = await saveBrief();
-    
     if (briefId) {
-      console.log('[Brief] Redirection vers génération...', briefId);
-      // Rediriger vers la page de génération
       router.push(`/local/briefs/${briefId}/generate`);
-    } else {
-      alert('Erreur lors de la sauvegarde du creative plan');
     }
   };
 
+  // ============================================================
+  // GESTION DES FICHIERS (MOODBOARD)
+  // ============================================================
   const handleFileUpload = async (files: File[]) => {
     setUploading(true);
     try {
-      // TODO: Implémenter l'upload vers Supabase Storage
-      // Pour l'instant, on simule
       for (const file of files) {
         const doc: BriefDocument = {
           id: Math.random().toString(36),
@@ -227,11 +326,10 @@ export default function BriefEditPage() {
           ...prev,
           documents: [...(prev.documents || []), doc],
           totalTokens: prev.totalTokens + doc.tokens,
-          estimatedCost: formatCost(calculateCost(prev.totalTokens + doc.tokens)),
         }));
       }
     } catch (error) {
-      console.error('Erreur lors de l\'upload:', error);
+      console.error('Erreur upload:', error);
     } finally {
       setUploading(false);
     }
@@ -241,13 +339,10 @@ export default function BriefEditPage() {
     setBrief(prev => {
       const doc = prev.documents?.find(d => d.id === docId);
       const newDocs = prev.documents?.filter(d => d.id !== docId) || [];
-      const newTotal = prev.totalTokens - (doc?.tokens || 0);
-      
       return {
         ...prev,
         documents: newDocs,
-        totalTokens: newTotal,
-        estimatedCost: formatCost(calculateCost(newTotal)),
+        totalTokens: prev.totalTokens - (doc?.tokens || 0),
       };
     });
   };
@@ -267,36 +362,23 @@ export default function BriefEditPage() {
 
   const estimateFileTokens = async (file: File): Promise<number> => {
     const type = getFileType(file.type);
-    
     if (type === 'text') {
       const text = await file.text();
       return countTextTokens(text).tokens;
     }
-    
     if (type === 'pdf') {
-      // Estimation basique : 1 page = 300 mots en moyenne
-      // TODO: Extraire le nombre réel de pages du PDF
-      const estimatedPages = Math.ceil(file.size / 50000); // ~50KB par page
+      const estimatedPages = Math.ceil(file.size / 50000);
       return countPDFTokens(estimatedPages).tokens;
     }
-    
-    if (type === 'image') {
-      // Estimation avec résolution standard
-      return countImageTokens(1024, 1024).tokens;
-    }
-    
+    if (type === 'image') return countImageTokens(1024, 1024).tokens;
     if (type === 'video') {
-      // Estimation : 1 seconde par MB (approximatif)
       const estimatedDuration = file.size / (1024 * 1024);
       return countVideoTokens(estimatedDuration, 1920, 1080).tokens;
     }
-    
     if (type === 'audio') {
-      // Estimation : 1 minute par MB
       const estimatedDuration = (file.size / (1024 * 1024)) * 60;
       return countAudioTokens(estimatedDuration).tokens;
     }
-    
     return 0;
   };
 
@@ -310,9 +392,42 @@ export default function BriefEditPage() {
     }
   };
 
-  const tokenUsagePercent = (brief.totalTokens / GEMINI_MAX_TOKENS) * 100;
-  const isOverLimit = brief.totalTokens > GEMINI_MAX_TOKENS;
+  // ============================================================
+  // NAVIGATION ENTRE ÉTAPES
+  // ============================================================
+  const scrollToStep = (step: Step) => {
+    const refs: Record<Step, React.RefObject<HTMLDivElement | null>> = {
+      title: { current: null }, // Le titre est toujours visible
+      synopsis: synopsisRef,
+      storyboard: storyboardRef,
+      moodboard: moodboardRef,
+      ready: readyRef,
+    };
+    
+    refs[step]?.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
+  const goToNextStep = (from: Step) => {
+    const stepOrder: Step[] = ['title', 'synopsis', 'storyboard', 'moodboard', 'ready'];
+    const currentIndex = stepOrder.indexOf(from);
+    if (currentIndex < stepOrder.length - 1) {
+      const nextStep = stepOrder[currentIndex + 1];
+      setCurrentStep(nextStep);
+      setTimeout(() => scrollToStep(nextStep), 100);
+    }
+  };
+
+  // ============================================================
+  // CONDITIONS DE VALIDATION
+  // ============================================================
+  const canProceedFromTitle = brief.name.trim().length >= 2;
+  const canProceedFromSynopsis = synopsis.trim().length >= 20;
+  const canProceedFromStoryboard = storyboard.trim().length >= 100 && !generatingStoryboard;
+  const visibleDocs = brief.documents?.filter(d => d.name !== '__brief_content__') || [];
+
+  // ============================================================
+  // RENDER
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -322,258 +437,386 @@ export default function BriefEditPage() {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/local/briefs">
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <ArrowLeftIcon size={18} />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">
-                {isNew ? 'Nouveau Creative Plan' : 'Éditer le Creative Plan'}
-              </h1>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-b from-background to-zinc-950 text-foreground">
+      {/* Header minimaliste */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/30">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/local/briefs">
+            <Button variant="ghost" size="icon" className="rounded-full">
+              <ArrowLeftIcon size={18} />
+            </Button>
+          </Link>
+          
+          {/* Indicateur d'étapes */}
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              onClick={handleSaveClick}
-              disabled={saving || !brief.name.trim()}
-            >
-              {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-            </Button>
-            <Button 
-              onClick={handleGenerateProject}
-              className="gap-2"
-              disabled={isOverLimit || !brief.name.trim() || saving}
-            >
-              <PlayIcon size={16} />
-              {saving ? 'Préparation...' : 'Générer le projet'}
-            </Button>
+            {STEPS.map((step, index) => {
+              const stepOrder: Step[] = ['title', 'synopsis', 'storyboard', 'moodboard', 'ready'];
+              const currentIndex = stepOrder.indexOf(currentStep);
+              const stepIndex = stepOrder.indexOf(step.id);
+              const isActive = step.id === currentStep;
+              const isPast = stepIndex < currentIndex;
+              const Icon = step.icon;
+              
+              return (
+                <div key={step.id} className="flex items-center">
+                  <button
+                    onClick={() => {
+                      setCurrentStep(step.id);
+                      scrollToStep(step.id);
+                    }}
+                    disabled={stepIndex > currentIndex}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                      isActive
+                        ? 'bg-violet-500/20 text-violet-400'
+                        : isPast
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-zinc-800/50 text-zinc-500'
+                    } ${stepIndex <= currentIndex ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed'}`}
+                  >
+                    <Icon size={12} />
+                    <span className="hidden sm:inline">{step.label}</span>
+                  </button>
+                  {index < STEPS.length - 1 && (
+                    <div className={`w-4 h-0.5 mx-1 ${isPast ? 'bg-emerald-500/50' : 'bg-zinc-700'}`} />
+                  )}
+                </div>
+              );
+            })}
           </div>
+          
+          <Button 
+            onClick={handleGenerateProject}
+            disabled={!canProceedFromStoryboard || saving}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+          >
+            {saving ? <Loader2Icon size={16} className="animate-spin" /> : <PlayIcon size={16} />}
+            <span className="hidden sm:inline">Générer</span>
+          </Button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Formulaire principal */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Informations de base */}
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Informations</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Nom du creative plan *
-                  </label>
-                  <Input
-                    value={brief.name}
-                    onChange={(e) => setBrief({ ...brief, name: e.target.value })}
-                    placeholder="Ex: Vidéo promotionnelle Q1 2025"
-                  />
+      {/* Contenu principal - Style TypeForm */}
+      <main className="pt-24 pb-32">
+        <div className="max-w-3xl mx-auto px-6 space-y-32">
+          
+          {/* ============================================================ */}
+          {/* ÉTAPE 1: TITRE */}
+          {/* ============================================================ */}
+          <section className="min-h-[60vh] flex flex-col justify-center">
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                  <FileTextIcon size={20} className="text-violet-400" />
                 </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Description (optionnel)
-                  </label>
-                  <Textarea
-                    value={brief.description || ''}
-                    onChange={(e) => setBrief({ ...brief, description: e.target.value })}
-                    placeholder="Décrivez brièvement le contenu de ce creative plan..."
-                    rows={3}
-                  />
-                </div>
+                <span className="text-sm text-violet-400 font-medium">Étape 1</span>
               </div>
-            </Card>
-
-            {/* Contenu textuel du creative plan */}
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Contenu du creative plan (texte)</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Saisissez directement le contenu de votre creative plan ici. Vous pouvez également ajouter des documents ci-dessous.
-              </p>
-              <Textarea
-                value={briefContent}
-                onChange={handleBriefContentChange}
-                placeholder="Ex: Je souhaite créer une vidéo promotionnelle pour ma startup tech. 
-                
-Personnages :
-- Jean, CEO, 35 ans, cheveux bruns, costume gris
-- Marie, CTO, 30 ans, cheveux blonds, tenue décontractée
-
-Lieux :
-- Bureau moderne avec grandes baies vitrées
-- Salle des serveurs avec éclairage bleu
-
-Scénario :
-Jean présente la vision de l'entreprise...
-Marie explique l'architecture technique...
-..."
-                rows={15}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Tokens : {formatTokens(briefContentTokens)}
-              </p>
-            </Card>
-
-            {/* Zone d'upload */}
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Documents</h2>
               
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-                  isDragActive 
-                    ? 'border-violet-500 bg-violet-500/5' 
-                    : 'border-border/50 hover:border-border'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <UploadIcon size={40} className="mx-auto mb-4 text-muted-foreground" />
-                <p className="text-sm font-medium mb-1">
-                  {uploading ? 'Upload en cours...' : 'Glissez vos fichiers ici'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  ou cliquez pour parcourir
-                </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Supportés : Texte, PDF, Images, Vidéos, Audio
-                </p>
-              </div>
-
-              {/* Liste des documents */}
-              {brief.documents && brief.documents.filter(d => d.name !== '__brief_content__').length > 0 && (
-                <div className="mt-6 space-y-2">
-                  {brief.documents
-                    .filter(d => d.name !== '__brief_content__')
-                    .map((doc) => {
-                      const Icon = getFileIcon(doc.type);
-                      return (
-                        <div
-                          key={doc.id}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                        >
-                          <Icon size={20} className="text-muted-foreground flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{doc.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatTokens(doc.tokens)} • {(doc.size / 1024).toFixed(1)} KB
-                            </p>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => removeDocument(doc.id)}
-                            className="flex-shrink-0"
-                          >
-                            <TrashIcon size={14} />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                </div>
+              <h1 className="text-4xl font-bold">
+                Comment s'appelle votre projet ?
+              </h1>
+              
+              <Input
+                value={brief.name}
+                onChange={(e) => setBrief({ ...brief, name: e.target.value })}
+                placeholder="Ex: Spot publicitaire énergie propre"
+                className="text-2xl h-16 bg-zinc-900/50 border-zinc-700 focus:border-violet-500"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && canProceedFromTitle) {
+                    goToNextStep('title');
+                  }
+                }}
+              />
+              
+              {canProceedFromTitle && (
+                <Button
+                  onClick={() => goToNextStep('title')}
+                  className="gap-2 bg-violet-600 hover:bg-violet-700"
+                >
+                  Continuer
+                  <ArrowDownIcon size={16} />
+                </Button>
               )}
-            </Card>
-          </div>
+            </div>
+          </section>
 
-          {/* Panneau latéral - Stats */}
-          <div className="space-y-6">
-            {/* Token Counter */}
-            <Card className="p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <CoinsIcon size={18} className="text-violet-400" />
-                <h2 className="text-lg font-semibold">Estimation</h2>
+          {/* ============================================================ */}
+          {/* ÉTAPE 2: SYNOPSIS */}
+          {/* ============================================================ */}
+          <section 
+            ref={synopsisRef}
+            className={`min-h-[70vh] flex flex-col justify-center transition-opacity duration-500 ${
+              currentStep === 'title' ? 'opacity-30 pointer-events-none' : 'opacity-100'
+            }`}
+          >
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                  <SparklesIcon size={20} className="text-amber-400" />
+                </div>
+                <span className="text-sm text-amber-400 font-medium">Étape 2</span>
               </div>
+              
+              <h2 className="text-3xl font-bold">
+                Décrivez votre idée en quelques lignes
+              </h2>
+              <p className="text-muted-foreground">
+                Mistral Large transformera votre synopsis en un storyboard détaillé et professionnel.
+              </p>
+              
+              <Textarea
+                value={synopsis}
+                onChange={(e) => setSynopsis(e.target.value)}
+                placeholder={`Ex: "Donne moi une idée originale de petit film publicitaire d'au moins 7 plans, avec mari, femme, enfant, autour d'une énergie propre. Pas cucu, un peu émouvant, documentaire, pas uniquement joli."`}
+                className="min-h-[200px] text-lg bg-zinc-900/50 border-zinc-700 focus:border-amber-500"
+                disabled={generatingStoryboard}
+              />
+              
+              {canProceedFromSynopsis && !storyboard && (
+                <Button
+                  onClick={handleGenerateStoryboard}
+                  disabled={generatingStoryboard}
+                  className="gap-2 bg-amber-600 hover:bg-amber-700"
+                >
+                  {generatingStoryboard ? (
+                    <>
+                      <Loader2Icon size={16} className="animate-spin" />
+                      Génération en cours...
+                    </>
+                  ) : (
+                    <>
+                      <SparklesIcon size={16} />
+                      Générer le storyboard
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </section>
 
-              <div className="space-y-4">
-                {/* Barre de progression */}
-                <div>
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Tokens</span>
-                    <span className={`font-mono font-medium ${isOverLimit ? 'text-destructive' : ''}`}>
-                      {formatTokens(brief.totalTokens)}
-                    </span>
+          {/* ============================================================ */}
+          {/* ÉTAPE 3: STORYBOARD */}
+          {/* ============================================================ */}
+          <section 
+            ref={storyboardRef}
+            className={`min-h-[80vh] flex flex-col justify-center transition-opacity duration-500 ${
+              !storyboard && !generatingStoryboard ? 'opacity-30 pointer-events-none' : 'opacity-100'
+            }`}
+          >
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                    <FilmIcon size={20} className="text-cyan-400" />
                   </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${
-                        isOverLimit 
-                          ? 'bg-destructive' 
-                          : tokenUsagePercent > 80 
-                            ? 'bg-yellow-500' 
-                            : 'bg-violet-500'
-                      }`}
-                      style={{ width: `${Math.min(tokenUsagePercent, 100)}%` }}
-                    />
+                  <div>
+                    <span className="text-sm text-cyan-400 font-medium">Étape 3</span>
+                    {generatingStoryboard && (
+                      <Badge variant="outline" className="ml-2 text-cyan-400 border-cyan-400/50 animate-pulse">
+                        Génération...
+                      </Badge>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Limite : {formatTokens(GEMINI_MAX_TOKENS)}
-                  </p>
                 </div>
-
-                {/* Coût estimé */}
-                <div className="pt-4 border-t border-border/50">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Coût estimé</span>
-                    <span className="text-lg font-bold text-emerald-400">
-                      {brief.estimatedCost || '$0.00'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Basé sur Gemini 3 (input)
-                  </p>
-                </div>
-
-                {/* Avertissement */}
-                {isOverLimit && (
-                  <div className="flex gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-                    <AlertCircleIcon size={16} className="text-destructive flex-shrink-0 mt-0.5" />
-                    <div className="text-xs">
-                      <p className="font-medium text-destructive mb-1">Limite dépassée</p>
-                      <p className="text-destructive/80">
-                        Réduisez le nombre de documents pour rester sous la limite de tokens.
-                      </p>
-                    </div>
+                
+                {storyboard && !generatingStoryboard && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditingStoryboard(!isEditingStoryboard)}
+                      className="gap-1"
+                    >
+                      <PencilIcon size={14} />
+                      {isEditingStoryboard ? 'Aperçu' : 'Éditer'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateStoryboard}
+                      className="gap-1"
+                    >
+                      <RefreshCwIcon size={14} />
+                      Régénérer
+                    </Button>
                   </div>
                 )}
               </div>
-            </Card>
+              
+              <h2 className="text-3xl font-bold">
+                Votre storyboard
+              </h2>
+              
+              {isEditingStoryboard ? (
+                <Textarea
+                  value={storyboard}
+                  onChange={(e) => setStoryboard(e.target.value)}
+                  className="min-h-[500px] font-mono text-sm bg-zinc-900/50 border-zinc-700 focus:border-cyan-500"
+                />
+              ) : (
+                <Card className="bg-zinc-900/50 border-zinc-700 overflow-hidden">
+                  <ScrollArea className="h-[500px] p-6">
+                    <div className="prose prose-sm prose-invert max-w-none">
+                      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-300">
+                        {storyboard || '⏳ Le storyboard apparaîtra ici...'}
+                      </pre>
+                    </div>
+                    <div ref={storyboardEndRef} />
+                  </ScrollArea>
+                </Card>
+              )}
+              
+              {canProceedFromStoryboard && (
+                <Button
+                  onClick={() => goToNextStep('storyboard')}
+                  className="gap-2 bg-cyan-600 hover:bg-cyan-700"
+                >
+                  Continuer
+                  <ArrowDownIcon size={16} />
+                </Button>
+              )}
+            </div>
+          </section>
 
-            {/* Stats */}
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Statistiques</h2>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Contenu texte</span>
-                  <span className="font-medium">{briefContent ? '✓' : '—'}</span>
+          {/* ============================================================ */}
+          {/* ÉTAPE 4: MOODBOARD (Documents) */}
+          {/* ============================================================ */}
+          <section 
+            ref={moodboardRef}
+            className={`min-h-[60vh] flex flex-col justify-center transition-opacity duration-500 ${
+              !canProceedFromStoryboard ? 'opacity-30 pointer-events-none' : 'opacity-100'
+            }`}
+          >
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center justify-center">
+                  <FolderIcon size={20} className="text-pink-400" />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Fichiers</span>
-                  <span className="font-medium">{brief.documents?.filter(d => d.name !== '__brief_content__').length || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Taille totale</span>
-                  <span className="font-medium">
-                    {((brief.documents?.reduce((acc, d) => acc + d.size, 0) || 0) / 1024 / 1024).toFixed(2)} MB
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <span className="font-medium capitalize">{brief.status}</span>
-                </div>
+                <span className="text-sm text-pink-400 font-medium">Étape 4 (optionnel)</span>
               </div>
-            </Card>
-          </div>
-        </div>
+              
+              <h2 className="text-3xl font-bold">
+                Ajoutez un moodboard
+              </h2>
+              <p className="text-muted-foreground">
+                Images de référence, documents, vidéos d'inspiration... Ces fichiers aideront l'IA à comprendre votre vision.
+              </p>
+              
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
+                  isDragActive 
+                    ? 'border-pink-500 bg-pink-500/10' 
+                    : 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <UploadIcon size={48} className="mx-auto mb-4 text-zinc-500" />
+                <p className="text-lg font-medium mb-2">
+                  {uploading ? 'Upload en cours...' : 'Glissez vos fichiers ici'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Images, PDF, vidéos, audio
+                </p>
+              </div>
+
+              {/* Liste des fichiers */}
+              {visibleDocs.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  {visibleDocs.map((doc) => {
+                    const Icon = getFileIcon(doc.type);
+                    return (
+                      <div
+                        key={doc.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-700"
+                      >
+                        {doc.type === 'image' && doc.url ? (
+                          <img src={doc.url} alt={doc.name} className="w-12 h-12 rounded object-cover" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center">
+                            <Icon size={20} className="text-zinc-500" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(doc.size / 1024).toFixed(0)} KB
+                          </p>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeDocument(doc.id)}
+                          className="flex-shrink-0 text-zinc-500 hover:text-red-400"
+                        >
+                          <TrashIcon size={14} />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              
+              <Button
+                onClick={() => goToNextStep('moodboard')}
+                className="gap-2 bg-pink-600 hover:bg-pink-700"
+              >
+                {visibleDocs.length > 0 ? 'Continuer' : 'Passer cette étape'}
+                <ArrowDownIcon size={16} />
+              </Button>
+            </div>
+          </section>
+
+          {/* ============================================================ */}
+          {/* ÉTAPE 5: PRÊT À GÉNÉRER */}
+          {/* ============================================================ */}
+          <section 
+            ref={readyRef}
+            className={`min-h-[60vh] flex flex-col justify-center items-center text-center transition-opacity duration-500 ${
+              currentStep !== 'ready' ? 'opacity-30' : 'opacity-100'
+            }`}
+          >
+            <div className="space-y-8 max-w-xl">
+              <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto">
+                <CheckCircle2Icon size={40} className="text-emerald-400" />
+              </div>
+              
+              <div>
+                <h2 className="text-4xl font-bold mb-4">
+                  Tout est prêt !
+                </h2>
+                <p className="text-xl text-muted-foreground">
+                  Votre creative plan "<span className="text-white font-medium">{brief.name}</span>" est prêt à être transformé en projet.
+                </p>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    const saved = await saveBrief();
+                    if (saved) alert('Sauvegardé !');
+                  }}
+                  disabled={saving}
+                  className="gap-2"
+                >
+                  {saving ? <Loader2Icon size={16} className="animate-spin" /> : null}
+                  Sauvegarder
+                </Button>
+                <Button
+                  onClick={handleGenerateProject}
+                  disabled={saving}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-lg px-8 py-6"
+                >
+                  {saving ? <Loader2Icon size={20} className="animate-spin" /> : <PlayIcon size={20} />}
+                  Générer le projet
+                  <ArrowRightIcon size={20} />
+                </Button>
+              </div>
+            </div>
+          </section>
         </div>
       </main>
     </div>
   );
 }
-
