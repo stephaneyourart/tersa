@@ -45,6 +45,14 @@ export interface ImageModel {
   costPerImage: number;
   /** Description */
   description: string;
+  
+  // Support des dimensions personnalisées (width/height libres)
+  /** Si true, le modèle accepte des dimensions personnalisées au lieu d'aspect ratios fixes */
+  supportsCustomDimensions?: boolean;
+  /** Dimension minimum en pixels (ex: 1024) */
+  minDimension?: number;
+  /** Dimension maximum en pixels (ex: 4096) */
+  maxDimension?: number;
 }
 
 export interface VideoModel {
@@ -140,6 +148,21 @@ export const LLM_MODELS: Record<LLMProvider, LLMModel[]> = {
 // ============================================================
 
 export const T2I_MODELS: ImageModel[] = [
+  {
+    // Bytedance Seedream V4.5 - Typography optimized
+    id: 'seedream-v4.5-wavespeed',
+    displayName: 'Seedream V4.5 (WaveSpeed)',
+    type: 'text-to-image',
+    // Supporte des dimensions personnalisées de 1024 à 4096 par dimension
+    supportedAspectRatios: ['1:1', '7:3', '3:2', '16:9', '21:9'],
+    supportedResolutions: ['4k'],
+    costPerImage: 0.04,
+    description: 'Typography-optimized, dimensions libres 1024-4096px (Bytedance)',
+    // DIMENSIONS PERSONNALISÉES
+    supportsCustomDimensions: true,
+    minDimension: 1024,
+    maxDimension: 4096,
+  },
   {
     // ID doit correspondre à lib/models/image/index.ts
     id: 'nano-banana-pro-ultra-wavespeed',
@@ -305,6 +328,26 @@ export function getLLMModel(provider: LLMProvider, modelId: string): LLMModel | 
  */
 export function getT2IModel(modelId: string): ImageModel | undefined {
   return T2I_MODELS.find(m => m.id === modelId);
+}
+
+/**
+ * Vérifie si un modèle T2I supporte les dimensions personnalisées
+ */
+export function t2iSupportsCustomDimensions(modelId: string): boolean {
+  const model = getT2IModel(modelId);
+  return model?.supportsCustomDimensions ?? false;
+}
+
+/**
+ * Retourne les contraintes de dimensions pour un modèle T2I
+ */
+export function getT2IDimensionConstraints(modelId: string): { min: number; max: number } | null {
+  const model = getT2IModel(modelId);
+  if (!model?.supportsCustomDimensions) return null;
+  return {
+    min: model.minDimension ?? 1024,
+    max: model.maxDimension ?? 4096,
+  };
 }
 
 /**

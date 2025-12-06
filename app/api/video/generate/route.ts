@@ -90,7 +90,10 @@ export async function POST(request: NextRequest) {
       } else {
         const duration = Date.now() - startTime;
         console.log(`[API Video Generate] Succès copie ${i + 1}`);
-        fLog.videoSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
+        // Récupérer l'URL depuis generated.url ou localPath
+        const nodeData = result.nodeData as { generated?: { url?: string }; localPath?: string } | undefined;
+        const videoUrl = nodeData?.generated?.url || nodeData?.localPath || 'unknown';
+        fLog.videoSuccess(nodeId, model, videoUrl, duration);
         results.push({ success: true, nodeData: result.nodeData });
       }
     }

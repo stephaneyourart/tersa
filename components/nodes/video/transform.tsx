@@ -14,7 +14,7 @@ import { getImagesFromImageNodes, getTextFromTextNodes, getAllImagesFromNodes } 
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
-import { ChevronDownIcon, ChevronUpIcon, ClockIcon, XIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, ClockIcon, PlayIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import {
   type ChangeEventHandler,
   type ComponentProps,
@@ -216,6 +216,9 @@ export const VideoTransform = ({
       }
 
       setLoading(true);
+      
+      // Effacer l'erreur précédente au lancement d'une nouvelle génération
+      updateNodeData(id, { error: undefined, generating: true, generatingStartTime: Date.now() });
 
       analytics.track('canvas', 'node', 'generate', {
         type,
@@ -647,6 +650,25 @@ export const VideoTransform = ({
 
   const toolbar: ComponentProps<typeof NodeLayout>['toolbar'] = useMemo(() => {
     const items: ComponentProps<typeof NodeLayout>['toolbar'] = [
+      // Bouton Generate / Regenerate
+      {
+        tooltip: data.generated?.url ? 'Régénérer la vidéo' : 'Générer la vidéo',
+        children: (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="rounded-full"
+            onClick={() => handleGenerate(false)}
+            disabled={loading || !project?.id}
+          >
+            {data.generated?.url ? (
+              <RotateCcwIcon size={12} />
+            ) : (
+              <PlayIcon size={12} />
+            )}
+          </Button>
+        ),
+      },
       {
         children: (
           <ModelSelector
@@ -677,7 +699,7 @@ export const VideoTransform = ({
     }
 
     return items;
-  }, [modelId, id, updateNodeData, availableModels, data.updatedAt, handleModelSelected]);
+  }, [modelId, id, updateNodeData, availableModels, data.updatedAt, handleModelSelected, data.generated?.url, loading, project?.id, handleGenerate]);
 
   const handleInstructionsChange: ChangeEventHandler<HTMLTextAreaElement> = (
     event

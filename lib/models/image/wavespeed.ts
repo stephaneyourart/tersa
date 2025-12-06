@@ -8,6 +8,8 @@
 // Format basé sur la documentation: https://wavespeed.ai/docs/docs-api/
 // Exemple: google/nano-banana-pro/edit-ultra
 export type WaveSpeedImageModelId =
+  // Bytedance - Seedream V4.5
+  | 'bytedance/seedream-v4.5'
   // Nano Banana (Google) - Text to Image
   | 'google/nano-banana/text-to-image'
   | 'google/nano-banana-pro/text-to-image'
@@ -88,6 +90,20 @@ export type WaveSpeedEditParams = {
   guidance_scale?: number;
   strength?: number;
   output_format?: 'png' | 'jpeg' | 'webp';
+  enable_base64_output?: boolean;
+  enable_sync_mode?: boolean;
+};
+
+// Paramètres spécifiques pour Seedream V4.5 (format size différent)
+// Supporte des dimensions personnalisées de 1024 à 4096 par dimension
+export type WaveSpeedSeedreamV45Params = {
+  prompt: string;
+  /** Format "width*height", ex: "2100*900" - Range: 1024~4096 par dimension */
+  size?: string;
+  /** Largeur en pixels (1024-4096) - alternative à size */
+  width?: number;
+  /** Hauteur en pixels (1024-4096) - alternative à size */
+  height?: number;
   enable_base64_output?: boolean;
   enable_sync_mode?: boolean;
 };
@@ -246,7 +262,8 @@ async function callWaveSpeedApi(
 export type WaveSpeedImageModelInstance = {
   modelId: WaveSpeedImageModelId;
   isEdit: boolean;
-  generate: (params: WaveSpeedTextToImageParams | WaveSpeedEditParams) => Promise<string>;
+  isSeedream?: boolean; // Pour Seedream V4.5 qui utilise un format size différent
+  generate: (params: WaveSpeedTextToImageParams | WaveSpeedEditParams | WaveSpeedSeedreamV45Params) => Promise<string>;
 };
 
 /**
@@ -276,9 +293,34 @@ function createEditModel(modelPath: WaveSpeedImageModelId): WaveSpeedImageModelI
 }
 
 /**
+ * Crée un modèle Seedream V4.5 WaveSpeed
+ * Ce modèle utilise un format size différent: "width*height" (ex: "2100*900")
+ */
+function createSeedreamV45Model(): WaveSpeedImageModelInstance {
+  const modelPath: WaveSpeedImageModelId = 'bytedance/seedream-v4.5';
+  return {
+    modelId: modelPath,
+    isEdit: false,
+    isSeedream: true,
+    generate: async (params) => {
+      // Pour Seedream V4.5, on passe les params directement
+      // Le format size est "width*height", pas "widthxheight"
+      return callWaveSpeedApi(modelPath, params);
+    },
+  };
+}
+
+/**
  * Export des modèles image WaveSpeed
  */
 export const wavespeedImage = {
+  // ========================================
+  // BYTEDANCE - SEEDREAM V4.5
+  // Docs: https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4.5
+  // Format size spécial: "width*height" (ex: "2100*900")
+  // ========================================
+  seedreamV45: () => createSeedreamV45Model(),
+
   // ========================================
   // NANO BANANA (Google) - Text to Image
   // Docs: https://wavespeed.ai/docs/docs-api/google/

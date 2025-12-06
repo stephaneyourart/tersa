@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
-      fLog.t2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
+      fLog.t2iSuccess(nodeId, model, (result.nodeData as { url?: string })?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
 
-      fLog.t2iSuccess(nodeId, model, result.nodeData?.url || 'unknown', duration);
+      fLog.t2iSuccess(nodeId, model, (result.nodeData as { url?: string })?.url || 'unknown', duration);
       return NextResponse.json({ 
         success: true, 
         nodeId,

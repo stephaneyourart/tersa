@@ -270,8 +270,9 @@ export async function POST(request: NextRequest) {
             );
             
             // 2. Remplacer la règle "VOLUME ADAPTATIF" par une règle stricte
+            // Note: Utilisation de [\s\S]* au lieu du flag 's' pour compatibilité ES2017
             systemPrompt = systemPrompt.replace(
-              /1\. \*\*VOLUME ADAPTATIF \(MAX 5\)\*\* : Ne te sens pas obligé de faire long\. Génère entre 1 et 5 plans MAXIMUM.*/s,
+              /1\. \*\*VOLUME ADAPTATIF \(MAX 5\)\*\* : Ne te sens pas obligé de faire long\. Génère entre 1 et 5 plans MAXIMUM[\s\S]*/,
               `1. **VOLUME STRICT (${plansCount} PLANS)** : L'utilisateur exige EXACTEMENT ${plansCount} plans. Tu DOIS générer ${plansCount} plans, ni plus ni moins.`
             );
           }

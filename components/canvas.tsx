@@ -1152,6 +1152,66 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     preventDefault: true,
   });
 
+  // Toggle node disabled state (Cmd+K) - Allège le navigateur en désactivant le rendu des médias
+  // Exclut les nœuds de type 'text' et 'collection'
+  const TYPES_NEVER_DISABLED = ['text', 'collection'];
+  
+  const handleToggleDisabled = useCallback(() => {
+    const selectedNodes = nodes.filter(n => n.selected);
+    const targetNodes = selectedNodes.length > 0 ? selectedNodes : nodes;
+    
+    // Filtrer les nœuds qui peuvent être désactivés
+    const disableableNodes = targetNodes.filter(n => !TYPES_NEVER_DISABLED.includes(n.type || ''));
+    
+    if (disableableNodes.length === 0) {
+      toast.info('Aucun nœud à désactiver (textes et collections sont exclus)');
+      return;
+    }
+    
+    // Vérifier si au moins un nœud est actuellement activé (non désactivé)
+    const hasEnabledNodes = disableableNodes.some(n => !(n.data as any)?.disabled);
+    
+    // Toggle: si au moins un nœud est activé, on désactive tout, sinon on active tout
+    const newDisabledState = hasEnabledNodes;
+    
+    setNodes(prevNodes => 
+      prevNodes.map(node => {
+        // Ne modifier que les nœuds cibles et non-exclus
+        const isTarget = selectedNodes.length > 0 
+          ? node.selected 
+          : true;
+        
+        if (isTarget && !TYPES_NEVER_DISABLED.includes(node.type || '')) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              disabled: newDisabledState,
+            },
+          };
+        }
+        return node;
+      })
+    );
+    
+    const count = disableableNodes.length;
+    const scope = selectedNodes.length > 0 ? 'sélectionnés' : 'du canvas';
+    
+    if (newDisabledState) {
+      toast.success(`${count} nœud(s) ${scope} désactivé(s) - navigateur allégé`);
+    } else {
+      toast.success(`${count} nœud(s) ${scope} réactivé(s)`);
+    }
+    
+    // Sauvegarder l'état
+    save();
+  }, [nodes, setNodes, save]);
+
+  useHotkeys('meta+k', handleToggleDisabled, {
+    enableOnContentEditable: false,
+    preventDefault: true,
+  });
+
   // Labels pour les types de nœuds
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {

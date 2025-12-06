@@ -104,8 +104,24 @@ function ModelParamsSidebarUI() {
 
   // Sync local settings with context settings
   useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
+    // Pour Seedream, extraire width/height depuis size si présent
+    const newSettings = { ...settings };
+    if (modelId?.includes('seedream')) {
+      if (settings.size && typeof settings.size === 'string' && settings.size.includes('*')) {
+        const [w, h] = settings.size.split('*').map(Number);
+        if (!isNaN(w) && !isNaN(h)) {
+          newSettings._seedream_width = w;
+          newSettings._seedream_height = h;
+        }
+      } else {
+        // Valeurs par défaut pour Seedream: 2100x800
+        newSettings._seedream_width = 2100;
+        newSettings._seedream_height = 800;
+        newSettings.size = '2100*800';
+      }
+    }
+    setLocalSettings(newSettings);
+  }, [settings, modelId]);
 
   // Charger la doc API
   const doc = useMemo(() => modelId ? getApiDocumentation(modelId) : null, [modelId]);
@@ -235,8 +251,53 @@ function ModelParamsSidebarUI() {
                   
                   {/* RENDU SELON LE TYPE */}
                   
-                  {/* SELECT / ENUM */}
-                  {(param.range?.includes(',') || (param.type === 'string' && param.range && param.range !== '-')) ? (
+                  {/* SPECIAL: Seedream V4.5 - size avec width/height séparés */}
+                  {param.name === 'size' && modelId?.includes('seedream') ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Largeur (px)</Label>
+                          <Input
+                            type="number"
+                            min={param.minimum || 1024}
+                            max={param.maximum || 4096}
+                            placeholder="2100"
+                            value={localSettings._seedream_width ?? 2100}
+                            onChange={(e) => {
+                              const width = e.target.value ? parseInt(e.target.value) : 2100;
+                              const height = localSettings._seedream_height ?? 800;
+                              handleChange('_seedream_width', width);
+                              handleChange('size', `${width}*${height}`);
+                            }}
+                            className="h-9 text-sm font-mono"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Hauteur (px)</Label>
+                          <Input
+                            type="number"
+                            min={param.minimum || 1024}
+                            max={param.maximum || 4096}
+                            placeholder="800"
+                            value={localSettings._seedream_height ?? 800}
+                            onChange={(e) => {
+                              const height = e.target.value ? parseInt(e.target.value) : 800;
+                              const width = localSettings._seedream_width ?? 2100;
+                              handleChange('_seedream_height', height);
+                              handleChange('size', `${width}*${height}`);
+                            }}
+                            className="h-9 text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
+                        📐 Format: {localSettings.size || '2100*800'}
+                      </div>
+                    </div>
+                  ) :
+                  
+                  /* SELECT / ENUM */
+                  (param.range?.includes(',') || (param.type === 'string' && param.range && param.range !== '-')) ? (
                     <Select
                       value={localSettings[param.name]?.toString() || param.default?.toString()}
                       onValueChange={(val) => handleChange(param.name, val)}

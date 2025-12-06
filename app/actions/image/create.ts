@@ -167,6 +167,7 @@ function sizeToAspectRatio(size: string): WaveSpeedAspectRatio {
 // Génère une image via WaveSpeed API
 // MODE PROD: aspectRatio + resolution sont passés directement
 // MODE TEST: size est passé, et on le convertit en aspectRatio
+// SPECIAL: Seedream V4.5 utilise size au format "width*height"
 async function generateWaveSpeedImage(
   modelId: string,
   prompt: string,
@@ -175,10 +176,14 @@ async function generateWaveSpeedImage(
     size?: string;           // MODE TEST: dimensions en pixels
     aspectRatio?: string;    // MODE PROD: ratio direct
     resolution?: string;     // MODE PROD: '4k' ou '8k'
+    width?: number;          // Pour Seedream V4.5
+    height?: number;         // Pour Seedream V4.5
   }
 ): Promise<{ url: string; mediaType: string; aspectRatio: string }> {
   // Mapper les IDs de modèle vers les instances WaveSpeed
   const modelMap: Record<string, () => ReturnType<typeof wavespeedImage.nanoBananaPro>> = {
+    // Bytedance Seedream V4.5
+    'seedream-v4.5-wavespeed': wavespeedImage.seedreamV45,
     // Nano Banana
     'nano-banana-wavespeed': wavespeedImage.nanoBanana,
     'nano-banana-pro-wavespeed': wavespeedImage.nanoBananaPro,
@@ -224,7 +229,43 @@ async function generateWaveSpeedImage(
     ? `${instructions}\n\n${prompt}`
     : prompt;
 
-  // Déterminer l'aspect ratio à utiliser
+  // CAS SPÉCIAL: Seedream V4.5 utilise size au format "width*height"
+  if (modelId === 'seedream-v4.5-wavespeed') {
+    // Déterminer la taille à utiliser
+    // Priorité: width/height explicites > size > défaut 2100*900
+    let seedreamSize: string;
+    
+    if (options?.width && options?.height) {
+      seedreamSize = `${options.width}*${options.height}`;
+    } else if (options?.size) {
+      // Convertir le format "widthxheight" en "width*height"
+      seedreamSize = options.size.replace('x', '*');
+    } else {
+      // Taille par défaut pour Seedream V4.5: 2100*800
+      seedreamSize = '2100*800';
+    }
+    
+    console.log(`[WaveSpeed] Seedream V4.5 - size: ${seedreamSize}`);
+    
+    const seedreamParams = {
+      prompt: fullPrompt,
+      size: seedreamSize,
+    };
+    
+    const imageUrl = await model.generate(seedreamParams);
+    
+    // Calculer l'aspect ratio pour le retour
+    const [w, h] = seedreamSize.split('*').map(Number);
+    const aspectRatio = w > h ? '16:9' : h > w ? '9:16' : '1:1';
+    
+    return {
+      url: imageUrl,
+      mediaType: 'image/png',
+      aspectRatio,
+    };
+  }
+
+  // Déterminer l'aspect ratio à utiliser (pour les autres modèles)
   let effectiveAspectRatio: WaveSpeedAspectRatio;
   
   if (options?.aspectRatio) {

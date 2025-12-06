@@ -69,6 +69,8 @@ import {
   modelSupportsReasoning,
   getT2IModel,
   getI2IModel,
+  t2iSupportsCustomDimensions,
+  getT2IDimensionConstraints,
   type LLMProvider,
   type AspectRatio,
   type Resolution,
@@ -882,8 +884,69 @@ export default function GenerateProjectPage() {
                   <span className="text-cyan-400 font-semibold">T2I Personnages</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Ratio et résolution pour les images primaires de personnages (vue pied à la tête)
+                  {t2iSupportsCustomDimensions(config.t2i.model)
+                    ? 'Dimensions personnalisées ou ratio pour les images primaires de personnages'
+                    : 'Ratio et résolution pour les images primaires de personnages (vue pied à la tête)'}
                 </p>
+                
+                {/* Dimensions personnalisées pour Seedream et modèles similaires */}
+                {t2iSupportsCustomDimensions(config.t2i.model) && (() => {
+                  const constraints = getT2IDimensionConstraints(config.t2i.model);
+                  return (
+                    <div className="mb-4 p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                      <Label className="text-xs text-cyan-400 mb-2 block">
+                        📐 Dimensions personnalisées (optionnel - {constraints?.min}-{constraints?.max}px)
+                      </Label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Largeur (px)</Label>
+                          <Input
+                            type="number"
+                            min={constraints?.min}
+                            max={constraints?.max}
+                            placeholder={`${constraints?.min}-${constraints?.max}`}
+                            value={config.t2i.character.width || ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? parseInt(e.target.value) : undefined;
+                              setConfig(prev => ({
+                                ...prev,
+                                t2i: {
+                                  ...prev.t2i,
+                                  character: { ...prev.t2i.character, width: value }
+                                }
+                              }));
+                            }}
+                            className="text-sm font-mono"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Hauteur (px)</Label>
+                          <Input
+                            type="number"
+                            min={constraints?.min}
+                            max={constraints?.max}
+                            placeholder={`${constraints?.min}-${constraints?.max}`}
+                            value={config.t2i.character.height || ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? parseInt(e.target.value) : undefined;
+                              setConfig(prev => ({
+                                ...prev,
+                                t2i: {
+                                  ...prev.t2i,
+                                  character: { ...prev.t2i.character, height: value }
+                                }
+                              }));
+                            }}
+                            className="text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        ℹ️ Si vides, l'aspect ratio ci-dessous sera utilisé
+                      </p>
+                    </div>
+                  );
+                })()}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -958,8 +1021,69 @@ export default function GenerateProjectPage() {
                   <span className="text-green-400 font-semibold">T2I Décors</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Ratio et résolution pour les images primaires de décors
+                  {t2iSupportsCustomDimensions(config.t2i.model)
+                    ? 'Dimensions personnalisées ou ratio pour les images primaires de décors'
+                    : 'Ratio et résolution pour les images primaires de décors'}
                 </p>
+                
+                {/* Dimensions personnalisées pour Seedream et modèles similaires */}
+                {t2iSupportsCustomDimensions(config.t2i.model) && (() => {
+                  const constraints = getT2IDimensionConstraints(config.t2i.model);
+                  return (
+                    <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                      <Label className="text-xs text-green-400 mb-2 block">
+                        📐 Dimensions personnalisées (optionnel - {constraints?.min}-{constraints?.max}px)
+                      </Label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Largeur (px)</Label>
+                          <Input
+                            type="number"
+                            min={constraints?.min}
+                            max={constraints?.max}
+                            placeholder={`${constraints?.min}-${constraints?.max}`}
+                            value={config.t2i.decor.width || ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? parseInt(e.target.value) : undefined;
+                              setConfig(prev => ({
+                                ...prev,
+                                t2i: {
+                                  ...prev.t2i,
+                                  decor: { ...prev.t2i.decor, width: value }
+                                }
+                              }));
+                            }}
+                            className="text-sm font-mono"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Hauteur (px)</Label>
+                          <Input
+                            type="number"
+                            min={constraints?.min}
+                            max={constraints?.max}
+                            placeholder={`${constraints?.min}-${constraints?.max}`}
+                            value={config.t2i.decor.height || ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? parseInt(e.target.value) : undefined;
+                              setConfig(prev => ({
+                                ...prev,
+                                t2i: {
+                                  ...prev.t2i,
+                                  decor: { ...prev.t2i.decor, height: value }
+                                }
+                              }));
+                            }}
+                            className="text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        ℹ️ Si vides, l'aspect ratio ci-dessous sera utilisé
+                      </p>
+                    </div>
+                  );
+                })()}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>

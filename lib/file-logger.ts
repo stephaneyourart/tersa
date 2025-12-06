@@ -196,6 +196,7 @@ import {
 
 const T2I_MODEL_ALIASES: Record<string, string> = {
   // Noms simplifiés → vrais IDs WaveSpeed
+  'seedream-v4.5-wavespeed': 'wavespeed/bytedance/seedream-v4.5',
   'nano-banana-pro-ultra-wavespeed': 'wavespeed/google/nano-banana-pro/text-to-image-ultra',
   'nano-banana-pro-wavespeed': 'wavespeed/google/nano-banana-pro/text-to-image',
   'nano-banana-wavespeed': 'wavespeed/google/nano-banana/text-to-image',

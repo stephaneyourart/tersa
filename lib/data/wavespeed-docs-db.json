@@ -1901,6 +1901,100 @@
     "scrapedAt": "2025-12-01T23:41:23.399Z",
     "sourceUrl": "https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4"
   },
+  "bytedance/seedream-v4.5": {
+    "endpoint": "https://api.wavespeed.ai/api/v3/bytedance/seedream-v4.5",
+    "method": "POST",
+    "parameters": [
+      {
+        "name": "prompt",
+        "type": "string",
+        "description": "The positive prompt for the generation. Seedream V4.5 excels at typography and poster composition.",
+        "required": true,
+        "default": ""
+      },
+      {
+        "name": "size",
+        "type": "string",
+        "description": "The size of the generated image in format 'width*height'. Supports resolutions from 1024 to 4096 per dimension. Examples: 2100*900 (wide banner), 2048*2048 (square), 2560*1440 (16:9).",
+        "required": false,
+        "default": "2100*900",
+        "range": "1024 ~ 4096 per dimension"
+      },
+      {
+        "name": "enable_base64_output",
+        "type": "boolean",
+        "description": "If enabled, the output will be encoded into a BASE64 string instead of a URL.",
+        "required": false,
+        "default": false
+      },
+      {
+        "name": "enable_sync_mode",
+        "type": "boolean",
+        "description": "If set to true, the function will wait for the result to be generated and uploaded before returning the response.",
+        "required": false,
+        "default": false
+      }
+    ],
+    "responseParameters": [
+      {
+        "name": "code",
+        "type": "integer",
+        "description": "HTTP status code (e.g., 200 for success)"
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "description": "Status message (e.g., 'success')"
+      },
+      {
+        "name": "data.id",
+        "type": "string",
+        "description": "Unique identifier for the prediction, Task Id"
+      },
+      {
+        "name": "data.model",
+        "type": "string",
+        "description": "Model ID used for the prediction"
+      },
+      {
+        "name": "data.outputs",
+        "type": "array",
+        "description": "Array of URLs to the generated content (empty when status is not completed)"
+      },
+      {
+        "name": "data.urls.get",
+        "type": "string",
+        "description": "URL to retrieve the prediction result"
+      },
+      {
+        "name": "data.has_nsfw_contents",
+        "type": "array",
+        "description": "Array of boolean values indicating NSFW detection for each output"
+      },
+      {
+        "name": "data.status",
+        "type": "string",
+        "description": "Status of the task: created, processing, completed, or failed"
+      },
+      {
+        "name": "data.created_at",
+        "type": "string",
+        "description": "ISO timestamp of when the request was created"
+      },
+      {
+        "name": "data.error",
+        "type": "string",
+        "description": "Error message (empty if no error occurred)"
+      },
+      {
+        "name": "data.timings.inference",
+        "type": "integer",
+        "description": "Inference time in milliseconds"
+      }
+    ],
+    "scrapedAt": "2025-12-06T10:00:00.000Z",
+    "sourceUrl": "https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4.5"
+  },
   "minimax/hailuo-2.3/i2v-standard": {
     "endpoint": "https://api.wavespeed.ai/api/v3/minimax/hailuo-2.3/i2v-standard",
     "method": "GET",

@@ -78,6 +78,7 @@ type NodeLayoutProps = {
     content?: { url: string; type: string };
     generated?: { url: string; type: string };
     instructions?: string; // Prompt de génération
+    disabled?: boolean; // Si true, le nœud est désactivé (CMD+K) pour alléger le navigateur
     advancedSettings?: {
       aspectRatio?: string;
       width?: number;
@@ -719,7 +720,20 @@ export const NodeLayout = ({
               <div className={cn(
                 "rounded-[17px] bg-card overflow-hidden"
               )}>
-                {children}
+                {/* Si le nœud est désactivé (CMD+K), afficher un placeholder léger */}
+                {data?.disabled ? (
+                  <div className="flex items-center justify-center p-8 text-muted-foreground bg-muted/30 min-h-[120px]">
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <EyeIcon className="w-8 h-8 opacity-40" />
+                      <span className="text-xs font-mono opacity-60">
+                        {type === 'video' ? '🎬' : type === 'image' ? '🖼️' : type === 'audio' ? '🔊' : '📄'} Désactivé
+                      </span>
+                      <span className="text-[10px] opacity-40">CMD+K pour réactiver</span>
+                    </div>
+                  </div>
+                ) : (
+                  children
+                )}
               </div>
               
               {/* Overlay mode cleanup */}

@@ -36,6 +36,13 @@ export interface T2IEntityConfig {
   aspectRatio: AspectRatio;
   /** Résolution */
   resolution: Resolution;
+  
+  // Dimensions personnalisées (pour modèles comme Seedream V4.5)
+  // Si définies, elles remplacent aspectRatio pour ces modèles
+  /** Largeur en pixels (optionnel, pour modèles supportant customDimensions) */
+  width?: number;
+  /** Hauteur en pixels (optionnel, pour modèles supportant customDimensions) */
+  height?: number;
 }
 
 /**
@@ -330,6 +337,11 @@ export function configToLegacyFormat(config: GenerationConfig): Record<string, u
       t2iCharacterResolution: config.t2i.character.resolution,
       t2iDecorAspectRatio: config.t2i.decor.aspectRatio,
       t2iDecorResolution: config.t2i.decor.resolution,
+      // Dimensions personnalisées (pour Seedream et modèles similaires)
+      t2iCharacterWidth: config.t2i.character.width,
+      t2iCharacterHeight: config.t2i.character.height,
+      t2iDecorWidth: config.t2i.decor.width,
+      t2iDecorHeight: config.t2i.decor.height,
       // Nouvelles options
       generateSecondaryImages: config.quantities.generateSecondaryImages,
       firstFrameIsPrimary: config.quantities.firstFrameIsPrimary,

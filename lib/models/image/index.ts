@@ -30,6 +30,14 @@ type TersaImageModel = TersaModel & {
   sizes?: ImageSize[];
   supportsEdit?: boolean;
   providerOptions?: Record<string, Record<string, string>>;
+  
+  // Support des dimensions personnalisées (width/height séparés)
+  // Pour modèles comme Seedream V4.5 qui acceptent des tailles libres
+  supportsCustomDimensions?: boolean;
+  /** Dimension minimum (en pixels) - ex: 1024 */
+  minDimension?: number;
+  /** Dimension maximum (en pixels) - ex: 4096 */
+  maxDimension?: number;
 };
 
 export const imageModels: Record<string, TersaImageModel> = {
@@ -596,6 +604,33 @@ export const imageModels: Record<string, TersaImageModel> = {
     ],
     sizes: ['1024x1024', '1024x768', '768x1024'],
     supportsEdit: true,
+  },
+
+  // ========================================
+  // MODÈLES WAVESPEED - BYTEDANCE SEEDREAM V4.5
+  // Typography-optimized, supports up to 4K
+  // ========================================
+
+  'seedream-v4.5-wavespeed': {
+    label: 'Seedream V4.5 (WaveSpeed)',
+    chef: providers.wavespeed,
+    icon: WaveSpeedIcon,
+    providers: [
+      {
+        ...providers.wavespeed,
+        icon: WaveSpeedIcon,
+        model: wavespeedImage.seedreamV45() as unknown as ImageModel,
+        // $0.04 per image selon la documentation
+        getCost: () => 0.04,
+      },
+    ],
+    // Seedream V4.5 supporte des dimensions personnalisées (width/height libres)
+    // Range: 1024 ~ 4096 par dimension
+    supportsCustomDimensions: true,
+    minDimension: 1024,
+    maxDimension: 4096,
+    // Tailles prédéfinies pour faciliter la sélection (format: "width*height")
+    sizes: ['2100x900', '2048x2048', '2688x2016', '2688x1792', '2560x1440', '4096x4096'],
   },
 
   // ========================================

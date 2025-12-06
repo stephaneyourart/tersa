@@ -85,7 +85,19 @@ type WaveSpeedRequest = {
   enable_sync_mode?: boolean;
 };
 
+// Type pour la réponse WaveSpeed - supporte les deux formats
+// Format 1 (ancien): { data: { status, outputs, urls } }
+// Format 2 (nouveau): { status, outputs, urls } directement
 type WaveSpeedResponse = {
+  // Format nouveau (champs au niveau racine)
+  id?: string;
+  status?: string;
+  outputs?: string[];
+  urls?: {
+    get: string;
+  };
+  error?: string;
+  // Format ancien (champs dans data)
   data?: {
     id: string;
     status: string;
@@ -148,14 +160,25 @@ async function callWaveSpeedApi(
   const responseData = await submitResponse.json() as WaveSpeedResponse;
   console.log(`[WaveSpeed Video] Response:`, JSON.stringify(responseData, null, 2));
 
+  // SUPPORT DES DEUX FORMATS DE RÉPONSE :
+  // Format 1 (ancien): { data: { status, outputs, urls } }
+  // Format 2 (nouveau): { status, outputs, urls } directement au niveau racine
+
+  // Extraire les données (format nouveau ou ancien)
+  const outputs = responseData.outputs || responseData.data?.outputs;
+  const urls = responseData.urls || responseData.data?.urls;
+  const status = responseData.status || responseData.data?.status;
+
   // Vérifier si on a directement le résultat
-  if (responseData.data?.outputs?.[0]) {
-    return responseData.data.outputs[0];
+  if (outputs?.[0]) {
+    console.log(`[WaveSpeed Video] ✓ Direct result: ${outputs[0].substring(0, 60)}...`);
+    return outputs[0];
   }
 
   // Sinon, polling pour le résultat
-  const pollUrl = responseData.data?.urls?.get;
+  const pollUrl = urls?.get;
   if (!pollUrl) {
+    console.error(`[WaveSpeed Video] ❌ No poll URL in response:`, responseData);
     throw new Error('Pas d\'URL de polling dans la réponse');
   }
 
@@ -178,13 +201,19 @@ async function callWaveSpeedApi(
 
     const statusData = await statusResponse.json() as WaveSpeedResponse;
 
-    if (statusData.data?.status === 'completed' && statusData.data?.outputs?.[0]) {
-      console.log(`[WaveSpeed Video] Completed after ${attempts * 2}s`);
-      return statusData.data.outputs[0];
+    // SUPPORT DES DEUX FORMATS (nouveau: niveau racine, ancien: dans data)
+    const pollStatus = statusData.status || statusData.data?.status;
+    const pollOutputs = statusData.outputs || statusData.data?.outputs;
+    const pollError = statusData.error || statusData.message;
+
+    if (pollStatus === 'completed' && pollOutputs?.[0]) {
+      console.log(`[WaveSpeed Video] ✓ Completed after ${attempts * 2}s: ${pollOutputs[0].substring(0, 60)}...`);
+      return pollOutputs[0];
     }
 
-    if (statusData.data?.status === 'failed') {
-      throw new Error(statusData.message || 'Génération vidéo échouée');
+    if (pollStatus === 'failed') {
+      console.error(`[WaveSpeed Video] ❌ Failed:`, statusData);
+      throw new Error(pollError || 'Génération vidéo échouée');
     }
 
     attempts++;
