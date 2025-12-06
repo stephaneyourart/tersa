@@ -10,11 +10,15 @@ import { download } from '@/lib/download';
 import { handleError, handleGenerationError } from '@/lib/error/handle';
 import { useAvailableModels } from '@/hooks/use-available-models';
 import { useModelParamsSidebar } from '@/components/model-params-sidebar';
+import { usePerformanceModeStore } from '@/lib/performance-mode-store';
+import { useVideoVisibility, useVideoHover } from '@/hooks/use-video-visibility';
+import { useShouldRenderContent } from '@/hooks/use-viewport-activity';
 import { getImagesFromImageNodes, getTextFromTextNodes, getAllImagesFromNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
-import { ChevronDownIcon, ChevronUpIcon, ClockIcon, PlayIcon, RotateCcwIcon, XIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, ClockIcon, PlayIcon as PlayIconLucide, RotateCcwIcon, XIcon } from 'lucide-react';
+import { MediaPlaceholder } from '@/components/nodes/media-placeholder';
 import {
   type ChangeEventHandler,
   type ComponentProps,
@@ -22,6 +26,7 @@ import {
   useMemo,
   useState,
   useRef,
+  useEffect,
   memo,
 } from 'react';
 import { toast } from 'sonner';
@@ -29,35 +34,52 @@ import { mutate } from 'swr';
 import type { VideoNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { DurationBadge } from './video-indicators';
+import { MediaFullscreenViewer } from '@/components/media-fullscreen-viewer';
 
-// Composant vidéo stabilisé pour éviter le flickering
+// Composant vidéo stabilisé avec mode poster (play au hover)
 // Utilise useRef pour éviter les re-renders mais accepte les nouvelles URLs
 const StableVideo = memo(function StableVideo({ 
   src, 
   onError,
-  className 
+  className,
+  shouldPlay,
 }: { 
   src: string; 
   onError?: () => void;
   className?: string;
+  shouldPlay: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Contrôler la lecture de la vidéo
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    if (shouldPlay) {
+      video.play().catch(() => {
+        // Ignorer les erreurs de lecture (ex: pas encore de données)
+      });
+    } else {
+      video.pause();
+    }
+  }, [shouldPlay]);
   
   return (
     <video
       ref={videoRef}
       src={src}
-      autoPlay
       muted
       loop
       playsInline
+      preload="metadata"
       className={className}
       onError={onError}
     />
   );
 }, (prevProps, nextProps) => {
-  // Re-render seulement si l'URL change
-  return prevProps.src === nextProps.src;
+  // Re-render seulement si l'URL ou shouldPlay change
+  return prevProps.src === nextProps.src && prevProps.shouldPlay === nextProps.shouldPlay;
 });
 
 type VideoTransformProps = VideoNodeProps & {
@@ -664,7 +686,7 @@ export const VideoTransform = ({
             {data.generated?.url ? (
               <RotateCcwIcon size={12} />
             ) : (
-              <PlayIcon size={12} />
+              <PlayIconLucide size={12} />
             )}
           </Button>
         ),
@@ -705,9 +727,34 @@ export const VideoTransform = ({
     event
   ) => updateNodeData(id, { instructions: event.target.value });
 
-  const [isHovered, setIsHovered] = useState(false);
+  const [isNodeHovered, setIsNodeHovered] = useState(false);
   // Mode collapsed par défaut pour les prompts longs
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  // Fullscreen viewer
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Mode performance global
+  const isPerformanceMode = usePerformanceModeStore((s) => s.isPerformanceMode);
+  
+  // Détection visibilité dans viewport
+  const { ref: visibilityRef, isVisible } = useVideoVisibility();
+  
+  // Hover pour lecture vidéo
+  const { isHovered: isVideoHovered, hoverProps: videoHoverProps } = useVideoHover();
+  
+  // Level of Detail: afficher placeholder si zoom out ou en mouvement
+  const { shouldRender, isZoomedOut, isMoving } = useShouldRenderContent();
+  
+  // La vidéo joue SEULEMENT si : visible + hover + pas en mode performance + contenu rendu
+  const shouldPlayVideo = isVisible && isVideoHovered && !isPerformanceMode && shouldRender;
+  
+  // Handler pour double-clic => fullscreen
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (data.generated?.url) {
+      setIsFullscreen(true);
+    }
+  }, [data.generated?.url]);
   
   // AMÉLIORATION: Considérer "en génération" si:
   // 1. loading local est true, OU
@@ -826,17 +873,24 @@ export const VideoTransform = ({
       )}
       {data.generated?.url && !isGenerating && (
         <>
-          {/* Afficher l'icône fantôme si la vidéo est expirée */}
-          {isExpired ? (
+          {/* Placeholder quand zoom out ou en mouvement */}
+          {!shouldRender ? (
+            <div className="relative aspect-video">
+              <MediaPlaceholder isMoving={isMoving} isZoomedOut={isZoomedOut} />
+            </div>
+          ) : isExpired ? (
             <ExpiredMedia 
               onRetry={retryCheck}
               message="La vidéo a expiré sur WaveSpeed et n'a pas été téléchargée"
             />
           ) : (
             <div 
-              className="relative"
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
+              ref={visibilityRef as React.RefObject<HTMLDivElement>}
+              className="relative cursor-pointer"
+              onMouseEnter={() => setIsNodeHovered(true)}
+              onMouseLeave={() => setIsNodeHovered(false)}
+              onDoubleClick={handleDoubleClick}
+              {...videoHoverProps}
             >
               {/* Badge durée en haut à droite */}
               <DurationBadge duration={advancedSettings.duration || 5} position="top-right" />
@@ -845,17 +899,46 @@ export const VideoTransform = ({
                 src={data.generated.url}
                 className="w-full rounded-b-xl block"
                 onError={() => markAsExpired()}
+                shouldPlay={shouldPlayVideo}
               />
-              {/* Overlay du prompt au hover */}
-              {hasPrompt && isHovered && (
-                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity">
+              
+              {/* Overlay "Play" quand la vidéo est en pause */}
+              {!shouldPlayVideo && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-b-xl transition-opacity pointer-events-none">
+                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                    <PlayIconLucide className="w-6 h-6 text-black ml-0.5" />
+                  </div>
+                </div>
+              )}
+              
+              {/* Overlay du prompt au hover (quand vidéo joue) */}
+              {hasPrompt && isNodeHovered && shouldPlayVideo && (
+                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity pointer-events-none">
                   <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
                     {data.instructions}
                   </p>
                 </div>
               )}
+              
+              {/* Hint double-clic */}
+              {isNodeHovered && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                  <span className="text-[10px] text-white/60 bg-black/50 px-2 py-0.5 rounded-full">
+                    Double-clic: plein écran
+                  </span>
+                </div>
+              )}
             </div>
           )}
+          
+          {/* Fullscreen viewer */}
+          <MediaFullscreenViewer
+            open={isFullscreen}
+            onOpenChange={setIsFullscreen}
+            mediaUrl={data.generated.url}
+            mediaType="video"
+            title={(data as { customName?: string }).customName}
+          />
         </>
       )}
       {/* Prompt section - collapsable par défaut */}

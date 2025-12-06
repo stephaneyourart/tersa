@@ -1,4 +1,4 @@
-import { AudioWaveformIcon, FileIcon, VideoIcon } from 'lucide-react';
+import { AudioWaveformIcon, FileIcon, VideoIcon, UserIcon } from 'lucide-react';
 
 import { CodeIcon, ImageIcon, TextIcon } from 'lucide-react';
 
@@ -22,6 +22,11 @@ export const nodeButtons = [
     id: 'video',
     label: 'Video',
     icon: VideoIcon,
+  },
+  {
+    id: 'character',
+    label: 'Personnage',
+    icon: UserIcon,
   },
   {
     id: 'code',

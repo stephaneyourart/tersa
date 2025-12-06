@@ -1,4 +1,5 @@
 import { AudioNode } from './audio';
+import { CharacterNode } from './character';
 import { CodeNode } from './code';
 import { CollectionNode } from './collection';
 import { DropNode } from './drop';
@@ -17,6 +18,7 @@ export const nodeTypes = {
   video: VideoNode,
   audio: AudioNode,
   code: CodeNode,
+  character: CharacterNode,
   file: FileNode,
   tweet: TweetNode,
   collection: CollectionNode,

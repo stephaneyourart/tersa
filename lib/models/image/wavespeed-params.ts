@@ -36,6 +36,21 @@ export interface WaveSpeedModelConfig {
 
 export const WAVESPEED_MODEL_CONFIGS: Record<string, WaveSpeedModelConfig> = {
   // ============================================================================
+  // BYTEDANCE SEEDREAM
+  // ============================================================================
+
+  // https://wavespeed.ai/docs/docs-api/bytedance/seedream-v4.5-wavespeed
+  // Note: ID confirmé depuis la capture d'écran, peut différer de la doc si c'est un wrapper interne
+  'seedream-v4.5-wavespeed': {
+    supportedParams: ['prompt', 'aspect_ratio', 'output_format', 'width', 'height'],
+    aspectRatioOptions: ['1:1', '7:3', '3:2', '16:9', '21:9'],
+    outputFormatOptions: ['jpeg', 'png'],
+    defaults: {
+      output_format: 'jpeg',
+    },
+  },
+
+  // ============================================================================
   // NANO BANANA (non-Pro) - Google
   // ============================================================================
   

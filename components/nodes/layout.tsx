@@ -40,25 +40,87 @@ import { SendToDVRButton } from './send-to-dvr-button';
 import { SendToDVRModal, type DVRMediaMetadata } from './send-to-dvr-modal';
 import { toast } from 'sonner';
 
-// ========== OPTIMISATION ANTI-CLIGNOTEMENT ==========
-// Hook personnalisé pour le zoom avec seuil de changement
-// Ne re-render que si le zoom change de plus de 0.1 (10%)
+// ========== OPTIMISATION ZOOM-BASED SIMPLIFICATION ==========
+// IMPORTANT: Utilise le store global au lieu de useStore par nœud
+// Voir zoom-level-observer.tsx pour les constantes et le store
+import { useGlobalZoomLevel, type ZoomLevel } from '@/components/zoom-level-observer';
+
+// Hook pour le zoom numérique (utilisé ailleurs)
 function useThrottledZoom(): number {
-  const currentZoom = useStore((state) => state.transform[2]);
-  const lastZoomRef = useRef(currentZoom);
-  const [stableZoom, setStableZoom] = useState(currentZoom);
-  
-  useEffect(() => {
-    // Ne mettre à jour que si le changement est significatif (> 10%)
-    const diff = Math.abs(currentZoom - lastZoomRef.current);
-    if (diff > 0.1 || currentZoom < 0.3 !== lastZoomRef.current < 0.3) {
-      lastZoomRef.current = currentZoom;
-      setStableZoom(currentZoom);
+  const zoom = useStore(
+    (state) => state.transform[2],
+    (prev, next) => {
+      const diff = Math.abs(next - prev);
+      const crossedThreshold = (prev < 0.3) !== (next < 0.3);
+      return diff <= 0.2 && !crossedThreshold;
     }
-  }, [currentZoom]);
-  
-  return stableZoom;
+  );
+  return zoom;
 }
+
+// ========== COMPOSANT SIMPLIFIÉ ==========
+// Rendu ultra-léger quand on zoom out - point coloré simple, PAS de label, PAS de glow
+const SimplifiedNode = ({ title, type, hasContent, id }: { title: string; type: string; hasContent: boolean; id: string }) => {
+  // Couleurs selon le type - VERT MATRIX pour images
+  const getColor = () => {
+    switch (type) {
+      case 'video':
+      case 'generate-video':
+        return '#ff00ff'; // Fuchsia
+      case 'image':
+      case 'generate-image':
+        return '#00ff00'; // VERT MATRIX
+      case 'text':
+      case 'generate-text':
+      case 'code':
+        return '#a1a1aa'; // Gris zinc
+      case 'audio':
+      case 'generate-audio':
+        return '#f59e0b'; // Ambre
+      case 'collection':
+        return '#3b82f6'; // Bleu
+      default:
+        return '#71717a'; // Gris
+    }
+  };
+  
+  const getSize = () => {
+    if (type === 'collection') return { width: 400, height: 400 };
+    if (type === 'text' || type === 'generate-text' || type === 'code') return { width: 140, height: 140 };
+    return { width: 180, height: 180 };
+  };
+  
+  const color = getColor();
+  const size = hasContent ? getSize() : { width: 100, height: 100 };
+  
+  return (
+    <div className="relative flex flex-col items-center simplified-node">
+      {/* Point coloré simple - PAS de shadow, PAS de ring */}
+      <div 
+        className="rounded-full"
+        style={{
+          width: size.width,
+          height: size.height,
+          backgroundColor: color,
+        }}
+      />
+      
+      {/* Handles invisibles mais fonctionnels */}
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        className="!w-4 !h-4 !opacity-0" 
+        style={{ left: -8 }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        className="!w-4 !h-4 !opacity-0" 
+        style={{ right: -8 }}
+      />
+    </div>
+  );
+};
 
 // Types de nodes qui supportent le batch/runs parallèles
 const BATCH_SUPPORTED_TYPES = ['image', 'video', 'audio', 'generate-image', 'generate-video'];
@@ -121,7 +183,22 @@ type NodeLayoutProps = {
   modelLabel?: string; // Nom du modèle pour l'affichage
 };
 
-export const NodeLayout = ({
+// Wrapper qui décide quel rendu utiliser basé sur le zoom
+export const NodeLayout = (props: NodeLayoutProps) => {
+  const zoomLevel = useGlobalZoomLevel();
+  const hasContent = Boolean(props.data?.content?.url || props.data?.generated?.url);
+  
+  // Si zoom < 30%, retourner un nœud ultra-simplifié (TRÈS léger)
+  if (zoomLevel === 'simplified') {
+    return <SimplifiedNode title={props.title} type={props.type} hasContent={hasContent} id={props.id} />;
+  }
+  
+  // Sinon, rendre le composant complet
+  return <NodeLayoutFull {...props} zoomLevel={zoomLevel} />;
+};
+
+// Composant complet avec tous les hooks
+const NodeLayoutFull = ({
   children,
   type,
   id,
@@ -133,7 +210,8 @@ export const NodeLayout = ({
   onUpscale,
   onCancelUpscale,
   modelLabel,
-}: NodeLayoutProps) => {
+  zoomLevel,
+}: NodeLayoutProps & { zoomLevel: ZoomLevel }) => {
   const { deleteElements, setCenter, getNode, updateNode, addNodes, addEdges, getEdges, updateNodeData } = useReactFlow();
   const { duplicateNode } = useNodeOperations();
   const project = useProject();

@@ -238,8 +238,12 @@ async function generateWaveSpeedImage(
     if (options?.width && options?.height) {
       seedreamSize = `${options.width}*${options.height}`;
     } else if (options?.size) {
-      // Convertir le format "widthxheight" en "width*height"
-      seedreamSize = options.size.replace('x', '*');
+      // Convertir le format "widthxheight" en "width*height" si nécessaire
+      if (options.size.includes('*')) {
+        seedreamSize = options.size;
+      } else {
+        seedreamSize = options.size.replace('x', '*');
+      }
     } else {
       // Taille par défaut pour Seedream V4.5: 2100*800
       seedreamSize = '2100*800';
@@ -247,6 +251,7 @@ async function generateWaveSpeedImage(
     
     console.log(`[WaveSpeed] Seedream V4.5 - size: ${seedreamSize}`);
     
+    // Le prompt doit inclure les instructions
     const seedreamParams = {
       prompt: fullPrompt,
       size: seedreamSize,

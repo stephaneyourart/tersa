@@ -83,14 +83,32 @@ export default function LocalCanvasPage() {
     setTimeout(() => setLoading(false), 300);
   }, [projectId, router]);
 
-  // Auto-save callback
+  // Auto-save callback - OPTIMISÉ pour éviter JSON.stringify coûteux
+  const lastNodeCountRef = useRef(0);
+  const lastEdgeCountRef = useRef(0);
+  const lastViewportRef = useRef<Viewport | null>(null);
+  const pendingNodesRef = useRef<Node[]>([]);
+  const pendingEdgesRef = useRef<Edge[]>([]);
+  
   const handleAutoSave = useCallback((nodes: Node[], edges: Edge[], viewport: Viewport) => {
-    // Créer un hash simple pour détecter les changements
-    const currentState = JSON.stringify({ nodes, edges, viewport });
+    // Comparaison LÉGÈRE au lieu de JSON.stringify de 224 nœuds
+    const viewportChanged = !lastViewportRef.current || 
+      Math.abs(viewport.x - lastViewportRef.current.x) > 1 ||
+      Math.abs(viewport.y - lastViewportRef.current.y) > 1 ||
+      Math.abs(viewport.zoom - lastViewportRef.current.zoom) > 0.01;
     
-    if (currentState === lastSavedRef.current) {
-      return; // Pas de changement
+    const structureChanged = 
+      nodes.length !== lastNodeCountRef.current || 
+      edges.length !== lastEdgeCountRef.current;
+    
+    // Si rien n'a changé significativement, ignorer
+    if (!viewportChanged && !structureChanged && pendingNodesRef.current.length === 0) {
+      return;
     }
+    
+    // Stocker les références pour la sauvegarde différée
+    pendingNodesRef.current = nodes;
+    pendingEdgesRef.current = edges;
     
     // Debounce l'auto-save
     if (autoSaveTimeoutRef.current) {
@@ -98,17 +116,25 @@ export default function LocalCanvasPage() {
     }
     
     autoSaveTimeoutRef.current = setTimeout(() => {
-      console.log('[Auto-save] Saving viewport:', viewport);
+      const nodesToSave = pendingNodesRef.current;
+      const edgesToSave = pendingEdgesRef.current;
+      
       updateLocalProject(projectId, {
-        data: { nodes, edges, viewport },
+        data: { nodes: nodesToSave, edges: edgesToSave, viewport },
       });
       
-      // Enregistrer les références aux médias
-      registerProjectMediaReferences(projectId, nodes);
+      // Enregistrer les références aux médias (seulement si structure changée)
+      if (structureChanged) {
+        registerProjectMediaReferences(projectId, nodesToSave);
+      }
       
-      lastSavedRef.current = currentState;
-      console.log('[Auto-save] Project saved with', nodes.length, 'nodes');
-    }, 500); // Save après 500ms d'inactivité (plus réactif)
+      // Mettre à jour les références de comparaison
+      lastNodeCountRef.current = nodesToSave.length;
+      lastEdgeCountRef.current = edgesToSave.length;
+      lastViewportRef.current = viewport;
+      pendingNodesRef.current = [];
+      pendingEdgesRef.current = [];
+    }, 1000); // Augmenté à 1s pour réduire la fréquence
   }, [projectId]);
 
   // Cleanup timeout on unmount

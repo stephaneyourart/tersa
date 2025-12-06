@@ -240,17 +240,60 @@ export function deleteLocalProject(id: string): boolean {
 /**
  * Sauvegarde les projets dans localStorage ET synchronise vers le serveur
  */
+// File de sauvegarde pour éviter les blocages
+let saveQueue: LocalProject[] | null = null;
+let isSaving = false;
+
 function saveProjects(projects: LocalProject[]): void {
   if (typeof window === 'undefined') return;
   
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  // Mettre en file d'attente
+  saveQueue = projects;
+  
+  // Si déjà en train de sauvegarder, la nouvelle version sera prise à la fin
+  if (isSaving) return;
+  
+  // Fonction de sauvegarde async
+  const doSave = () => {
+    if (!saveQueue) {
+      isSaving = false;
+      return;
+    }
     
-    // Synchroniser vers le serveur (async, fire-and-forget)
-    syncProjectsToServer(projects);
-  } catch (error) {
-    console.error('Erreur sauvegarde projets:', error);
-  }
+    isSaving = true;
+    const toSave = saveQueue;
+    saveQueue = null;
+    
+    // Utiliser requestIdleCallback si disponible pour ne pas bloquer l'UI
+    const saveCallback = () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+        
+        // Synchroniser vers le serveur (async, fire-and-forget)
+        syncProjectsToServer(toSave);
+      } catch (error) {
+        console.error('Erreur sauvegarde projets:', error);
+      }
+      
+      // Vérifier s'il y a une nouvelle version à sauvegarder
+      if (saveQueue) {
+        // Attendre un peu avant la prochaine sauvegarde
+        setTimeout(doSave, 100);
+      } else {
+        isSaving = false;
+      }
+    };
+    
+    // Utiliser requestIdleCallback pour ne pas bloquer les interactions
+    if ('requestIdleCallback' in window) {
+      (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback(saveCallback, { timeout: 2000 });
+    } else {
+      // Fallback: utiliser setTimeout
+      setTimeout(saveCallback, 0);
+    }
+  };
+  
+  doSave();
 }
 
 /**

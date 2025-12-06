@@ -73,9 +73,11 @@ import { edgeTypes } from './edges';
 import { nodeTypes } from './nodes';
 import { ProximityHandles } from './proximity-handles';
 import { HoverHighlight } from './hover-highlight';
+import { ZoomLevelObserver } from './zoom-level-observer';
 import { SelectionToolbar } from './selection-toolbar';
 import { VideoSelectionToolbar } from './video-selection-toolbar';
 import { toast } from 'sonner';
+import { onViewportMoveStart, onViewportMoveEnd, updateViewportZoom } from '@/hooks/use-viewport-activity';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -157,16 +159,15 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     setViewport,
   } = useReactFlow();
   
+  // Les fonctions onViewportMoveStart/onViewportMoveEnd sont importées directement du module
+  
   // Appliquer le viewport initial après le montage - avec plusieurs tentatives
   const viewportAppliedRef = useRef(false);
   useEffect(() => {
     if (initialViewport && !viewportAppliedRef.current) {
-      console.log('[Canvas] Will restore viewport:', initialViewport);
-      
       // Fonction pour appliquer le viewport
       const applyViewport = () => {
         setViewport(initialViewport, { duration: 0 });
-        console.log('[Canvas] Viewport applied:', initialViewport);
       };
       
       // Appliquer immédiatement
@@ -178,7 +179,6 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       const timer3 = setTimeout(() => {
         applyViewport();
         viewportAppliedRef.current = true;
-        console.log('[Canvas] Viewport restoration complete');
       }, 300);
       
       return () => {
@@ -229,12 +229,18 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   }, 1000);
 
   // Initialiser l'historique avec l'état actuel au premier changement
+  // OPTIMISÉ: Ne s'exécute qu'une seule fois grâce à historyInitializedRef
   useEffect(() => {
     if (!historyInitializedRef.current && nodes.length > 0) {
-      historyRef.current = [{
-        nodes: JSON.parse(JSON.stringify(nodes)),
-        edges: JSON.parse(JSON.stringify(edges)),
-      }];
+      // Utiliser structuredClone si disponible (plus rapide)
+      const cloneNodes = typeof structuredClone !== 'undefined' 
+        ? structuredClone(nodes)
+        : JSON.parse(JSON.stringify(nodes));
+      const cloneEdges = typeof structuredClone !== 'undefined'
+        ? structuredClone(edges)
+        : JSON.parse(JSON.stringify(edges));
+        
+      historyRef.current = [{ nodes: cloneNodes, edges: cloneEdges }];
       historyIndexRef.current = 0;
       historyInitializedRef.current = true;
     }
@@ -244,10 +250,15 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   const pushHistory = useCallback(() => {
     if (isUndoingRef.current) return;
     
-    const currentState: HistoryState = {
-      nodes: JSON.parse(JSON.stringify(nodes)),
-      edges: JSON.parse(JSON.stringify(edges)),
-    };
+    // Utiliser structuredClone si disponible
+    const cloneNodes = typeof structuredClone !== 'undefined' 
+      ? structuredClone(nodes)
+      : JSON.parse(JSON.stringify(nodes));
+    const cloneEdges = typeof structuredClone !== 'undefined'
+      ? structuredClone(edges)
+      : JSON.parse(JSON.stringify(edges));
+    
+    const currentState: HistoryState = { nodes: cloneNodes, edges: cloneEdges };
     
     // Supprimer les états futurs si on a fait des undos
     if (historyIndexRef.current < historyRef.current.length - 1) {
@@ -262,27 +273,27 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       historyRef.current.shift();
       historyIndexRef.current--;
     }
-    
-    console.log('[History] Pushed state, index:', historyIndexRef.current, 'length:', historyRef.current.length);
   }, [nodes, edges]);
 
   // Undo - revenir à l'état précédent
   const undo = useCallback(() => {
-    console.log('[Undo] Called, index:', historyIndexRef.current, 'length:', historyRef.current.length);
-    
-    if (historyIndexRef.current <= 0) {
-      console.log('[Undo] Cannot undo - at beginning of history');
-      return;
-    }
+    if (historyIndexRef.current <= 0) return;
     
     isUndoingRef.current = true;
     historyIndexRef.current--;
     const previousState = historyRef.current[historyIndexRef.current];
     
     if (previousState) {
-      console.log('[Undo] Restoring state with', previousState.nodes.length, 'nodes');
-      setNodes(JSON.parse(JSON.stringify(previousState.nodes)));
-      setEdges(JSON.parse(JSON.stringify(previousState.edges)));
+      // Utiliser structuredClone si disponible
+      const cloneNodes = typeof structuredClone !== 'undefined' 
+        ? structuredClone(previousState.nodes)
+        : JSON.parse(JSON.stringify(previousState.nodes));
+      const cloneEdges = typeof structuredClone !== 'undefined'
+        ? structuredClone(previousState.edges)
+        : JSON.parse(JSON.stringify(previousState.edges));
+        
+      setNodes(cloneNodes);
+      setEdges(cloneEdges);
     }
     
     setTimeout(() => {
@@ -300,8 +311,16 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     const nextState = historyRef.current[historyIndexRef.current];
     
     if (nextState) {
-      setNodes(JSON.parse(JSON.stringify(nextState.nodes)));
-      setEdges(JSON.parse(JSON.stringify(nextState.edges)));
+      // Utiliser structuredClone si disponible
+      const cloneNodes = typeof structuredClone !== 'undefined' 
+        ? structuredClone(nextState.nodes)
+        : JSON.parse(JSON.stringify(nextState.nodes));
+      const cloneEdges = typeof structuredClone !== 'undefined'
+        ? structuredClone(nextState.edges)
+        : JSON.parse(JSON.stringify(nextState.edges));
+        
+      setNodes(cloneNodes);
+      setEdges(cloneEdges);
     }
     
     setTimeout(() => {
@@ -316,13 +335,11 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       // Cmd+Z ou Ctrl+Z
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        console.log('[Hotkey] Cmd+Z pressed');
         undo();
       }
       // Cmd+Shift+Z ou Ctrl+Shift+Z
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
-        console.log('[Hotkey] Cmd+Shift+Z pressed');
         redo();
       }
     };
@@ -333,17 +350,31 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
 
   const handleNodesChange = useCallback<OnNodesChange>(
     (changes) => {
-      // Sauvegarder l'historique AVANT les changements significatifs (add, remove)
-      const hasSignificantChange = changes.some(
+      // Identifier le type de changement pour optimiser
+      const hasStructuralChange = changes.some(
         (c) => c.type === 'add' || c.type === 'remove'
+      );
+      const hasPositionChange = changes.some(
+        (c) => c.type === 'position' && !c.dragging // Seulement quand le drag est terminé
+      );
+      const isDragging = changes.some(
+        (c) => c.type === 'position' && c.dragging
       );
       
       setNodes((current) => {
-        // Sauvegarder l'état actuel AVANT d'appliquer les changements
-        if (hasSignificantChange && !isUndoingRef.current) {
+        // Sauvegarder l'historique SEULEMENT pour les changements structurels
+        if (hasStructuralChange && !isUndoingRef.current) {
+          // Utiliser structuredClone si disponible (plus rapide que JSON.parse/stringify)
+          const cloneNodes = typeof structuredClone !== 'undefined' 
+            ? structuredClone(current)
+            : JSON.parse(JSON.stringify(current));
+          const cloneEdges = typeof structuredClone !== 'undefined'
+            ? structuredClone(edges)
+            : JSON.parse(JSON.stringify(edges));
+            
           const currentState: HistoryState = {
-            nodes: JSON.parse(JSON.stringify(current)),
-            edges: JSON.parse(JSON.stringify(edges)),
+            nodes: cloneNodes,
+            edges: cloneEdges,
           };
           
           if (historyIndexRef.current < historyRef.current.length - 1) {
@@ -357,12 +388,15 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
             historyRef.current.shift();
             historyIndexRef.current--;
           }
-          
-          console.log('[History] Pushed state before node change, index:', historyIndexRef.current);
         }
         
         const updated = applyNodeChanges(changes, current);
-        save();
+        
+        // NE PAS sauvegarder pendant le drag - seulement quand c'est terminé
+        if (!isDragging) {
+          save();
+        }
+        
         onNodesChange?.(changes);
         return updated;
       });
@@ -372,17 +406,24 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
 
   const handleEdgesChange = useCallback<OnEdgesChange>(
     (changes) => {
-      // Sauvegarder l'historique AVANT les changements significatifs (add, remove)
-      const hasSignificantChange = changes.some(
+      // Sauvegarder l'historique SEULEMENT pour les changements structurels
+      const hasStructuralChange = changes.some(
         (c) => c.type === 'add' || c.type === 'remove'
       );
       
       setEdges((current) => {
-        // Sauvegarder l'état actuel AVANT d'appliquer les changements
-        if (hasSignificantChange && !isUndoingRef.current) {
+        if (hasStructuralChange && !isUndoingRef.current) {
+          // Utiliser structuredClone si disponible (plus rapide)
+          const cloneNodes = typeof structuredClone !== 'undefined' 
+            ? structuredClone(nodes)
+            : JSON.parse(JSON.stringify(nodes));
+          const cloneEdges = typeof structuredClone !== 'undefined'
+            ? structuredClone(current)
+            : JSON.parse(JSON.stringify(current));
+            
           const currentState: HistoryState = {
-            nodes: JSON.parse(JSON.stringify(nodes)),
-            edges: JSON.parse(JSON.stringify(current)),
+            nodes: cloneNodes,
+            edges: cloneEdges,
           };
           
           if (historyIndexRef.current < historyRef.current.length - 1) {
@@ -396,8 +437,6 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
             historyRef.current.shift();
             historyIndexRef.current--;
           }
-          
-          console.log('[History] Pushed state before edge change, index:', historyIndexRef.current);
         }
         
         const updated = applyEdgeChanges(changes, current);
@@ -610,27 +649,20 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     const freshSourceNode = getNode(sourceId);
     const freshTargetNode = getNode(targetId);
     
-    console.log('[Replace] sourceId:', sourceId);
-    console.log('[Replace] targetId:', targetId);
-    console.log('[Replace] freshSourceNode:', freshSourceNode);
-    console.log('[Replace] freshTargetNode:', freshTargetNode);
-    
     if (!freshSourceNode || !freshTargetNode) {
-      console.log('[Replace] ABORT: nodes not found');
       setPendingConnection(null);
       return;
     }
 
     const sourceData = freshSourceNode.data as Record<string, unknown>;
-    console.log('[Replace] sourceData:', sourceData);
 
     // Copier TOUT le contenu du source (copie profonde complète)
-    const newData = JSON.parse(JSON.stringify(sourceData));
-    console.log('[Replace] newData:', newData);
+    const newData = typeof structuredClone !== 'undefined'
+      ? structuredClone(sourceData)
+      : JSON.parse(JSON.stringify(sourceData));
 
     // Utiliser updateNode de ReactFlow pour mettre à jour le nœud cible
     updateNode(targetId, { data: newData });
-    console.log('[Replace] updateNode called');
 
     // Réinitialiser les nœuds en aval du nœud cible
     resetOutgoers(targetId);
@@ -642,7 +674,6 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
 
     setPendingConnection(null);
     save();
-    console.log('[Replace] Done!');
   }, [pendingConnection, save, resetOutgoers, updateNode, getNode]);
 
   // Annuler la connexion en attente
@@ -1222,8 +1253,20 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     return labels[type] || type;
   };
 
+  // Quand le viewport commence à bouger (pan/zoom)
+  const handleMoveStart = useCallback(() => {
+    onViewportMoveStart();
+  }, []);
+  
+  // Pendant le mouvement du viewport - met à jour le zoom
+  const handleMove = useCallback((_: unknown, viewport: { zoom: number }) => {
+    updateViewportZoom(viewport.zoom);
+  }, []);
+  
   // Sauvegarder le viewport quand l'utilisateur arrête de pan/zoom
-  const handleMoveEnd = useCallback(() => {
+  const handleMoveEnd = useCallback((_: unknown, viewport: { zoom: number }) => {
+    updateViewportZoom(viewport.zoom);
+    onViewportMoveEnd();
     save();
   }, [save]);
 
@@ -1328,6 +1371,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               onConnectEnd={handleConnectEnd}
               onDrop={handleMediaLibraryDrop}
               onDragOver={handleDragOver}
+              onMoveStart={handleMoveStart}
+              onMove={handleMove}
               onMoveEnd={handleMoveEnd}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
@@ -1352,6 +1397,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               nodesConnectable={true}
               nodesFocusable={false}
               edgesFocusable={false}
+              // OPTIMISATION: Ne rendre que les nœuds visibles dans le viewport
+              onlyRenderVisibleElements={true}
               style={{ '--canvas-bg-color': canvasBgColor } as React.CSSProperties}
               proOptions={{ hideAttribution: true }}
               {...rest}
@@ -1362,6 +1409,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
               />
               <ProximityHandles />
               <HoverHighlight />
+              <ZoomLevelObserver />
               <SelectionToolbar
                 onCreateCollection={(nodeIds, category) => {
                   // Récupérer les nœuds sélectionnés

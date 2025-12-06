@@ -3,16 +3,28 @@
  * 
  * ÉPAISSEUR : x2 par défaut (strokeWidth 4), x3 au hover (12)
  * Le hover est géré par CSS (classe .edge-highlighted ajoutée par le canvas)
+ * 
+ * OPTIMISÉ : Épaisseur adaptée au zoom pour rester visible en zoom out
  */
 
 import {
   BaseEdge,
   type EdgeProps,
   getBezierPath,
+  useStore,
 } from '@xyflow/react';
 
 // Compensation pour le décalage CSS des handles (-3.5rem = -14px)
 const HANDLE_OFFSET = 14;
+
+// Hook pour obtenir l'épaisseur adaptée au zoom
+function useAdaptiveStrokeWidth(baseWidth: number): number {
+  const zoom = useStore((state) => state.transform[2]);
+  // En zoom out, augmenter l'épaisseur pour que les lignes restent visibles
+  // Minimum 1.5x plus épais à zoom 0.1
+  const zoomFactor = Math.max(1, 1.5 / Math.max(zoom, 0.1));
+  return Math.min(baseWidth * zoomFactor, baseWidth * 3); // Max 3x
+}
 
 // Épaisseurs : x2 par défaut
 const STROKE_WIDTH_DEFAULT = 4;      // Base x2
@@ -49,8 +61,12 @@ export const FloraEdge = ({
   });
 
   const gradientId = `flora-gradient-${id}`;
-  const strokeWidth = selected ? STROKE_WIDTH_SELECTED : STROKE_WIDTH_DEFAULT;
-  const shadowWidth = selected ? SHADOW_WIDTH_SELECTED : SHADOW_WIDTH_DEFAULT;
+  
+  // Épaisseurs adaptées au zoom
+  const baseStroke = selected ? STROKE_WIDTH_SELECTED : STROKE_WIDTH_DEFAULT;
+  const baseShadow = selected ? SHADOW_WIDTH_SELECTED : SHADOW_WIDTH_DEFAULT;
+  const strokeWidth = useAdaptiveStrokeWidth(baseStroke);
+  const shadowWidth = useAdaptiveStrokeWidth(baseShadow);
 
   return (
     <g 

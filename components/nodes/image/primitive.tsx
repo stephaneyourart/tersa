@@ -16,6 +16,9 @@ import type { ImageNodeProps } from '.';
 import { ImageCompareSlider } from './image-compare-slider';
 import type { UpscaleSettings } from './upscale-button';
 import { GeneratingSkeleton } from '../generating-skeleton';
+import { MediaFullscreenViewer } from '@/components/media-fullscreen-viewer';
+import { useShouldRenderContent } from '@/hooks/use-viewport-activity';
+import { MediaPlaceholder } from '@/components/nodes/media-placeholder';
 
 type ImagePrimitiveProps = ImageNodeProps & {
   title: string;
@@ -31,6 +34,11 @@ export const ImagePrimitive = ({
   const project = useProject();
   const [files, setFiles] = useState<File[] | undefined>();
   const [isUploading, setIsUploading] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Level of Detail: afficher placeholder si zoom out ou en mouvement
+  const { shouldRender, isZoomedOut, isMoving } = useShouldRenderContent();
 
   // État d'upscale
   const upscaleStatus = data.upscale?.status || 'idle';
@@ -44,6 +52,14 @@ export const ImagePrimitive = ({
   // Hook pour détecter si l'image est expirée
   const isLocal = imageUrl ? isLocalUrl(imageUrl) : true;
   const { isExpired, markAsExpired, retry: retryCheck } = useMediaExpired(imageUrl, isLocal);
+  
+  // Handler pour double-clic => fullscreen
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (imageUrl) {
+      setIsFullscreen(true);
+    }
+  }, [imageUrl]);
 
   const handleDrop = async (files: File[]) => {
     if (isUploading || !project?.id) {
@@ -222,14 +238,23 @@ export const ImagePrimitive = ({
       {/* Image avec comparaison si upscalée */}
       {!isUploading && !isUpscaling && data.content && (
         <>
-          {/* Afficher l'icône fantôme si l'image est expirée */}
-          {isExpired ? (
+          {/* Placeholder quand zoom out ou en mouvement */}
+          {!shouldRender ? (
+            <div className="relative aspect-square">
+              <MediaPlaceholder isMoving={isMoving} isZoomedOut={isZoomedOut} />
+            </div>
+          ) : isExpired ? (
             <ExpiredMedia 
               onRetry={retryCheck}
               message="L'image n'est plus disponible"
             />
           ) : (
-            <>
+            <div 
+              className="relative cursor-pointer"
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              onDoubleClick={handleDoubleClick}
+            >
               {isUpscaled && data.upscale?.upscaledUrl ? (
                 <ImageCompareSlider
                   beforeUrl={data.upscale.originalUrl || data.content.url}
@@ -252,8 +277,24 @@ export const ImagePrimitive = ({
                   />
                 </div>
               )}
-            </>
+              {/* Hint double-clic */}
+              {isHovered && !isUpscaled && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                  <span className="text-[10px] text-white/60 bg-black/50 px-2 py-0.5 rounded-full">
+                    Double-clic: plein écran
+                  </span>
+                </div>
+              )}
+            </div>
           )}
+          
+          {/* Fullscreen viewer */}
+          <MediaFullscreenViewer
+            open={isFullscreen}
+            onOpenChange={setIsFullscreen}
+            mediaUrl={imageUrl || ''}
+            mediaType="image"
+          />
         </>
       )}
 

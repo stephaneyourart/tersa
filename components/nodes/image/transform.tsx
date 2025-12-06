@@ -11,10 +11,12 @@ import { download } from '@/lib/download';
 import { handleError, handleGenerationError } from '@/lib/error/handle';
 import { useAvailableModels } from '@/hooks/use-available-models';
 import { useModelParamsSidebar } from '@/components/model-params-sidebar';
+import { useShouldRenderContent } from '@/hooks/use-viewport-activity';
 import { getImagesFromImageNodes, getTextFromTextNodes } from '@/lib/xyflow';
 import { useProject } from '@/providers/project';
 import { getIncomers, useReactFlow, useStore } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
+import { MediaPlaceholder } from '@/components/nodes/media-placeholder';
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -40,6 +42,7 @@ import type { ImageNodeProps } from '.';
 import { ModelSelector } from '../model-selector';
 import { ImageCompareSlider } from './image-compare-slider';
 import type { UpscaleSettings } from './upscale-button';
+import { MediaFullscreenViewer } from '@/components/media-fullscreen-viewer';
 
 // Composant Image mémorisé pour éviter le clignotement
 // Utilise une img native pour garantir que l'image entière est visible
@@ -737,6 +740,11 @@ export const ImageTransform = ({
   const [isHovered, setIsHovered] = useState(false);
   // Mode collapsed par défaut pour les prompts longs (sauf si vide)
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  // Fullscreen viewer
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Level of Detail: afficher placeholder si zoom out ou en mouvement
+  const { shouldRender, isZoomedOut, isMoving } = useShouldRenderContent();
   
   // Référence stable pour l'URL de l'image pour éviter le clignotement
   const stableImageUrl = useRef<string | null>(null);
@@ -746,6 +754,14 @@ export const ImageTransform = ({
   if (currentUrl && currentUrl !== stableImageUrl.current) {
     stableImageUrl.current = currentUrl;
   }
+  
+  // Handler pour double-clic => fullscreen
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stableImageUrl.current) {
+      setIsFullscreen(true);
+    }
+  }, []);
   
   const hasContent = isGenerating || stableImageUrl.current;
   const hasPrompt = Boolean(data.instructions?.trim());
@@ -908,18 +924,23 @@ export const ImageTransform = ({
       )}
       {!isGenerating && !isUpscaling && stableImageUrl.current && (
         <>
-          {/* Afficher l'icône fantôme si l'image est expirée */}
-          {isExpired ? (
+          {/* Placeholder quand zoom out ou en mouvement */}
+          {!shouldRender ? (
+            <div className="relative aspect-square">
+              <MediaPlaceholder isMoving={isMoving} isZoomedOut={isZoomedOut} />
+            </div>
+          ) : isExpired ? (
             <ExpiredMedia 
               onRetry={retryCheck}
               message="L'image a expiré sur WaveSpeed et n'a pas été téléchargée"
             />
           ) : (
             <div 
-              className="relative bg-secondary w-full"
+              className="relative bg-secondary w-full cursor-pointer"
               style={{ minHeight: 'auto', height: 'auto' }}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
+              onDoubleClick={handleDoubleClick}
             >
               {/* Afficher le slider de comparaison si upscalé */}
               {isUpscaled && data.upscale?.upscaledUrl ? (
@@ -941,14 +962,31 @@ export const ImageTransform = ({
               )}
               {/* Overlay du prompt au hover (seulement si pas de slider de comparaison) */}
               {hasPrompt && isHovered && !isUpscaled && (
-                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity">
+                <div className="absolute inset-0 flex items-end rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pb-14 transition-opacity pointer-events-none">
                   <p className="text-white text-xs leading-relaxed line-clamp-4 drop-shadow-lg">
                     {data.instructions}
                   </p>
                 </div>
               )}
+              {/* Hint double-clic */}
+              {isHovered && !isUpscaled && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                  <span className="text-[10px] text-white/60 bg-black/50 px-2 py-0.5 rounded-full">
+                    Double-clic: plein écran
+                  </span>
+                </div>
+              )}
             </div>
           )}
+          
+          {/* Fullscreen viewer */}
+          <MediaFullscreenViewer
+            open={isFullscreen}
+            onOpenChange={setIsFullscreen}
+            mediaUrl={data.upscale?.upscaledUrl || stableImageUrl.current}
+            mediaType="image"
+            title={(data as { customName?: string }).customName}
+          />
         </>
       )}
       {/* Prompt section - collapsable par défaut */}

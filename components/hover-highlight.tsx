@@ -81,6 +81,31 @@ export function HoverHighlight() {
     });
   }, [clearHighlights]);
 
+  // Types de nœuds à IGNORER pour le highlight (pas de dimming)
+  const IGNORED_NODE_TYPES = ['shape', 'collection', 'label'];
+  
+  // Fonction pour vérifier si un nœud doit être ignoré
+  const shouldIgnoreNode = useCallback((element: Element): boolean => {
+    // 1. Vérifier data-type (attribut React Flow standard)
+    const nodeType = element.getAttribute('data-type');
+    console.log('[HoverHighlight] Node type:', nodeType, 'Element:', element);
+    
+    if (nodeType && IGNORED_NODE_TYPES.includes(nodeType.toLowerCase())) {
+      console.log('[HoverHighlight] IGNORED by type:', nodeType);
+      return true;
+    }
+    
+    // 2. Vérifier si c'est un nœud sans handles (shapes n'ont pas de handles)
+    // Les vrais nœuds media ont toujours .node-container ou .simplified-node
+    const hasMediaContent = element.querySelector('.node-container, .simplified-node, .collection-node-wrapper');
+    if (!hasMediaContent) {
+      console.log('[HoverHighlight] IGNORED - no media content found');
+      return true;
+    }
+    
+    return false;
+  }, []);
+
   useEffect(() => {
     const handleMouseOver = (e: MouseEvent) => {
       // Chercher le nœud ReactFlow parent
@@ -88,6 +113,13 @@ export function HoverHighlight() {
       const nodeElement = target.closest('.react-flow__node');
       
       if (nodeElement) {
+        // IGNORER COMPLÈTEMENT les shapes, collections, labels
+        // ET nettoyer tout highlight existant
+        if (shouldIgnoreNode(nodeElement)) {
+          clearHighlights(); // Nettoyer pour éviter le dimming
+          return; // PAS de highlight, PAS de dimming
+        }
+        
         const nodeId = nodeElement.getAttribute('data-id');
         if (nodeId) {
           highlightConnections(nodeId);
@@ -102,6 +134,12 @@ export function HoverHighlight() {
       // Vérifier si on quitte vraiment le nœud (pas juste un enfant)
       const nodeElement = target.closest('.react-flow__node');
       const relatedNodeElement = relatedTarget?.closest('.react-flow__node');
+      
+      // Si on va vers un nœud ignoré, nettoyer quand même les highlights
+      if (relatedNodeElement && shouldIgnoreNode(relatedNodeElement)) {
+        clearHighlights();
+        return;
+      }
       
       if (nodeElement && nodeElement !== relatedNodeElement) {
         // On quitte le nœud pour aller ailleurs
@@ -123,7 +161,7 @@ export function HoverHighlight() {
       }
       clearHighlights();
     };
-  }, [highlightConnections, clearHighlights]);
+  }, [highlightConnections, clearHighlights, shouldIgnoreNode]);
 
   return null; // Ce composant ne rend rien
 }

@@ -158,7 +158,7 @@ async function callWaveSpeedDirect(job: BatchJob, apiKey: string): Promise<{
   const startTime = Date.now();
   
   try {
-    const endpoint = `${WAVESPEED_API_BASE}/${job.modelPath}`;
+    const endpoint = `${WAVESPEED_API_BASE}/${job.modelPath === 'seedream-v4.5-wavespeed' ? 'bytedance/seedream-v4.5' : job.modelPath}`;
     
     // 1. Générer le titre IA EN PARALLÈLE de l'appel WaveSpeed
     const titlePromise = generateSmartTitle(job.prompt);
@@ -197,6 +197,12 @@ async function callWaveSpeedDirect(job: BatchJob, apiKey: string): Promise<{
 
     const data = await response.json();
     console.log(`[Batch API] Initial response for node ${job.nodeId}:`, data);
+
+    // Vérifier les erreurs explicites de l'API WaveSpeed
+    if (data.error) {
+      console.error(`[Batch API] WaveSpeed returned error:`, data.error);
+      return { error: `WaveSpeed Error: ${data.error}` };
+    }
 
     let wavespeedImageUrl: string | null = null;
 

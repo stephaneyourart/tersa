@@ -4,6 +4,7 @@ import { Controls as FlowControls } from '@xyflow/react';
 import { memo } from 'react';
 import { ThemeSwitcher } from './theme-switcher';
 import { BackgroundColorPicker } from './background-color-picker';
+import { PerformanceModeToggle } from './performance-mode-toggle';
 
 export const ControlsInner = () => (
   <FlowControls
@@ -11,6 +12,7 @@ export const ControlsInner = () => (
     className="flex-col! items-center rounded-full border bg-card/90 p-1 shadow-none! drop-shadow-xs backdrop-blur-sm sm:flex-row!"
     showInteractive={false}
   >
+    <PerformanceModeToggle />
     <BackgroundColorPicker />
     <ThemeSwitcher />
   </FlowControls>

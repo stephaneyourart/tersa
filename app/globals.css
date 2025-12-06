@@ -61,6 +61,20 @@
       height: 0;
     }
   }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/* Animation shimmer pour les placeholders de média */
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
 }
 
 :root {
@@ -461,16 +475,40 @@ html, body {
   transition: stroke-width 0.15s ease, stroke 0.15s ease, filter 0.15s ease;
 }
 
-/* Quand un nœud est survolé : ses edges connectés grossissent x3 */
+/* ========== CACHER LES EDGES PENDANT LE ZOOM (pas au repos) ========== */
+/* Les edges disparaissent INSTANTANÉMENT pendant qu'on zoome */
+.react-flow[data-zooming="true"] .react-flow__edges {
+  opacity: 0 !important;
+  transition: none;
+  pointer-events: none;
+}
+
+/* Transition fluide quand le zoom s'arrête */
+.react-flow .react-flow__edges {
+  transition: opacity 0.1s ease-in;
+}
+
+/* ========== DIMMING DES LIENS NON-CONNECTÉS ========== */
+/* Quand un nœud est survolé : TOUS les edges sont d'abord dimmés */
+.react-flow[data-hovered-node] .flora-edge-group {
+  opacity: 0.1 !important;
+  transition: opacity 0.15s ease;
+}
+
+/* Puis les edges connectés sont mis en avant (annule le dimming) */
+.react-flow[data-hovered-node] .flora-edge-group.edge-highlighted {
+  opacity: 1 !important;
+}
+
+/* Quand un nœud est survolé : ses edges connectés grossissent */
 .react-flow[data-hovered-node] .flora-edge-group.edge-highlighted .flora-edge-main {
-  stroke-width: 12 !important;  /* 4 x 3 = 12 */
+  stroke-width: 12 !important;
   stroke: rgba(255, 255, 255, 0.95) !important;
 }
 
+/* PAS de glow/shadow sur les edges */
 .react-flow[data-hovered-node] .flora-edge-group.edge-highlighted .flora-edge-shadow {
-  stroke-width: 20 !important;  /* Ombre proportionnelle */
-  stroke: rgba(255, 255, 255, 0.2) !important;
-  filter: blur(6px) !important;
+  display: none !important;
 }
 
 /* Bordure des nœuds connectés - grossit x3 */
@@ -481,5 +519,20 @@ html, body {
 /* Le nœud survolé lui-même */
 .react-flow[data-hovered-node] .react-flow__node.node-hovered .node-container {
   box-shadow: 0 0 0 9px rgba(255, 255, 255, 1) !important;
+}
+
+/* ========== HIGHLIGHT POUR NŒUDS SIMPLIFIÉS (zoom out) ========== */
+/* Les points simplifiés - effet de scale au hover, PAS de glow */
+
+/* Le nœud simplifié survolé - scale seulement */
+.react-flow[data-hovered-node] .react-flow__node.node-hovered .simplified-node {
+  transform: scale(1.3);
+  transition: transform 0.15s ease;
+}
+
+/* Les nœuds simplifiés connectés - légèrement agrandis */
+.react-flow[data-hovered-node] .react-flow__node.node-highlighted .simplified-node {
+  transform: scale(1.15);
+  transition: transform 0.15s ease;
 }
 

@@ -11,6 +11,7 @@ import {
   AISourcesContent,
   AISourcesTrigger,
 } from '@/components/ui/kibo-ui/ai/source';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useAnalytics } from '@/hooks/use-analytics';
@@ -36,7 +37,9 @@ import {
   CopyIcon,
   PlayIcon,
   RotateCcwIcon,
+  SearchIcon,
   SquareIcon,
+  XIcon,
 } from 'lucide-react';
 import {
   type ChangeEventHandler,
@@ -45,6 +48,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
@@ -82,6 +86,84 @@ export const TextTransform = ({
   const [reasoning, setReasoning] = useReasoning();
   const { trackGeneration } = useGenerationTracker();
   const generationStartTimeRef = useRef<number>(0);
+  
+  // État pour l'édition du texte généré
+  const [isEditingGenerated, setIsEditingGenerated] = useState(false);
+  const [editedText, setEditedText] = useState(data.generated?.text || '');
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // État pour la recherche en mode édition
+  const [searchQuery, setSearchQuery] = useState('');
+  const highlightBackdropRef = useRef<HTMLDivElement>(null);
+  const editContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Sync editedText quand data.generated.text change
+  useEffect(() => {
+    if (data.generated?.text && !isEditingGenerated) {
+      setEditedText(data.generated.text);
+    }
+  }, [data.generated?.text, isEditingGenerated]);
+  
+  // Focus sur le textarea quand on passe en mode édition
+  useEffect(() => {
+    if (isEditingGenerated && editTextareaRef.current) {
+      editTextareaRef.current.focus();
+      // Placer le curseur à la fin
+      editTextareaRef.current.selectionStart = editTextareaRef.current.value.length;
+    }
+  }, [isEditingGenerated]);
+  
+  // Sauvegarder automatiquement les modifications du texte généré
+  const handleEditedTextChange = useCallback((newText: string) => {
+    setEditedText(newText);
+    updateNodeData(id, {
+      generated: {
+        ...data.generated,
+        text: newText,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  }, [id, data.generated, updateNodeData]);
+  
+  // Calculer le nombre de matches
+  const calculatedMatchCount = useMemo(() => {
+    if (!searchQuery.trim()) return 0;
+    const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'gi');
+    const matches = editedText.match(regex);
+    return matches?.length ?? 0;
+  }, [editedText, searchQuery]);
+  
+  // Générer le HTML avec highlights pour la recherche
+  const getHighlightedHtml = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return editedText;
+    }
+    
+    // Escape HTML d'abord (garder \n pour whitespace-pre-wrap)
+    const escaped = editedText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    const escapedQueryHtml = searchQuery
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const regexHtml = new RegExp(`(${escapedQueryHtml.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    
+    // Orange vif pour bien se voir sur fond gris avec lettres blanches lisibles
+    return escaped.replace(regexHtml, '<mark style="background-color: #f97316; color: white; border-radius: 3px;">$1</mark>');
+  }, [editedText, searchQuery]);
+  
+  // Synchroniser le scroll entre le textarea et le backdrop
+  const handleTextareaScroll = useCallback(() => {
+    if (editTextareaRef.current && highlightBackdropRef.current) {
+      highlightBackdropRef.current.scrollTop = editTextareaRef.current.scrollTop;
+      highlightBackdropRef.current.scrollLeft = editTextareaRef.current.scrollLeft;
+    }
+  }, []);
+  
   const { sendMessage, messages, setMessages, status, stop } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
@@ -389,7 +471,88 @@ export const TextTransform = ({
         {data.generated?.text &&
           !nonUserMessages.length &&
           status !== 'submitted' && (
-            <ReactMarkdown>{data.generated.text}</ReactMarkdown>
+            isEditingGenerated ? (
+              <div 
+                ref={editContainerRef}
+                className="flex flex-col h-full"
+                onBlur={(e) => {
+                  // Ne quitter le mode édition que si le focus sort du container
+                  if (editContainerRef.current && !editContainerRef.current.contains(e.relatedTarget as Node)) {
+                    setIsEditingGenerated(false);
+                    setSearchQuery('');
+                  }
+                }}
+              >
+                {/* Barre de recherche sticky */}
+                <div className="sticky top-0 z-20 flex items-center gap-2 bg-secondary/95 backdrop-blur-sm rounded-lg px-2 py-1 mb-2 border border-muted">
+                  <SearchIcon size={14} className="text-muted-foreground shrink-0" />
+                  <Input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Rechercher..."
+                    className="nodrag h-7 border-none bg-transparent shadow-none focus-visible:ring-0 text-sm px-0"
+                  />
+                  {searchQuery && (
+                    <>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {calculatedMatchCount} résultat{calculatedMatchCount !== 1 ? 's' : ''}
+                      </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 shrink-0"
+                        onClick={() => setSearchQuery('')}
+                      >
+                        <XIcon size={12} />
+                      </Button>
+                    </>
+                  )}
+                </div>
+                
+                {/* Textarea avec overlay de highlights */}
+                <div className="relative flex-1 min-h-[180px]">
+                  {/* Backdrop avec highlights - mêmes styles que le textarea */}
+                  {searchQuery && (
+                    <div
+                      ref={highlightBackdropRef}
+                      className="absolute pointer-events-none overflow-auto whitespace-pre-wrap break-words text-sm leading-6 rounded-md"
+                      style={{ 
+                        top: 1,
+                        left: 1,
+                        right: 1,
+                        bottom: 1,
+                        padding: '8px 12px',
+                        wordBreak: 'break-word',
+                        color: 'transparent',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: getHighlightedHtml }}
+                    />
+                  )}
+                  {/* Textarea pour l'édition - sauvegarde automatique */}
+                  <Textarea
+                    ref={editTextareaRef}
+                    value={editedText}
+                    onChange={(e) => handleEditedTextChange(e.target.value)}
+                    onScroll={handleTextareaScroll}
+                    className="nodrag nowheel h-full min-h-[180px] resize-none border-emerald-500/50 focus:border-emerald-500 relative z-10 text-sm leading-6"
+                    placeholder="Modifiez le texte..."
+                    style={{
+                      caretColor: 'currentColor',
+                      background: searchQuery ? 'transparent' : undefined,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div 
+                onClick={() => setIsEditingGenerated(true)}
+                className="cursor-text hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors"
+                title="Cliquez pour modifier"
+              >
+                <ReactMarkdown>{data.generated.text}</ReactMarkdown>
+              </div>
+            )
           )}
         {!data.generated?.text &&
           !nonUserMessages.length &&
