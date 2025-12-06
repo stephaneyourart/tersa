@@ -33,14 +33,14 @@ export function PerformanceModeToggle() {
           )}
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[200px]">
+      <TooltipContent side="top" className="max-w-[220px]">
         <p className="font-medium">
           {isPerformanceMode ? 'Mode Performance ON' : 'Mode Performance OFF'}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           {isPerformanceMode 
-            ? 'Les vidéos sont en pause. Cliquez pour réactiver la lecture au hover.'
-            : 'Cliquez pour désactiver la lecture des vidéos et améliorer les performances.'}
+            ? 'Nœuds simplifiés (points). Cliquez pour voir les nœuds complets.'
+            : 'Cliquez pour simplifier les nœuds (points) et améliorer les performances.'}
         </p>
         <p className="text-xs text-muted-foreground mt-1 opacity-70">
           Raccourci : CMD+K (sur nœuds sélectionnés)

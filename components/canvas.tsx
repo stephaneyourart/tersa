@@ -1505,29 +1505,55 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                   const minX = Math.min(...selectedNodes.map((n) => n.position.x));
                   const minY = Math.min(...selectedNodes.map((n) => n.position.y));
 
-                  // Calculer la taille moyenne des nœuds pour l'espacement
-                  const avgWidth = selectedNodes.reduce((sum, n) => sum + (n.measured?.width ?? 300), 0) / selectedNodes.length;
-                  const avgHeight = selectedNodes.reduce((sum, n) => sum + (n.measured?.height ?? 200), 0) / selectedNodes.length;
-                  
-                  // Espacement entre les nœuds
-                  const gapX = avgWidth + 50;
-                  const gapY = avgHeight + 50;
+                  // Espacement MINIME entre les nœuds (12px)
+                  const GAP = 12;
 
-                  // Calculer le nombre de colonnes (racine carrée arrondie)
-                  const cols = Math.ceil(Math.sqrt(selectedNodes.length));
+                  // Grouper les nœuds par taille similaire pour un layout plus régulier
+                  // Calculer la taille réelle de chaque nœud
+                  const nodesWithSize = selectedNodes.map((n) => ({
+                    node: n,
+                    width: n.measured?.width ?? 300,
+                    height: n.measured?.height ?? 200,
+                  }));
 
-                  // Trier les nœuds par position (haut-gauche vers bas-droite) pour un ordre prévisible
-                  const sortedNodes = [...selectedNodes].sort((a, b) => {
-                    const rowA = Math.floor(a.position.y / 100);
-                    const rowB = Math.floor(b.position.y / 100);
+                  // Trier par position pour garder un ordre prévisible
+                  const sortedNodes = [...nodesWithSize].sort((a, b) => {
+                    const rowA = Math.floor(a.node.position.y / 100);
+                    const rowB = Math.floor(b.node.position.y / 100);
                     if (rowA !== rowB) return rowA - rowB;
-                    return a.position.x - b.position.x;
+                    return a.node.position.x - b.node.position.x;
                   });
 
-                  // Appliquer les nouvelles positions en grille
+                  // Calculer le nombre optimal de colonnes (racine carrée arrondie)
+                  const cols = Math.ceil(Math.sqrt(sortedNodes.length));
+
+                  // Calculer la largeur max par colonne et hauteur max par ligne
+                  const colWidths: number[] = [];
+                  const rowHeights: number[] = [];
+                  
+                  sortedNodes.forEach((item, idx) => {
+                    const col = idx % cols;
+                    const row = Math.floor(idx / cols);
+                    
+                    colWidths[col] = Math.max(colWidths[col] || 0, item.width);
+                    rowHeights[row] = Math.max(rowHeights[row] || 0, item.height);
+                  });
+
+                  // Calculer les positions cumulatives pour chaque colonne/ligne
+                  const colPositions = [0];
+                  for (let i = 1; i < colWidths.length; i++) {
+                    colPositions[i] = colPositions[i - 1] + colWidths[i - 1] + GAP;
+                  }
+                  
+                  const rowPositions = [0];
+                  for (let i = 1; i < rowHeights.length; i++) {
+                    rowPositions[i] = rowPositions[i - 1] + rowHeights[i - 1] + GAP;
+                  }
+
+                  // Appliquer les nouvelles positions en grille dense
                   setNodes((nds) =>
                     nds.map((node) => {
-                      const idx = sortedNodes.findIndex((n) => n.id === node.id);
+                      const idx = sortedNodes.findIndex((n) => n.node.id === node.id);
                       if (idx === -1) return node;
 
                       const col = idx % cols;
@@ -1536,8 +1562,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
                       return {
                         ...node,
                         position: {
-                          x: minX + col * gapX,
-                          y: minY + row * gapY,
+                          x: minX + colPositions[col],
+                          y: minY + rowPositions[row],
                         },
                       };
                     })

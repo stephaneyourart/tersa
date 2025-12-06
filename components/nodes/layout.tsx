@@ -44,6 +44,7 @@ import { toast } from 'sonner';
 // IMPORTANT: Utilise le store global au lieu de useStore par nœud
 // Voir zoom-level-observer.tsx pour les constantes et le store
 import { useGlobalZoomLevel, type ZoomLevel } from '@/components/zoom-level-observer';
+import { usePerformanceModeStore } from '@/lib/performance-mode-store';
 
 // Hook pour le zoom numérique (utilisé ailleurs)
 function useThrottledZoom(): number {
@@ -183,17 +184,21 @@ type NodeLayoutProps = {
   modelLabel?: string; // Nom du modèle pour l'affichage
 };
 
-// Wrapper qui décide quel rendu utiliser basé sur le zoom
+// Wrapper qui décide quel rendu utiliser basé sur le MODE PERFORMANCE
+// Mode Performance ON = nœuds simplifiés (points verts)
+// Mode Performance OFF = nœuds complets (affichage normal)
 export const NodeLayout = (props: NodeLayoutProps) => {
   const zoomLevel = useGlobalZoomLevel();
+  const isPerformanceMode = usePerformanceModeStore((s) => s.isPerformanceMode);
   const hasContent = Boolean(props.data?.content?.url || props.data?.generated?.url);
   
-  // Si zoom < 30%, retourner un nœud ultra-simplifié (TRÈS léger)
-  if (zoomLevel === 'simplified') {
+  // Mode Performance ON → forcer l'affichage simplifié (points verts)
+  // Mode Performance OFF → toujours afficher les nœuds complets (ignorer le zoom level)
+  if (isPerformanceMode) {
     return <SimplifiedNode title={props.title} type={props.type} hasContent={hasContent} id={props.id} />;
   }
   
-  // Sinon, rendre le composant complet
+  // Mode Performance OFF → affichage complet, peu importe le zoom
   return <NodeLayoutFull {...props} zoomLevel={zoomLevel} />;
 };
 

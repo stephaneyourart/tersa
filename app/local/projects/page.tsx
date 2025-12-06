@@ -44,7 +44,13 @@ import {
   DatabaseIcon,
   FileTextIcon,
   CalculatorIcon,
+  LayoutGridIcon,
+  ListIcon,
+  Trash2Icon,
+  XIcon,
+  CheckIcon,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo } from 'react';
@@ -187,11 +193,19 @@ export default function LocalProjectsPage() {
   const [projects, setProjects] = useState<LocalProject[]>([]);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<LocalProject | null>(null);
   const [newName, setNewName] = useState('');
   const [storageByProject, setStorageByProject] = useState<Record<string, StorageBreakdown>>({});
   const [globalStorage, setGlobalStorage] = useState<StorageBreakdown | null>(null);
   const [isRebuildingStats, setIsRebuildingStats] = useState(false);
+  
+  // Mode liste vs grille
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  
+  // Mode sélection batch
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Charger les projets au montage
   useEffect(() => {
@@ -339,6 +353,52 @@ export default function LocalProjectsPage() {
     }
   }, []);
 
+  // Toggle sélection d'un projet
+  const toggleProjectSelection = useCallback((projectId: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId);
+      } else {
+        newSet.add(projectId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Sélectionner/désélectionner tous
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === projects.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(projects.map(p => p.id)));
+    }
+  }, [projects, selectedIds.size]);
+
+  // Annuler le mode sélection
+  const cancelSelectionMode = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  // Confirmer la suppression batch
+  const handleBatchDeleteConfirm = useCallback(() => {
+    // Supprimer tous les projets sélectionnés en une seule opération
+    const idsToDelete = Array.from(selectedIds);
+    const currentProjects = getLocalProjects();
+    const remainingProjects = currentProjects.filter(p => !idsToDelete.includes(p.id));
+    
+    // Sauvegarder directement dans localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tersa-local-projects', JSON.stringify(remainingProjects));
+    }
+    
+    // Mettre à jour l'état local
+    setProjects(remainingProjects);
+    setBatchDeleteDialogOpen(false);
+    cancelSelectionMode();
+  }, [selectedIds, cancelSelectionMode]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       {/* Header */}
@@ -348,22 +408,91 @@ export default function LocalProjectsPage() {
             Media Conductor
           </h1>
           <div className="flex items-center gap-3">
-            <Link href="/local/briefs">
-              <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
-                <FileTextIcon size={16} />
-                Creative Plans
-              </Button>
-            </Link>
-            <Link href="/local/dashboard">
-              <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
-                <BarChart3Icon size={16} />
-                Dashboard
-              </Button>
-            </Link>
-            <Button onClick={handleNewProject} className="gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500">
-              <PlusIcon size={16} />
-              Nouveau projet
-            </Button>
+            {/* Mode sélection actif */}
+            {isSelectionMode ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSelectAll}
+                  className="gap-2 border-white/10 bg-white/5 hover:bg-white/10"
+                >
+                  <CheckIcon size={14} />
+                  {selectedIds.size === projects.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBatchDeleteDialogOpen(true)}
+                  disabled={selectedIds.size === 0}
+                  className="gap-2"
+                >
+                  <Trash2Icon size={14} />
+                  Supprimer ({selectedIds.size})
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelSelectionMode}
+                  className="gap-2 text-zinc-400 hover:text-white"
+                >
+                  <XIcon size={14} />
+                  Annuler
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* Toggle vue grille/liste */}
+                <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 rounded ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-white'}`}
+                    onClick={() => setViewMode('grid')}
+                  >
+                    <LayoutGridIcon size={14} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 rounded ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-white'}`}
+                    onClick={() => setViewMode('list')}
+                  >
+                    <ListIcon size={14} />
+                  </Button>
+                </div>
+                
+                {/* Bouton mode sélection */}
+                {projects.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsSelectionMode(true)}
+                    className="gap-2 border-white/10 bg-white/5 hover:bg-white/10"
+                  >
+                    <Trash2Icon size={14} />
+                    Sélectionner
+                  </Button>
+                )}
+                
+                <Link href="/local/briefs">
+                  <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
+                    <FileTextIcon size={16} />
+                    Creative Plans
+                  </Button>
+                </Link>
+                <Link href="/local/dashboard">
+                  <Button variant="outline" className="gap-2 border-white/10 bg-white/5 hover:bg-white/10">
+                    <BarChart3Icon size={16} />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Button onClick={handleNewProject} className="gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500">
+                  <PlusIcon size={16} />
+                  Nouveau projet
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -417,7 +546,7 @@ export default function LocalProjectsPage() {
               Créer un projet
             </Button>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
             {projects.map((project) => (
               <ProjectCard
@@ -429,6 +558,27 @@ export default function LocalProjectsPage() {
                 onRename={handleRenameClick}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDeleteClick}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedIds.has(project.id)}
+                onToggleSelect={() => toggleProjectSelection(project.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {projects.map((project) => (
+              <ProjectListItem
+                key={project.id}
+                project={project}
+                calculatedStats={extractCalculatedStats(project)}
+                storage={storageByProject[project.id]}
+                onOpen={handleOpenProject}
+                onRename={handleRenameClick}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDeleteClick}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedIds.has(project.id)}
+                onToggleSelect={() => toggleProjectSelection(project.id)}
               />
             ))}
           </div>
@@ -477,6 +627,36 @@ export default function LocalProjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Batch Delete Dialog */}
+      <Dialog open={batchDeleteDialogOpen} onOpenChange={setBatchDeleteDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-white/10">
+          <DialogHeader>
+            <DialogTitle className="text-red-400">Supprimer {selectedIds.size} projet{selectedIds.size > 1 ? 's' : ''} ?</DialogTitle>
+          </DialogHeader>
+          <p className="text-zinc-400">
+            Êtes-vous sûr de vouloir supprimer ces {selectedIds.size} projet{selectedIds.size > 1 ? 's' : ''} ?
+            <br />
+            <span className="text-red-400 font-medium">Cette action est irréversible.</span>
+          </p>
+          <div className="max-h-40 overflow-y-auto rounded-lg bg-zinc-800/50 p-3 space-y-1">
+            {projects.filter(p => selectedIds.has(p.id)).map(p => (
+              <div key={p.id} className="text-sm text-zinc-300 flex items-center gap-2">
+                <TrashIcon size={12} className="text-red-400" />
+                {p.name}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchDeleteDialogOpen(false)} className="border-white/10">
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleBatchDeleteConfirm}>
+              Supprimer tout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -511,9 +691,12 @@ interface ProjectCardProps {
   onRename: (project: LocalProject) => void;
   onDuplicate: (project: LocalProject) => void;
   onDelete: (project: LocalProject) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDuplicate, onDelete }: ProjectCardProps) {
+function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDuplicate, onDelete, isSelectionMode, isSelected, onToggleSelect }: ProjectCardProps) {
   const storedStats = project.stats;
   const totalHistoricalGenerations = storedStats?.totalGenerations || 0;
   const totalDeleted = storedStats?.totalDeleted || 0;
@@ -535,11 +718,29 @@ function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDu
     .slice(0, 4);
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/50 transition-all hover:border-white/10 hover:bg-zinc-900/80">
+    <div className={`group relative overflow-hidden rounded-2xl border transition-all ${
+      isSelected 
+        ? 'border-red-500/50 bg-red-500/10' 
+        : 'border-white/5 bg-zinc-900/50 hover:border-white/10 hover:bg-zinc-900/80'
+    }`}>
+      {/* Checkbox en mode sélection */}
+      {isSelectionMode && (
+        <div 
+          className="absolute top-3 left-3 z-20"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={onToggleSelect}
+            className="h-6 w-6 border-2 border-white/30 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+          />
+        </div>
+      )}
+      
       {/* Mosaïque / Thumbnail */}
       <div
-        className="relative cursor-pointer aspect-[16/9] overflow-hidden"
-        onClick={() => onOpen(project)}
+        className={`relative aspect-[16/9] overflow-hidden ${isSelectionMode ? 'cursor-pointer' : 'cursor-pointer'}`}
+        onClick={() => isSelectionMode ? onToggleSelect?.() : onOpen(project)}
       >
         {calculatedStats.mediaPreviews.length > 0 ? (
           <MediaMosaic previews={calculatedStats.mediaPreviews} />
@@ -756,6 +957,124 @@ function ProjectCard({ project, calculatedStats, storage, onOpen, onRename, onDu
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Composant pour une ligne de projet (mode liste)
+interface ProjectListItemProps {
+  project: LocalProject;
+  calculatedStats: CalculatedStats;
+  storage?: StorageBreakdown;
+  onOpen: (project: LocalProject) => void;
+  onRename: (project: LocalProject) => void;
+  onDuplicate: (project: LocalProject) => void;
+  onDelete: (project: LocalProject) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+}
+
+function ProjectListItem({ project, calculatedStats, storage, onOpen, onRename, onDuplicate, onDelete, isSelectionMode, isSelected, onToggleSelect }: ProjectListItemProps) {
+  const storedStats = project.stats;
+  const totalCost = storedStats?.totalCost || 0;
+  
+  return (
+    <div 
+      className={`group flex items-center gap-4 rounded-xl border p-3 transition-all ${
+        isSelected 
+          ? 'border-red-500/50 bg-red-500/10' 
+          : 'border-white/5 bg-zinc-900/50 hover:border-white/10 hover:bg-zinc-900/80'
+      }`}
+    >
+      {/* Checkbox en mode sélection */}
+      {isSelectionMode && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={onToggleSelect}
+            className="h-5 w-5 border-2 border-white/30 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+          />
+        </div>
+      )}
+      
+      {/* Infos principales */}
+      <div 
+        className="flex-1 min-w-0 cursor-pointer"
+        onClick={() => isSelectionMode ? onToggleSelect?.() : onOpen(project)}
+      >
+        <h3 className="truncate text-sm font-semibold text-white group-hover:text-violet-300 transition-colors">
+          {project.name}
+        </h3>
+        <p className="text-xs text-zinc-500">
+          {formatProjectDate(project.updatedAt)}
+        </p>
+      </div>
+      
+      {/* Stats rapides */}
+      <div className="hidden sm:flex items-center gap-4 text-xs">
+        {calculatedStats.currentImages > 0 && (
+          <span className="flex items-center gap-1 text-blue-400">
+            <ImageIcon size={12} /> {calculatedStats.currentImages}
+          </span>
+        )}
+        {calculatedStats.currentVideos > 0 && (
+          <span className="flex items-center gap-1 text-purple-400">
+            <VideoIcon size={12} /> {calculatedStats.currentVideos}
+          </span>
+        )}
+        {calculatedStats.totalDuration > 0 && (
+          <span className="flex items-center gap-1 text-amber-400">
+            <ClockIcon size={12} /> {formatDuration(calculatedStats.totalDuration)}
+          </span>
+        )}
+        {storage && storage.total > 0 && (
+          <span className="flex items-center gap-1 text-cyan-400">
+            <HardDriveIcon size={12} /> {formatSize(storage.total)}
+          </span>
+        )}
+        <span className="font-mono text-emerald-400 min-w-[60px] text-right">
+          {formatCost(totalCost)}
+        </span>
+      </div>
+      
+      {/* Actions */}
+      {!isSelectionMode && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 shrink-0 text-zinc-400 hover:text-white hover:bg-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontalIcon size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40 bg-zinc-900 border-white/10">
+            <DropdownMenuItem onClick={() => onOpen(project)} className="gap-2">
+              <FolderOpenIcon size={14} />
+              Ouvrir
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRename(project)} className="gap-2">
+              <PencilIcon size={14} />
+              Renommer
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onDuplicate(project)} className="gap-2">
+              <CopyIcon size={14} />
+              Dupliquer
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuItem 
+              onClick={() => onDelete(project)} 
+              className="gap-2 text-red-400 focus:text-red-400 focus:bg-red-500/10"
+            >
+              <TrashIcon size={14} />
+              Supprimer
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
